@@ -1,0 +1,42 @@
+{
+  "root": true,
+  "extends": ["catalyst", "plugin:prettier/recommended"],
+  "env": {
+    "node": true
+  },
+  "plugins": ["prettier"],
+  "rules": {
+    "curly": ["error", "all"],
+    "lines-around-comment": [
+      "warn",
+      {
+        "beforeBlockComment": true,
+        "afterBlockComment": false,
+        "beforeLineComment": true,
+        "afterLineComment": false,
+        "allowBlockStart": true,
+        "allowBlockEnd": true,
+        "allowObjectStart": true,
+        "allowObjectEnd": true,
+        "allowArrayStart": true,
+        "allowArrayEnd": true,
+        "allowClassStart": true,
+        "allowClassEnd": true
+      }
+    ],
+    "max-len": [
+      "warn",
+      {
+        "code": 80,
+        "comments": 120,
+        "tabWidth": 2,
+        "ignoreUrls": true,
+        "ignoreComments": false,
+        "ignoreTrailingComments": false,
+        "ignoreStrings": true,
+        "ignoreTemplateLiterals": true,
+        "ignoreRegExpLiterals": true
+      }
+    ]
+  }
+}

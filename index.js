@@ -59,6 +59,7 @@ function setConfig(packagePath, config) {
 }
 
 // Load the tasks.
+const analyze = require('./tasks/analyze');
 const build = require('./tasks/build');
 const lint = require('./tasks/lint');
 const test = require('./tasks/test');
@@ -68,6 +69,9 @@ const util = require('./tasks/util');
 module.exports = {
   setConfig: setConfig,
   tasks: {
+    analyze: gulp => async () => {
+      await analyze(gulp, userConfig);
+    },
     build: gulp => async () => {
       await build(gulp, userConfig);
     },

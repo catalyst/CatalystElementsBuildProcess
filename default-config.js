@@ -32,7 +32,7 @@ module.exports = {
     analysisFilename: 'analysis.json'
   },
 
-  test: {
+  tests: {
     path: 'test'
   },
 

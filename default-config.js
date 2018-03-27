@@ -7,6 +7,25 @@ module.exports = {
     nodeModulesPath: null
   },
 
+  build: {
+    postcss: {
+      options: {
+        plugins: {
+          'postcss-import': {},
+          'postcss-cssnext': {
+            features: {
+              customProperties: false
+            }
+          },
+          cssnano: {
+            autoprefixer: false
+          },
+          'postcss-reporter': {}
+        }
+      }
+    }
+  },
+
   src: {
     path: 'src',
     entrypoint: null,

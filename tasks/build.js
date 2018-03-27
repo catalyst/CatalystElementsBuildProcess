@@ -97,7 +97,7 @@ function compileSASS(gulp, config) {
     gulp
       .src(`./${config.src.path}/**/[^_]*.scss`)
       .pipe(sass({ outputStyle: 'compressed' }).on('error', sass.logError))
-      .pipe(postcss())
+      .pipe(postcss([], config.build.postcss.options))
       .pipe(replace('\n', ''))
       .pipe(gulp.dest(`./${config.temp.path}/build`))
       .on('finish', () => {

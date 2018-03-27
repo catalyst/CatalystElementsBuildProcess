@@ -33,7 +33,19 @@ module.exports = {
   },
 
   tests: {
-    path: 'test'
+    path: 'test',
+    wctConfig: {
+      plugins: {
+        local: {
+          browsers: ['chrome', 'firefox'],
+          browserOptions: {
+            chrome: ['headless', 'disable-gpu'],
+            firefox: ['-headless']
+          }
+        }
+      },
+      npm: true
+    }
   },
 
   temp: {

@@ -69,6 +69,9 @@ module.exports = {
     },
     lint: gulp => async () => {
       await require('./tasks/lint')(gulp, userConfig);
+    },
+    test: gulp => async () => {
+      await require('./tasks/test')(gulp, userConfig);
     }
   }
 };

@@ -66,6 +66,9 @@ module.exports = {
     },
     clean: () => async () => {
       await require('./tasks/util').cleanTemp(userConfig);
+    },
+    lint: gulp => async () => {
+      await require('./tasks/lint')(gulp, userConfig);
     }
   }
 };

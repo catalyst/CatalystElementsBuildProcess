@@ -19,6 +19,18 @@ function setConfig(packagePath, config) {
     // Merge the config into the default config.
     const newConfig = deepMerge(defaultConfig, config);
 
+    // Copy over the new config settings into the user config object.
+    for (const [key, value] of Object.entries(newConfig)) {
+      userConfig[key] = value;
+    }
+
+    // Delete any the extra keys.
+    for (const key of Object.keys(userConfig)) {
+      if (newConfig[key] == null) {
+        delete newConfig[key];
+      }
+    }
+
     // Read and save the package.json file.
     fs.accessSync(packagePath, fs.constants.R_OK);
     userConfig.packageInfo = JSON.parse(fs.readFileSync(packagePath));
@@ -38,18 +50,6 @@ function setConfig(packagePath, config) {
         ? ''
         : `/${userConfig.componenet.scope}`
     }`;
-
-    // Copy over the new config settings into the user config object.
-    for (const [key, value] of Object.entries(newConfig)) {
-      userConfig[key] = value;
-    }
-
-    // Delete any the extra keys.
-    for (const key of Object.keys(userConfig)) {
-      if (newConfig[key] == null) {
-        delete newConfig[key];
-      }
-    }
 
     // Return the config.
     return userConfig;

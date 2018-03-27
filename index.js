@@ -58,20 +58,27 @@ function setConfig(packagePath, config) {
   }
 }
 
+// Load the tasks.
+const build = require('./tasks/build');
+const lint = require('./tasks/lint');
+const test = require('./tasks/test');
+const util = require('./tasks/util');
+
+// Export the task functions.
 module.exports = {
   setConfig: setConfig,
   tasks: {
     build: gulp => async () => {
-      await require('./tasks/build')(gulp, userConfig);
+      await build(gulp, userConfig);
     },
     clean: () => async () => {
-      await require('./tasks/util').cleanTemp(userConfig);
+      await util.cleanTemp(userConfig);
     },
     lint: gulp => async () => {
-      await require('./tasks/lint')(gulp, userConfig);
+      await lint(gulp, userConfig);
     },
     test: gulp => async () => {
-      await require('./tasks/test')(gulp, userConfig);
+      await test(gulp, userConfig);
     }
   }
 };

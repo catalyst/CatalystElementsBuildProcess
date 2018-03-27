@@ -5,6 +5,7 @@ const util = require('./util.js');
 const colors = require('ansi-colors');
 const escodegen = require('escodegen');
 const esprima = require('esprima');
+const fs = require('fs');
 const inject = require('gulp-inject');
 const htmlmin = require('gulp-htmlmin');
 const log = require('fancy-log');
@@ -17,6 +18,45 @@ const sass = require('gulp-sass');
 const webpack = require('webpack');
 const WebpackClosureCompilerPlugin = require('webpack-closure-compiler');
 const webpackStream = require('webpack-stream');
+
+/**
+ * Check the source files are all good.
+ *
+ * @param {GulpClient.Gulp} gulp - Gulp library
+ * @param {Object} config - Config settings
+ * @returns {Promise}
+ */
+function checkSourceFiles(gulp, config) {
+  const subTaskLabel = `'${colors.cyan('build -> check source files')}'`;
+
+  return new Promise((resolve, reject) => {
+    log(`Starting ${subTaskLabel}...`);
+    try {
+      const entrypoint = fs.readFileSync(
+        `./${config.src.path}/${config.src.entrypoint}`,
+        'utf-8'
+      );
+      const parsedCode = esprima.parseModule(entrypoint);
+
+      for (const node of parsedCode.body) {
+        switch (node.type) {
+          case 'ExportDefaultDeclaration':
+            reject(new Error('Do not use default exports.'));
+            return;
+
+          // Different type? Do nothing.
+          default:
+        }
+      }
+
+      log(`Finished ${subTaskLabel}`);
+      resolve();
+    } catch (error) {
+      log(`${colors.red('Failed')} ${subTaskLabel}`);
+      reject(error);
+    }
+  });
+}
 
 /**
  * Minify HTML.
@@ -643,6 +683,7 @@ module.exports = (gulp, config) => {
       reject(new Error('Cannot build: `config.src.entrypoint` is not set.'));
     } else {
       await util.cleanDist(config);
+      await checkSourceFiles(gulp, config);
       await Promise.all([minifyHTML(gulp, config), compileSASS(gulp, config)]);
       await Promise.all([buildModule(gulp, config), buildScript(gulp, config)]);
       await finalize(gulp, config);

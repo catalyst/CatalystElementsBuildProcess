@@ -1,5 +1,5 @@
 // Load util.
-const util = require('./util.js');
+const tasksUtil = require('./util');
 
 // Libraries.
 const colors = require('ansi-colors');
@@ -413,7 +413,7 @@ function injectTemplate(gulp, config, options = {}) {
                 starttag: '[[inject:template]]',
                 endtag: '[[endinject]]',
                 removeTags: true,
-                transform: util.transforms.getFileContents
+                transform: tasksUtil.transforms.getFileContents
               }
             )
           )
@@ -438,7 +438,7 @@ function injectTemplate(gulp, config, options = {}) {
                 starttag: '[[inject:style]]',
                 endtag: '[[endinject]]',
                 removeTags: true,
-                transform: util.transforms.getFileContents
+                transform: tasksUtil.transforms.getFileContents
               }
             )
           )
@@ -682,7 +682,7 @@ module.exports = (gulp, config) => {
     } else if (config.src.entrypoint == null) {
       reject(new Error('Cannot build: `config.src.entrypoint` is not set.'));
     } else {
-      await util.cleanDist(config);
+      await tasksUtil.cleanDist(config);
       await checkSourceFiles(gulp, config);
       await Promise.all([minifyHTML(gulp, config), compileSASS(gulp, config)]);
       await Promise.all([buildModule(gulp, config), buildScript(gulp, config)]);

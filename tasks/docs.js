@@ -1,5 +1,5 @@
 // Load util.
-const util = require('./util.js');
+const tasksUtil = require('./util');
 
 // Libraries.
 const foreach = require('gulp-foreach');
@@ -10,20 +10,20 @@ const inject = require('gulp-inject');
 const mergeStream = require('merge-stream');
 const modifyFile = require('gulp-modify-file');
 const named = require('vinyl-named');
-const nodeUtil = require('util');
 const path = require('path');
 const PolymerProject = require('polymer-build');
 const rename = require('gulp-rename');
+const util = require('util');
 const webpack = require('webpack');
 const WebpackClosureCompilerPlugin = require('webpack-closure-compiler');
 const webpackStream = require('webpack-stream');
 
 // Promisify functions.
-const gitClone = nodeUtil.promisify(git.clone);
-const gitCheckout = nodeUtil.promisify(git.checkout);
-const globPromise = nodeUtil.promisify(glob);
-const fsAccess = nodeUtil.promisify(fs.access);
-const fsReaddir = nodeUtil.promisify(fs.readdir);
+const gitClone = util.promisify(git.clone);
+const gitCheckout = util.promisify(git.checkout);
+const globPromise = util.promisify(glob);
+const fsAccess = util.promisify(fs.access);
+const fsReaddir = util.promisify(fs.readdir);
 
 // The temp path.
 const tempSubpath = 'docs';
@@ -64,14 +64,14 @@ function cloneRepository(repoPath, dirPath, labelDepth = 1) {
   const subTaskLabel = `cloning: ${repoPath}`;
 
   return new Promise(async (resolve, reject) => {
-    util.tasks.log.starting(labelDepth, subTaskLabel);
+    tasksUtil.tasks.log.starting(labelDepth, subTaskLabel);
 
     try {
       await gitClone(repoPath, { args: `${dirPath} --quiet` });
-      util.tasks.log.successful(labelDepth, subTaskLabel);
+      tasksUtil.tasks.log.successful(labelDepth, subTaskLabel);
       resolve();
     } catch (error) {
-      util.tasks.log.failed(labelDepth, subTaskLabel);
+      tasksUtil.tasks.log.failed(labelDepth, subTaskLabel);
       reject(error);
     }
   });
@@ -138,7 +138,7 @@ function cloneRepositories(packageFiles, config, labelDepth = 1) {
         }
 
         if (skipClone) {
-          util.tasks.log.info(
+          tasksUtil.tasks.log.info(
             labelDepth,
             `skipping clone ${repoPath} - output dir not empty.`
           );
@@ -167,7 +167,7 @@ function copyNodeModules(gulp, config, labelDepth = 1) {
   const subTaskLabel = 'node modules';
 
   return new Promise(resolve => {
-    util.tasks.log.starting(labelDepth, subTaskLabel);
+    tasksUtil.tasks.log.starting(labelDepth, subTaskLabel);
 
     gulp
       .src('./node_modules/**', { follow: true })
@@ -177,7 +177,7 @@ function copyNodeModules(gulp, config, labelDepth = 1) {
         )
       )
       .on('finish', () => {
-        util.tasks.log.successful(labelDepth, subTaskLabel);
+        tasksUtil.tasks.log.successful(labelDepth, subTaskLabel);
         resolve();
       });
   });
@@ -195,7 +195,7 @@ function copyDocsIndex(gulp, config, labelDepth = 1) {
   const subTaskLabel = 'index page';
 
   return new Promise(resolve => {
-    util.tasks.log.starting(labelDepth, subTaskLabel);
+    tasksUtil.tasks.log.starting(labelDepth, subTaskLabel);
 
     gulp
       .src(`./${config.docs.indexPage}`)
@@ -206,7 +206,7 @@ function copyDocsIndex(gulp, config, labelDepth = 1) {
       )
       .pipe(gulp.dest(`./${config.temp.path}/${tempSubpath}`))
       .on('finish', () => {
-        util.tasks.log.successful(labelDepth, subTaskLabel);
+        tasksUtil.tasks.log.successful(labelDepth, subTaskLabel);
         resolve();
       });
   });
@@ -224,7 +224,7 @@ function copyExtraDocDependencies(gulp, config, labelDepth = 1) {
   const subTaskLabel = 'extra dependencies';
 
   return new Promise(resolve => {
-    util.tasks.log.starting(labelDepth, subTaskLabel);
+    tasksUtil.tasks.log.starting(labelDepth, subTaskLabel);
 
     gulp
       .src([
@@ -234,7 +234,7 @@ function copyExtraDocDependencies(gulp, config, labelDepth = 1) {
       ])
       .pipe(gulp.dest(`./${config.temp.path}/${tempSubpath}`))
       .on('finish', () => {
-        util.tasks.log.successful(labelDepth, subTaskLabel);
+        tasksUtil.tasks.log.successful(labelDepth, subTaskLabel);
         resolve();
       });
   });
@@ -252,7 +252,7 @@ function copyDistributionFiles(gulp, config, labelDepth = 1) {
   const subTaskLabel = 'distribution files';
 
   return new Promise(resolve => {
-    util.tasks.log.starting(labelDepth, subTaskLabel);
+    tasksUtil.tasks.log.starting(labelDepth, subTaskLabel);
 
     gulp
       .src(`./${config.dist.path}/**`)
@@ -264,7 +264,7 @@ function copyDistributionFiles(gulp, config, labelDepth = 1) {
         )
       )
       .on('finish', () => {
-        util.tasks.log.successful(labelDepth, subTaskLabel);
+        tasksUtil.tasks.log.successful(labelDepth, subTaskLabel);
         resolve();
       });
   });
@@ -282,7 +282,7 @@ function copyLocalDemos(gulp, config, labelDepth = 1) {
   const subTaskLabel = 'local demos';
 
   return new Promise(resolve => {
-    util.tasks.log.starting(labelDepth, subTaskLabel);
+    tasksUtil.tasks.log.starting(labelDepth, subTaskLabel);
 
     gulp
       .src(`./${config.demos.path}/**`, {
@@ -296,7 +296,7 @@ function copyLocalDemos(gulp, config, labelDepth = 1) {
         )
       )
       .on('finish', () => {
-        util.tasks.log.successful(labelDepth, subTaskLabel);
+        tasksUtil.tasks.log.successful(labelDepth, subTaskLabel);
         resolve();
       });
   });
@@ -314,7 +314,7 @@ function copyDependencies(gulp, config, labelDepth = 1) {
   const subTaskLabel = 'copy dependencies';
 
   return new Promise(async (resolve, reject) => {
-    util.tasks.log.starting(labelDepth, subTaskLabel);
+    tasksUtil.tasks.log.starting(labelDepth, subTaskLabel);
 
     try {
       await Promise.all([
@@ -325,10 +325,10 @@ function copyDependencies(gulp, config, labelDepth = 1) {
         copyLocalDemos(gulp, config, labelDepth + 1)
       ]);
 
-      util.tasks.log.successful(labelDepth, subTaskLabel);
+      tasksUtil.tasks.log.successful(labelDepth, subTaskLabel);
       resolve();
     } catch (error) {
-      util.tasks.log.failed(labelDepth, subTaskLabel);
+      tasksUtil.tasks.log.failed(labelDepth, subTaskLabel);
       reject(error);
     }
   });
@@ -346,7 +346,7 @@ function updateAnalysis(gulp, config, labelDepth = 1) {
   const subTaskLabel = 'update analysis';
 
   return new Promise(resolve => {
-    util.tasks.log.starting(labelDepth, subTaskLabel);
+    tasksUtil.tasks.log.starting(labelDepth, subTaskLabel);
 
     gulp
       .src(
@@ -378,7 +378,7 @@ function updateAnalysis(gulp, config, labelDepth = 1) {
       )
       .pipe(gulp.dest('./'))
       .on('finish', () => {
-        util.tasks.log.successful(labelDepth, subTaskLabel);
+        tasksUtil.tasks.log.successful(labelDepth, subTaskLabel);
         resolve();
       });
   });
@@ -396,7 +396,7 @@ function getDemos(gulp, config, labelDepth = 1) {
   const subTaskLabel = 'get demos';
 
   return new Promise(async (resolve, reject) => {
-    util.tasks.log.starting(labelDepth, subTaskLabel);
+    tasksUtil.tasks.log.starting(labelDepth, subTaskLabel);
 
     try {
       const files = await globPromise(
@@ -430,10 +430,10 @@ function getDemos(gulp, config, labelDepth = 1) {
           );
       }
 
-      util.tasks.log.successful(labelDepth, subTaskLabel);
+      tasksUtil.tasks.log.successful(labelDepth, subTaskLabel);
       resolve();
     } catch (error) {
-      util.tasks.log.failed(labelDepth, subTaskLabel);
+      tasksUtil.tasks.log.failed(labelDepth, subTaskLabel);
       reject(error);
     }
   });
@@ -451,7 +451,7 @@ function indexInjectCustomElementsES5Adapter(gulp, config, labelDepth = 1) {
   const subTaskLabel = 'inject ES5 Adapter';
 
   return new Promise(resolve => {
-    util.tasks.log.starting(labelDepth, subTaskLabel);
+    tasksUtil.tasks.log.starting(labelDepth, subTaskLabel);
 
     gulp
       .src(`./${config.temp.path}/${tempSubpath}/index.html`, { base: './' })
@@ -468,7 +468,7 @@ function indexInjectCustomElementsES5Adapter(gulp, config, labelDepth = 1) {
       )
       .pipe(gulp.dest('./'))
       .on('finish', () => {
-        util.tasks.log.successful(labelDepth, subTaskLabel);
+        tasksUtil.tasks.log.successful(labelDepth, subTaskLabel);
         resolve();
       });
   });
@@ -486,7 +486,7 @@ function demosInjectCustomElementsES5Adapter(gulp, config, labelDepth = 1) {
   const subTaskLabel = 'inject ES5 Adapter';
 
   return new Promise(resolve => {
-    util.tasks.log.starting(labelDepth, subTaskLabel);
+    tasksUtil.tasks.log.starting(labelDepth, subTaskLabel);
 
     gulp
       .src(
@@ -524,7 +524,7 @@ function demosInjectCustomElementsES5Adapter(gulp, config, labelDepth = 1) {
         })
       )
       .on('finish', () => {
-        util.tasks.log.successful(labelDepth, subTaskLabel);
+        tasksUtil.tasks.log.successful(labelDepth, subTaskLabel);
         resolve();
       });
   });
@@ -542,7 +542,7 @@ function indexPageUpdateReferences(gulp, config, labelDepth = 1) {
   const subTaskLabel = 'index';
 
   return new Promise(resolve => {
-    util.tasks.log.starting(labelDepth, subTaskLabel);
+    tasksUtil.tasks.log.starting(labelDepth, subTaskLabel);
 
     gulp
       .src(`./${config.temp.path}/${tempSubpath}/index.html`, { base: './' })
@@ -560,7 +560,7 @@ function indexPageUpdateReferences(gulp, config, labelDepth = 1) {
       )
       .pipe(gulp.dest('./'))
       .on('finish', () => {
-        util.tasks.log.successful(labelDepth, subTaskLabel);
+        tasksUtil.tasks.log.successful(labelDepth, subTaskLabel);
         resolve();
       });
   });
@@ -578,7 +578,7 @@ function demosPagesUpdateReferences(gulp, config, labelDepth = 1) {
   const subTaskLabel = 'index';
 
   return new Promise(resolve => {
-    util.tasks.log.starting(labelDepth, subTaskLabel);
+    tasksUtil.tasks.log.starting(labelDepth, subTaskLabel);
 
     gulp
       .src(
@@ -595,7 +595,7 @@ function demosPagesUpdateReferences(gulp, config, labelDepth = 1) {
       )
       .pipe(gulp.dest('./'))
       .on('finish', () => {
-        util.tasks.log.successful(labelDepth, subTaskLabel);
+        tasksUtil.tasks.log.successful(labelDepth, subTaskLabel);
         resolve();
       });
   });
@@ -613,7 +613,7 @@ function indexImportsUpdateReferences(gulp, config, labelDepth = 1) {
   const subTaskLabel = 'imports';
 
   return new Promise(resolve => {
-    util.tasks.log.starting(labelDepth, subTaskLabel);
+    tasksUtil.tasks.log.starting(labelDepth, subTaskLabel);
 
     gulp
       .src(
@@ -632,7 +632,7 @@ function indexImportsUpdateReferences(gulp, config, labelDepth = 1) {
       )
       .pipe(gulp.dest('./'))
       .on('finish', () => {
-        util.tasks.log.successful(labelDepth, subTaskLabel);
+        tasksUtil.tasks.log.successful(labelDepth, subTaskLabel);
         resolve();
       });
   });
@@ -650,16 +650,16 @@ function indexUpdateReferences(gulp, config, labelDepth = 1) {
   const subTaskLabel = 'update references';
 
   return new Promise(async (resolve, reject) => {
-    util.tasks.log.starting(labelDepth, subTaskLabel);
+    tasksUtil.tasks.log.starting(labelDepth, subTaskLabel);
 
     try {
       await indexPageUpdateReferences(gulp, config, labelDepth + 1);
       await indexImportsUpdateReferences(gulp, config, labelDepth + 1);
 
-      util.tasks.log.successful(labelDepth, subTaskLabel);
+      tasksUtil.tasks.log.successful(labelDepth, subTaskLabel);
       resolve();
     } catch (error) {
-      util.tasks.log.failed(labelDepth, subTaskLabel);
+      tasksUtil.tasks.log.failed(labelDepth, subTaskLabel);
       reject(error);
     }
   });
@@ -677,15 +677,15 @@ function demosUpdateReferences(gulp, config, labelDepth = 1) {
   const subTaskLabel = 'update references';
 
   return new Promise(async (resolve, reject) => {
-    util.tasks.log.starting(labelDepth, subTaskLabel);
+    tasksUtil.tasks.log.starting(labelDepth, subTaskLabel);
 
     try {
       await demosPagesUpdateReferences(gulp, config, labelDepth + 1);
 
-      util.tasks.log.successful(labelDepth, subTaskLabel);
+      tasksUtil.tasks.log.successful(labelDepth, subTaskLabel);
       resolve();
     } catch (error) {
-      util.tasks.log.failed(labelDepth, subTaskLabel);
+      tasksUtil.tasks.log.failed(labelDepth, subTaskLabel);
       reject(error);
     }
   });
@@ -703,7 +703,7 @@ function finalizeIndexPage(gulp, config, labelDepth = 1) {
   const subTaskLabel = 'finalize';
 
   return new Promise(resolve => {
-    util.tasks.log.starting(labelDepth, subTaskLabel);
+    tasksUtil.tasks.log.starting(labelDepth, subTaskLabel);
 
     const docsImportsBaseName = path.basename(
       config.docs.importsFilename,
@@ -761,7 +761,7 @@ function finalizeIndexPage(gulp, config, labelDepth = 1) {
         })
       )
       .on('finish', () => {
-        util.tasks.log.successful(labelDepth, subTaskLabel);
+        tasksUtil.tasks.log.successful(labelDepth, subTaskLabel);
         resolve();
       });
   });
@@ -779,7 +779,7 @@ function finalizeDemos(gulp, config, labelDepth = 1) {
   const subTaskLabel = 'finalize';
 
   return new Promise(resolve => {
-    util.tasks.log.starting(labelDepth, subTaskLabel);
+    tasksUtil.tasks.log.starting(labelDepth, subTaskLabel);
 
     const demoImportsBaseName = path.basename(
       config.demos.importsFilename,
@@ -839,7 +839,7 @@ function finalizeDemos(gulp, config, labelDepth = 1) {
         })
       )
       .on('finish', () => {
-        util.tasks.log.successful(labelDepth, subTaskLabel);
+        tasksUtil.tasks.log.successful(labelDepth, subTaskLabel);
         resolve();
       });
   });
@@ -857,17 +857,17 @@ function buildIndexPage(gulp, config, labelDepth = 1) {
   const subTaskLabel = 'index page';
 
   return new Promise(async (resolve, reject) => {
-    util.tasks.log.starting(labelDepth, subTaskLabel);
+    tasksUtil.tasks.log.starting(labelDepth, subTaskLabel);
 
     try {
       await indexInjectCustomElementsES5Adapter(gulp, config, labelDepth + 1);
       await indexUpdateReferences(gulp, config, labelDepth + 1);
       await finalizeIndexPage(gulp, config, labelDepth + 1);
 
-      util.tasks.log.successful(labelDepth, subTaskLabel);
+      tasksUtil.tasks.log.successful(labelDepth, subTaskLabel);
       resolve();
     } catch (error) {
-      util.tasks.log.failed(labelDepth, subTaskLabel);
+      tasksUtil.tasks.log.failed(labelDepth, subTaskLabel);
       reject(error);
     }
   });
@@ -885,17 +885,17 @@ function buildDemos(gulp, config, labelDepth = 1) {
   const subTaskLabel = 'demos';
 
   return new Promise(async (resolve, reject) => {
-    util.tasks.log.starting(labelDepth, subTaskLabel);
+    tasksUtil.tasks.log.starting(labelDepth, subTaskLabel);
 
     try {
       await demosInjectCustomElementsES5Adapter(gulp, config, labelDepth + 1);
       await demosUpdateReferences(gulp, config, labelDepth + 1);
       await finalizeDemos(gulp, config, labelDepth + 1);
 
-      util.tasks.log.successful(labelDepth, subTaskLabel);
+      tasksUtil.tasks.log.successful(labelDepth, subTaskLabel);
       resolve();
     } catch (error) {
-      util.tasks.log.failed(labelDepth, subTaskLabel);
+      tasksUtil.tasks.log.failed(labelDepth, subTaskLabel);
       reject(error);
     }
   });
@@ -913,7 +913,7 @@ function build(gulp, config, labelDepth = 1) {
   const subTaskLabel = 'build';
 
   return new Promise(async (resolve, reject) => {
-    util.tasks.log.starting(labelDepth, subTaskLabel);
+    tasksUtil.tasks.log.starting(labelDepth, subTaskLabel);
 
     try {
       await Promise.all([
@@ -921,10 +921,10 @@ function build(gulp, config, labelDepth = 1) {
         buildDemos(gulp, config, labelDepth + 1)
       ]);
 
-      util.tasks.log.successful(labelDepth, subTaskLabel);
+      tasksUtil.tasks.log.successful(labelDepth, subTaskLabel);
       resolve();
     } catch (error) {
-      util.tasks.log.failed(labelDepth, subTaskLabel);
+      tasksUtil.tasks.log.failed(labelDepth, subTaskLabel);
       reject(error);
     }
   });
@@ -943,7 +943,7 @@ function generate(gulp, config, labelDepth = 1) {
 
   return new Promise((resolve, reject) => {
     try {
-      util.tasks.log.starting(labelDepth, subTaskLabel);
+      tasksUtil.tasks.log.starting(labelDepth, subTaskLabel);
 
       const docsImportsBaseName = path.basename(
         config.docs.importsFilename,
@@ -1001,11 +1001,11 @@ function generate(gulp, config, labelDepth = 1) {
         )
         .pipe(gulp.dest(`./${config.docs.path}`))
         .on('finish', () => {
-          util.tasks.log.successful(labelDepth, subTaskLabel);
+          tasksUtil.tasks.log.successful(labelDepth, subTaskLabel);
           resolve();
         });
     } catch (error) {
-      util.tasks.log.failed(labelDepth, subTaskLabel);
+      tasksUtil.tasks.log.failed(labelDepth, subTaskLabel);
       reject(error);
     }
   });
@@ -1014,7 +1014,7 @@ function generate(gulp, config, labelDepth = 1) {
 // Export the build docs function.
 module.exports = (gulp, config) => {
   return new Promise(async resolve => {
-    await util.cleanDocs(config);
+    await tasksUtil.cleanDocs(config);
     await copyDependencies(gulp, config);
     await updateAnalysis(gulp, config);
     await getDemos(gulp, config);

@@ -3,20 +3,55 @@ const colors = require('ansi-colors');
 const del = require('del');
 const log = require('fancy-log');
 
+// Helper functions for tasks.
+const tasksHelpers = {
+  log: {
+    starting: (depth, label) => {
+      log(
+        `Starting ${colors.blue(' ').repeat(2 * depth)}${colors.blue(
+          '→'
+        )} ${colors.cyan(label)}...`
+      );
+    },
+    successful: (depth, label) => {
+      log(
+        `Finished ${colors.blue(' ').repeat(2 * depth)}${colors.blue(
+          '→'
+        )} ${colors.cyan(label)} ${colors.green('✓')}`
+      );
+    },
+    failed: (depth, label) => {
+      log(
+        `Failed   ${colors.blue(' ').repeat(2 * depth)}${colors.blue(
+          '→'
+        )} ${colors.cyan(label)} ${colors.red('✗')}`
+      );
+    },
+    info: (depth, label) => {
+      log(
+        `         ${colors.blue(' ').repeat(2 * depth)}${colors.blue(
+          '→'
+        )} ${colors.white(label)}`
+      );
+    }
+  }
+};
+
 /**
  * Clean a path.
  *
  * @param {string} path - The path to clean.
  * @param {string} [label] - The label to show on the console after `clean -> `
+ * @param {number} [labelDepth=1] - The depth the label is at
  * @returns {Promise}
  */
-function clean(path, label) {
-  const subTaskLabel = colors.cyan(`clean -> ${label == null ? path : label}`);
+function clean(path, label, labelDepth = 1) {
+  const subTaskLabel = `clean: ${label == null ? path : label}`;
 
   return new Promise(async resolve => {
-    log(`Starting '${subTaskLabel}'...`);
+    tasksHelpers.log.starting(labelDepth, subTaskLabel);
     await del(path);
-    log(`Finished '${subTaskLabel}'`);
+    tasksHelpers.log.successful(labelDepth, subTaskLabel);
     resolve();
   });
 }
@@ -36,12 +71,17 @@ function transformGetFileContents(filePath, file) {
 
 module.exports = {
   // Clean tasks.
-  cleanDist: config => clean(`./${config.dist.path}`, 'dist'),
-  cleanTemp: config => clean(`./${config.temp.path}`, 'temp'),
-  cleanDocs: config => clean(`./${config.docs.path}`, 'docs'),
+  cleanDist: (config, labelDepth) =>
+    clean(`./${config.dist.path}`, 'dist', labelDepth),
+  cleanTemp: (config, labelDepth) =>
+    clean(`./${config.temp.path}`, 'temp', labelDepth),
+  cleanDocs: (config, labelDepth) =>
+    clean(`./${config.docs.path}`, 'docs', labelDepth),
 
   // Transform functions.
   transforms: {
     getFileContents: transformGetFileContents
-  }
+  },
+
+  tasks: tasksHelpers
 };

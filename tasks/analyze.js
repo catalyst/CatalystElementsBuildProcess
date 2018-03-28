@@ -1,11 +1,15 @@
 // Libraries.
 const colors = require('ansi-colors');
 const file = require('gulp-file');
-const glob = require('glob-promise');
+const glob = require('glob');
 const log = require('fancy-log');
+const nodeUtil = require('util');
 const path = require('path');
 const polymerAnalyzer = require('polymer-analyzer');
 const rename = require('gulp-rename');
+
+// Promisify functions.
+const globPromise = nodeUtil.promisify(glob);
 
 /**
  * Fix issues with the automatically generated analysis.
@@ -17,8 +21,8 @@ const rename = require('gulp-rename');
 function fixAnalysis(analysis, config) {
   const typesToFix = ['elements', 'mixins'];
 
-  // If `elements` is defined.
   for (const type of typesToFix) {
+    // If the type is defined.
     if (analysis[type]) {
       // For each component.
       for (const component of analysis[type]) {
@@ -99,7 +103,7 @@ function generateAnalysis(gulp, config) {
   return new Promise(async resolve => {
     log(`Starting ${subTaskLabel}...`);
 
-    const files = await glob(`./${config.temp.path}/analyze/**/*.js`);
+    const files = await globPromise(`./${config.temp.path}/analyze/**/*.js`);
     const analyzer = polymerAnalyzer.Analyzer.createForDirectory('./');
     const analysis = await analyzer.analyze(files);
 

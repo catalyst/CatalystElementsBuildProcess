@@ -27,7 +27,7 @@ function setConfig(packagePath, config) {
     // Delete any the extra keys.
     for (const key of Object.keys(userConfig)) {
       if (newConfig[key] == null) {
-        delete newConfig[key];
+        delete userConfig[key];
       }
     }
 
@@ -45,7 +45,7 @@ function setConfig(packagePath, config) {
     }
 
     // Set the path to the component within node modules.
-    userConfig.componenet.nodeModulesPath = `${newConfig.nodeModulesPath}${
+    userConfig.componenet.nodeModulesPath = `${userConfig.nodeModulesPath}${
       userConfig.componenet.scope === null
         ? ''
         : `/${userConfig.componenet.scope}`

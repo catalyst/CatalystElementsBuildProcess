@@ -71,5 +71,5 @@ module.exports = {
     path: '.tmp'
   },
 
-  packageInfo: null
+  package: null
 };

@@ -33,12 +33,12 @@ function setConfig(packagePath, config) {
 
     // Read and save the package.json file.
     fs.accessSync(packagePath, fs.constants.R_OK);
-    userConfig.packageInfo = JSON.parse(fs.readFileSync(packagePath));
+    userConfig.package = JSON.parse(fs.readFileSync(packagePath));
 
     // Find and set the package scope.
-    userConfig.componenet.scope = userConfig.packageInfo.name.substring(
+    userConfig.componenet.scope = userConfig.package.name.substring(
       0,
-      userConfig.packageInfo.name.lastIndexOf('/')
+      userConfig.package.name.lastIndexOf('/')
     );
     if (userConfig.componenet.scope === '') {
       userConfig.componenet.scope = null;

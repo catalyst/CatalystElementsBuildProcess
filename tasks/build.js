@@ -150,7 +150,7 @@ function initializeModuleFile(gulp, config) {
       .pipe(
         rename(path => {
           path.basename = config.componenet.name;
-          path.extname = `.module${path.extname}`;
+          path.extname = `.mjs`;
         })
       )
       .pipe(gulp.dest(`./${config.temp.path}/build`))
@@ -341,7 +341,7 @@ function initializeScriptFile(gulp, config) {
       .pipe(
         rename(path => {
           path.basename = config.componenet.name;
-          path.extname = `.script${path.extname}`;
+          path.extname = `.js`;
         })
       )
       .pipe(gulp.dest(`./${config.temp.path}/build`))
@@ -372,11 +372,11 @@ function injectTemplate(gulp, config, options = {}) {
       switch (options.type) {
         case 'module':
           return gulp.src(
-            `./${config.temp.path}/build/${config.componenet.name}.module.js`
+            `./${config.temp.path}/build/${config.componenet.name}.mjs`
           );
         case 'script':
           return gulp.src(
-            `./${config.temp.path}/build/${config.componenet.name}.script.js`
+            `./${config.temp.path}/build/${config.componenet.name}.js`
           );
         default:
           log(
@@ -468,7 +468,7 @@ function finalizeModule(gulp, config) {
   return new Promise(resolve => {
     log(`Starting ${subTaskLabel}...`);
     gulp
-      .src(`./${config.temp.path}/build/${config.componenet.name}.module.js`)
+      .src(`./${config.temp.path}/build/${config.componenet.name}.mjs`)
       .pipe(
         rename(path => {
           path.basename = config.componenet.name;
@@ -495,7 +495,7 @@ function finalizeScript(gulp, config) {
   return new Promise(resolve => {
     log(`Starting ${subTaskLabel}...`);
     gulp
-      .src(`./${config.temp.path}/build/${config.componenet.name}.script.js`)
+      .src(`./${config.temp.path}/build/${config.componenet.name}.js`)
       .pipe(
         webpackStream(
           {
@@ -611,7 +611,7 @@ function finalizePackageJson(gulp, config) {
       .pipe(
         modifyFile(content => {
           const json = JSON.parse(content);
-          json.main = `${config.componenet.name}.js`;
+          json.main = `${config.componenet.name}.mjs`;
           json.scripts = {
             prepublishOnly:
               "node -e \"assert.equal(require('./package.json').version, require('../package.json').version)\""
@@ -665,7 +665,7 @@ function buildSymlinks(gulp, config) {
   return new Promise(resolve => {
     log(`Starting ${subTaskLabel}...`);
     gulp
-      .src(`./${config.dist.path}/${config.componenet.name}**.js`)
+      .src(`./${config.dist.path}/${config.componenet.name}**.?(m)js`)
       .pipe(gulp.symlink('./'))
       .on('finish', () => {
         log(`Finished ${subTaskLabel}`);

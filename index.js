@@ -61,6 +61,7 @@ function setConfig(packagePath, config) {
 // Load the tasks.
 const analyze = require('./tasks/analyze');
 const build = require('./tasks/build');
+const docs = require('./tasks/docs');
 const lint = require('./tasks/lint');
 const test = require('./tasks/test');
 const util = require('./tasks/util');
@@ -74,6 +75,9 @@ module.exports = {
     },
     build: gulp => async () => {
       await build(gulp, userConfig);
+    },
+    'build-docs': gulp => async () => {
+      await docs(gulp, userConfig);
     },
     clean: () => async () => {
       await util.cleanTemp(userConfig);

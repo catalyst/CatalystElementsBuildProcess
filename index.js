@@ -62,6 +62,7 @@ function setConfig(packagePath, config) {
 const analyze = require('./tasks/analyze');
 const build = require('./tasks/build');
 const docs = require('./tasks/docs');
+const fixDependencies = require('./tasks/fix-dependencies');
 const lint = require('./tasks/lint');
 const test = require('./tasks/test');
 const util = require('./tasks/util');
@@ -81,6 +82,9 @@ module.exports = {
     },
     clean: () => async () => {
       await util.cleanTemp(userConfig);
+    },
+    'fix-dependencies': () => async () => {
+      await fixDependencies();
     },
     lint: gulp => async () => {
       await lint(gulp, userConfig);

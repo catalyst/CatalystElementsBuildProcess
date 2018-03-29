@@ -38,16 +38,16 @@ module.exports = {
 
   demos: {
     path: 'demo',
-    importsFilename: 'imports.js',
-    importsImporterFilename: 'imports-importer.js'
+    importsFilename: 'imports.mjs',
+    importsImporterFilename: 'imports-importer.mjs'
   },
 
   docs: {
     path: 'docs',
     indexPage: 'index.html',
     nodeModulesPath: 'scripts',
-    importsFilename: 'docs-imports.js',
-    importsImporterFilename: 'docs-imports-importer.js',
+    importsFilename: 'docs-imports.mjs',
+    importsImporterFilename: 'docs-imports-importer.mjs',
     analysisFilename: 'analysis.json'
   },
 

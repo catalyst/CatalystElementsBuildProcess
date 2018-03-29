@@ -2,37 +2,42 @@
 const colors = require('ansi-colors');
 const del = require('del');
 const log = require('fancy-log');
+const stripColor = require('strip-color');
 
 // Helper functions for tasks.
 const tasksHelpers = {
   log: {
-    starting: (depth, label) => {
-      log(
-        `Starting ${colors.blue(' ').repeat(2 * depth)}${colors.blue(
-          '→'
-        )} ${colors.cyan(label)}...`
-      );
+    starting: (label, prefix = '') => {
+      const fullLabel = `${colors.grey(stripColor(prefix))} ${colors.blue(
+        '→'
+      )} ${colors.cyan(label)}`;
+
+      log(`Starting   ${fullLabel}...`);
+      return fullLabel;
     },
-    successful: (depth, label) => {
-      log(
-        `Finished ${colors.blue(' ').repeat(2 * depth)}${colors.blue(
-          '→'
-        )} ${colors.cyan(label)} ${colors.green('✓')}`
-      );
+    successful: (label, prefix = '') => {
+      const fullLabel = `${colors.grey(stripColor(prefix))} ${colors.blue(
+        '→'
+      )} ${colors.cyan(label)}`;
+
+      log(`Finished   ${fullLabel} ${colors.green('✓')}`);
+      return fullLabel;
     },
-    failed: (depth, label) => {
-      log(
-        `Failed   ${colors.blue(' ').repeat(2 * depth)}${colors.blue(
-          '→'
-        )} ${colors.cyan(label)} ${colors.red('✗')}`
-      );
+    failed: (label, prefix = '') => {
+      const fullLabel = `${colors.grey(stripColor(prefix))} ${colors.blue(
+        '→'
+      )} ${colors.cyan(label)}`;
+
+      log(`Failed     ${fullLabel} ${colors.red('✗')}`);
+      return fullLabel;
     },
-    info: (depth, label) => {
-      log(
-        `         ${colors.blue(' ').repeat(2 * depth)}${colors.blue(
-          '→'
-        )} ${colors.white(label)}`
-      );
+    info: (label, prefix = '') => {
+      const fullLabel = `${colors.grey(stripColor(prefix))} ${colors.blue(
+        '→'
+      )} ${colors.white(label)}`;
+
+      log(`Info       ${fullLabel}`);
+      return label;
     }
   }
 };
@@ -41,18 +46,46 @@ const tasksHelpers = {
  * Clean a path.
  *
  * @param {string} path - The path to clean.
- * @param {string} [label] - The label to show on the console after `clean -> `
- * @param {number} [labelDepth=1] - The depth the label is at
+ * @param {string} [label] - The label to show on the console after `clean: `
+ * @param {string} [labelPrefix] - A prefix to print before the label
  * @returns {Promise}
  */
-function clean(path, label, labelDepth = 1) {
+function clean(path, label, labelPrefix) {
   const subTaskLabel = `clean: ${label == null ? path : label}`;
 
   return new Promise(async resolve => {
-    tasksHelpers.log.starting(labelDepth, subTaskLabel);
+    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
     await del(path);
-    tasksHelpers.log.successful(labelDepth, subTaskLabel);
+    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
     resolve();
+  });
+}
+
+/**
+ * Returns a new promise that will not resolving or rejecting until all the given
+ * promises to finish either resolved or rejected.
+ *
+ * @param {Promise[]} promises - The promise to wait for
+ * @returns {Promise}
+ */
+function waitForAllPromises(promises) {
+  return new Promise(async (resolve, reject) => {
+    const results = await Promise.all(
+      promises.map(async promise => {
+        try {
+          const value = await promise;
+          return { value: value, status: 0 };
+        } catch (error) {
+          return { error: error, status: 1 };
+        }
+      })
+    );
+
+    if (results.filter(result => result.status === 1).length === 0) {
+      resolve(results);
+    } else {
+      reject(new Error(results));
+    }
   });
 }
 
@@ -83,5 +116,9 @@ module.exports = {
     getFileContents: transformGetFileContents
   },
 
-  tasks: tasksHelpers
+  tasks: tasksHelpers,
+
+  waitForAllPromises: waitForAllPromises,
+
+  NotOKError: class NotOKError extends Error {}
 };

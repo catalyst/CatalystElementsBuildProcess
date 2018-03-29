@@ -1,17 +1,21 @@
 // Load util.
 const tasksUtil = require('./util');
+const PreWebpackClosureCompilerPlugin = require('./PreWebpackClosureCompilerPlugin');
 
 // Libraries.
+const cheerio = require('gulp-cheerio');
 const foreach = require('gulp-foreach');
 const fs = require('fs');
 const git = require('gulp-git');
 const glob = require('glob');
-const inject = require('gulp-inject');
+const gulpIf = require('gulp-if');
+const htmlmin = require('gulp-htmlmin');
 const mergeStream = require('merge-stream');
 const modifyFile = require('gulp-modify-file');
 const named = require('vinyl-named');
 const path = require('path');
-const PolymerProject = require('polymer-build');
+const PolymerBuild = require('polymer-build');
+const postcss = require('gulp-postcss');
 const rename = require('gulp-rename');
 const util = require('util');
 const webpack = require('webpack');
@@ -27,6 +31,9 @@ const fsReaddir = util.promisify(fs.readdir);
 
 // The temp path.
 const tempSubpath = 'docs';
+
+// States if everything is ok. i.e. No important tasks have failed.
+let allOK = true;
 
 /**
  * Test if a directory is ready for cloning.
@@ -57,21 +64,22 @@ function directoryReadyForCloning(dirPath) {
  *
  * @param {string} repoPath - The path to the repo
  * @param {string} dirPath - The path to clone the repo into
- * @param {number} [labelDepth=1] - The depth the label is at
+ * @param {string} [labelPrefix] - A prefix to print before the label
  * @returns {Promise}
  */
-function cloneRepository(repoPath, dirPath, labelDepth = 1) {
-  const subTaskLabel = `cloning: ${repoPath}`;
+function cloneRepository(repoPath, dirPath, labelPrefix) {
+  const subTaskLabel = `clone of ${repoPath}`;
 
   return new Promise(async (resolve, reject) => {
-    tasksUtil.tasks.log.starting(labelDepth, subTaskLabel);
+    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
 
     try {
       await gitClone(repoPath, { args: `${dirPath} --quiet` });
-      tasksUtil.tasks.log.successful(labelDepth, subTaskLabel);
+      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
       resolve();
     } catch (error) {
-      tasksUtil.tasks.log.failed(labelDepth, subTaskLabel);
+      allOK = false;
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
     }
   });
@@ -80,31 +88,46 @@ function cloneRepository(repoPath, dirPath, labelDepth = 1) {
 /**
  * Clone all the repos specified by the given package.json files.
  *
- * @param {string[]} packageFiles
+ * @param {string[]} packageFilePaths
  *   Array of file paths to the package.json files that contrain the infomation
  *   about the repos to clone
  * @param {Object} config - Config settings
- * @param {number} [labelDepth=1] - The depth the label is at
+ * @param {string} [labelPrefix] - A prefix to print before the label
  * @returns {Promise}
  */
-function cloneRepositories(packageFiles, config, labelDepth = 1) {
+function cloneRepositories(packageFilePaths, config, labelPrefix) {
   const repos = [];
 
-  for (const packageFile of packageFiles) {
+  for (const packageFilePath of packageFilePaths) {
     repos.push(
       // eslint-disable-next-line no-loop-func
       new Promise(async (resolve, reject) => {
-        const data = fs.readFileSync(packageFile);
+        const data = fs.readFileSync(packageFilePath);
 
         const json = JSON.parse(data);
-        const name = json.name;
-        const version = json.version;
-        const repository = json.repository;
 
+        const name = json.name;
+        if (name == null) {
+          reject(
+            new Error(
+              `Name not set in the package.json file "${packageFilePath}".`
+            )
+          );
+          return;
+        }
+
+        const version = json.version;
+        if (version == null) {
+          reject(new Error(`Version not set in ${name}'s package.json file.`));
+          return;
+        }
+
+        const repository = json.repository;
         if (repository == null) {
           reject(
             new Error(`Repository not set in ${name}'s package.json file.`)
           );
+          return;
         }
 
         const repoPath = (() => {
@@ -139,11 +162,11 @@ function cloneRepositories(packageFiles, config, labelDepth = 1) {
 
         if (skipClone) {
           tasksUtil.tasks.log.info(
-            labelDepth,
-            `skipping clone ${repoPath} - output dir not empty.`
+            `skipping clone of "${repoPath}" - output dir not empty.`,
+            labelPrefix
           );
         } else {
-          await cloneRepository(repoPath, clonePath, labelDepth);
+          await cloneRepository(repoPath, clonePath, labelPrefix);
         }
 
         await gitCheckout(`v${version}`, { args: '--quiet', cwd: clonePath });
@@ -160,24 +183,30 @@ function cloneRepositories(packageFiles, config, labelDepth = 1) {
  *
  * @param {GulpClient.Gulp} gulp - Gulp library
  * @param {Object} config - Config settings
- * @param {number} [labelDepth=1] - The depth the label is at
+ * @param {string} [labelPrefix] - A prefix to print before the label
  * @returns {Promise}
  */
-function copyNodeModules(gulp, config, labelDepth = 1) {
+function copyNodeModules(gulp, config, labelPrefix) {
   const subTaskLabel = 'node modules';
 
-  return new Promise(resolve => {
-    tasksUtil.tasks.log.starting(labelDepth, subTaskLabel);
+  return new Promise((resolve, reject) => {
+    // No point starting this task if another important task has already failed.
+    if (!allOK) {
+      reject(new tasksUtil.NotOKError());
+      return;
+    }
+
+    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
 
     gulp
-      .src('./node_modules/**', { follow: true })
+      .src(`./${config.nodeModulesPath}/**`, { follow: true })
       .pipe(
         gulp.dest(
           `./${config.temp.path}/${tempSubpath}/${config.docs.nodeModulesPath}`
         )
       )
       .on('finish', () => {
-        tasksUtil.tasks.log.successful(labelDepth, subTaskLabel);
+        tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         resolve();
       });
   });
@@ -188,14 +217,20 @@ function copyNodeModules(gulp, config, labelDepth = 1) {
  *
  * @param {GulpClient.Gulp} gulp - Gulp library
  * @param {Object} config - Config settings
- * @param {number} [labelDepth=1] - The depth the label is at
+ * @param {string} [labelPrefix] - A prefix to print before the label
  * @returns {Promise}
  */
-function copyDocsIndex(gulp, config, labelDepth = 1) {
+function copyDocsIndex(gulp, config, labelPrefix) {
   const subTaskLabel = 'index page';
 
-  return new Promise(resolve => {
-    tasksUtil.tasks.log.starting(labelDepth, subTaskLabel);
+  return new Promise((resolve, reject) => {
+    // No point starting this task if another important task has already failed.
+    if (!allOK) {
+      reject(new tasksUtil.NotOKError());
+      return;
+    }
+
+    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
 
     gulp
       .src(`./${config.docs.indexPage}`)
@@ -206,7 +241,7 @@ function copyDocsIndex(gulp, config, labelDepth = 1) {
       )
       .pipe(gulp.dest(`./${config.temp.path}/${tempSubpath}`))
       .on('finish', () => {
-        tasksUtil.tasks.log.successful(labelDepth, subTaskLabel);
+        tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         resolve();
       });
   });
@@ -217,14 +252,20 @@ function copyDocsIndex(gulp, config, labelDepth = 1) {
  *
  * @param {GulpClient.Gulp} gulp - Gulp library
  * @param {Object} config - Config settings
- * @param {number} [labelDepth=1] - The depth the label is at
+ * @param {string} [labelPrefix] - A prefix to print before the label
  * @returns {Promise}
  */
-function copyExtraDocDependencies(gulp, config, labelDepth = 1) {
+function copyExtraDocDependencies(gulp, config, labelPrefix) {
   const subTaskLabel = 'extra dependencies';
 
-  return new Promise(resolve => {
-    tasksUtil.tasks.log.starting(labelDepth, subTaskLabel);
+  return new Promise((resolve, reject) => {
+    // No point starting this task if another important task has already failed.
+    if (!allOK) {
+      reject(new tasksUtil.NotOKError());
+      return;
+    }
+
+    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
 
     gulp
       .src([
@@ -234,7 +275,7 @@ function copyExtraDocDependencies(gulp, config, labelDepth = 1) {
       ])
       .pipe(gulp.dest(`./${config.temp.path}/${tempSubpath}`))
       .on('finish', () => {
-        tasksUtil.tasks.log.successful(labelDepth, subTaskLabel);
+        tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         resolve();
       });
   });
@@ -245,14 +286,20 @@ function copyExtraDocDependencies(gulp, config, labelDepth = 1) {
  *
  * @param {GulpClient.Gulp} gulp - Gulp library
  * @param {Object} config - Config settings
- * @param {number} [labelDepth=1] - The depth the label is at
+ * @param {string} [labelPrefix] - A prefix to print before the label
  * @returns {Promise}
  */
-function copyDistributionFiles(gulp, config, labelDepth = 1) {
+function copyDistributionFiles(gulp, config, labelPrefix) {
   const subTaskLabel = 'distribution files';
 
-  return new Promise(resolve => {
-    tasksUtil.tasks.log.starting(labelDepth, subTaskLabel);
+  return new Promise((resolve, reject) => {
+    // No point starting this task if another important task has already failed.
+    if (!allOK) {
+      reject(new tasksUtil.NotOKError());
+      return;
+    }
+
+    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
 
     gulp
       .src(`./${config.dist.path}/**`)
@@ -264,7 +311,7 @@ function copyDistributionFiles(gulp, config, labelDepth = 1) {
         )
       )
       .on('finish', () => {
-        tasksUtil.tasks.log.successful(labelDepth, subTaskLabel);
+        tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         resolve();
       });
   });
@@ -275,14 +322,20 @@ function copyDistributionFiles(gulp, config, labelDepth = 1) {
  *
  * @param {GulpClient.Gulp} gulp - Gulp library
  * @param {Object} config - Config settings
- * @param {number} [labelDepth=1] - The depth the label is at
+ * @param {string} [labelPrefix] - A prefix to print before the label
  * @returns {Promise}
  */
-function copyLocalDemos(gulp, config, labelDepth = 1) {
+function copyLocalDemos(gulp, config, labelPrefix) {
   const subTaskLabel = 'local demos';
 
-  return new Promise(resolve => {
-    tasksUtil.tasks.log.starting(labelDepth, subTaskLabel);
+  return new Promise((resolve, reject) => {
+    // No point starting this task if another important task has already failed.
+    if (!allOK) {
+      reject(new tasksUtil.NotOKError());
+      return;
+    }
+
+    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
 
     gulp
       .src(`./${config.demos.path}/**`, {
@@ -296,7 +349,7 @@ function copyLocalDemos(gulp, config, labelDepth = 1) {
         )
       )
       .on('finish', () => {
-        tasksUtil.tasks.log.successful(labelDepth, subTaskLabel);
+        tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         resolve();
       });
   });
@@ -307,28 +360,53 @@ function copyLocalDemos(gulp, config, labelDepth = 1) {
  *
  * @param {GulpClient.Gulp} gulp - Gulp library
  * @param {Object} config - Config settings
- * @param {number} [labelDepth=1] - The depth the label is at
+ * @param {string} [labelPrefix] - A prefix to print before the label
  * @returns {Promise}
  */
-function copyDependencies(gulp, config, labelDepth = 1) {
+function copyDependencies(gulp, config, labelPrefix) {
   const subTaskLabel = 'copy dependencies';
 
   return new Promise(async (resolve, reject) => {
-    tasksUtil.tasks.log.starting(labelDepth, subTaskLabel);
+    // No point starting this task if another important task has already failed.
+    if (!allOK) {
+      reject(new tasksUtil.NotOKError());
+      return;
+    }
+
+    const subTaskLabelPrefix = tasksUtil.tasks.log.starting(
+      subTaskLabel,
+      labelPrefix
+    );
 
     try {
-      await Promise.all([
-        copyNodeModules(gulp, config, labelDepth + 1),
-        copyDocsIndex(gulp, config, labelDepth + 1),
-        copyExtraDocDependencies(gulp, config, labelDepth + 1),
-        copyDistributionFiles(gulp, config, labelDepth + 1),
-        copyLocalDemos(gulp, config, labelDepth + 1)
-      ]);
+      const subTasks = [
+        copyDocsIndex(gulp, config, subTaskLabelPrefix),
+        copyExtraDocDependencies(gulp, config, subTaskLabelPrefix),
+        copyDistributionFiles(gulp, config, subTaskLabelPrefix),
+        copyLocalDemos(gulp, config, subTaskLabelPrefix)
+      ];
 
-      tasksUtil.tasks.log.successful(labelDepth, subTaskLabel);
+      // Only copy node modules if they aren't already in place.
+      if (
+        fs.existsSync(
+          `./${config.temp.path}/${tempSubpath}/${config.docs.nodeModulesPath}`
+        )
+      ) {
+        tasksUtil.tasks.log.info(
+          'skipping copying of node modules - already in place.',
+          subTaskLabelPrefix
+        );
+      } else {
+        subTasks.push(copyNodeModules(gulp, config, subTaskLabelPrefix));
+      }
+
+      await tasksUtil.waitForAllPromises(subTasks);
+
+      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
       resolve();
     } catch (error) {
-      tasksUtil.tasks.log.failed(labelDepth, subTaskLabel);
+      allOK = false;
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
     }
   });
@@ -339,14 +417,20 @@ function copyDependencies(gulp, config, labelDepth = 1) {
  *
  * @param {GulpClient.Gulp} gulp - Gulp library
  * @param {Object} config - Config settings
- * @param {number} [labelDepth=1] - The depth the label is at
+ * @param {string} [labelPrefix] - A prefix to print before the label
  * @returns {Promise}
  */
-function updateAnalysis(gulp, config, labelDepth = 1) {
+function updateAnalysis(gulp, config, labelPrefix) {
   const subTaskLabel = 'update analysis';
 
-  return new Promise(resolve => {
-    tasksUtil.tasks.log.starting(labelDepth, subTaskLabel);
+  return new Promise((resolve, reject) => {
+    // No point starting this task if another important task has already failed.
+    if (!allOK) {
+      reject(new tasksUtil.NotOKError());
+      return;
+    }
+
+    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
 
     gulp
       .src(
@@ -378,7 +462,7 @@ function updateAnalysis(gulp, config, labelDepth = 1) {
       )
       .pipe(gulp.dest('./'))
       .on('finish', () => {
-        tasksUtil.tasks.log.successful(labelDepth, subTaskLabel);
+        tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         resolve();
       });
   });
@@ -389,21 +473,30 @@ function updateAnalysis(gulp, config, labelDepth = 1) {
  *
  * @param {GulpClient.Gulp} gulp - Gulp library
  * @param {Object} config - Config settings
- * @param {number} [labelDepth=1] - The depth the label is at
+ * @param {string} [labelPrefix] - A prefix to print before the label
  * @returns {Promise}
  */
-function getDemos(gulp, config, labelDepth = 1) {
+function getDemos(gulp, config, labelPrefix) {
   const subTaskLabel = 'get demos';
 
   return new Promise(async (resolve, reject) => {
-    tasksUtil.tasks.log.starting(labelDepth, subTaskLabel);
+    // No point starting this task if another important task has already failed.
+    if (!allOK) {
+      reject(new tasksUtil.NotOKError());
+      return;
+    }
+
+    const subTaskLabelPrefix = tasksUtil.tasks.log.starting(
+      subTaskLabel,
+      labelPrefix
+    );
 
     try {
       const files = await globPromise(
         `./${config.componenet.nodeModulesPath}/catalyst-*/package.json`
       );
 
-      await cloneRepositories(files, config, labelDepth + 1);
+      await cloneRepositories(files, config, subTaskLabelPrefix);
 
       for (const file of files) {
         const fileDirPath = path.dirname(file);
@@ -430,103 +523,13 @@ function getDemos(gulp, config, labelDepth = 1) {
           );
       }
 
-      tasksUtil.tasks.log.successful(labelDepth, subTaskLabel);
+      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
       resolve();
     } catch (error) {
-      tasksUtil.tasks.log.failed(labelDepth, subTaskLabel);
+      allOK = false;
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
     }
-  });
-}
-
-/**
- * Inject the custom-elements-es5-adapter into the index page.
- *
- * @param {GulpClient.Gulp} gulp - Gulp library
- * @param {Object} config - Config settings
- * @param {number} [labelDepth=1] - The depth the label is at
- * @returns {Promise}
- */
-function indexInjectCustomElementsES5Adapter(gulp, config, labelDepth = 1) {
-  const subTaskLabel = 'inject ES5 Adapter';
-
-  return new Promise(resolve => {
-    tasksUtil.tasks.log.starting(labelDepth, subTaskLabel);
-
-    gulp
-      .src(`./${config.temp.path}/${tempSubpath}/index.html`, { base: './' })
-      .pipe(
-        // FIXME: Find a better way to do this.
-        // The file specified here don't matter but exactly one is needed.
-        inject(gulp.src('./gulpfile.js', { base: './', read: false }), {
-          starttag: '<!-- [[inject:custom-elements-es5-adapter]] -->',
-          endtag: '<!-- [[endinject]] -->',
-          removeTags: true,
-          transform: () =>
-            '<script src="../../@webcomponents/webcomponentsjs/custom-elements-es5-adapter.js"></script>'
-        })
-      )
-      .pipe(gulp.dest('./'))
-      .on('finish', () => {
-        tasksUtil.tasks.log.successful(labelDepth, subTaskLabel);
-        resolve();
-      });
-  });
-}
-
-/**
- * Inject the custom-elements-es5-adapter into each of the demo pages.
- *
- * @param {GulpClient.Gulp} gulp - Gulp library
- * @param {Object} config - Config settings
- * @param {number} [labelDepth=1] - The depth the label is at
- * @returns {Promise}
- */
-function demosInjectCustomElementsES5Adapter(gulp, config, labelDepth = 1) {
-  const subTaskLabel = 'inject ES5 Adapter';
-
-  return new Promise(resolve => {
-    tasksUtil.tasks.log.starting(labelDepth, subTaskLabel);
-
-    gulp
-      .src(
-        `./${config.temp.path}/${tempSubpath}/${config.docs.nodeModulesPath}/${
-          config.componenet.scope
-        }/*/${config.demos.path}/**/*.html`,
-        { base: './' }
-      )
-      .pipe(
-        foreach((stream, file) => {
-          const relPath = path.relative(
-            path.join(file.cwd, file.base),
-            file.path
-          );
-          const dir = path.dirname(relPath);
-
-          const es5AdapterSrc = path.relative(
-            dir,
-            `./${config.temp.path}/${tempSubpath}/${
-              config.docs.nodeModulesPath
-            }/@webcomponents/webcomponentsjs/custom-elements-es5-adapter.js`
-          );
-          return stream
-            .pipe(
-              // FIXME: Find a better way to do this.
-              // The file specified here don't matter but exactly one is needed.
-              inject(gulp.src('./gulpfile.js', { base: './', read: false }), {
-                starttag: '<!-- [[inject:custom-elements-es5-adapter]] -->',
-                endtag: '<!-- [[endinject]] -->',
-                removeTags: true,
-                transform: () => `<script src="${es5AdapterSrc}"></script>`
-              })
-            )
-            .pipe(gulp.dest('./'));
-        })
-      )
-      .on('finish', () => {
-        tasksUtil.tasks.log.successful(labelDepth, subTaskLabel);
-        resolve();
-      });
   });
 }
 
@@ -535,14 +538,20 @@ function demosInjectCustomElementsES5Adapter(gulp, config, labelDepth = 1) {
  *
  * @param {GulpClient.Gulp} gulp - Gulp library
  * @param {Object} config - Config settings
- * @param {number} [labelDepth=1] - The depth the label is at
+ * @param {string} [labelPrefix] - A prefix to print before the label
  * @returns {Promise}
  */
-function indexPageUpdateReferences(gulp, config, labelDepth = 1) {
+function indexPageUpdateReferences(gulp, config, labelPrefix) {
   const subTaskLabel = 'index';
 
-  return new Promise(resolve => {
-    tasksUtil.tasks.log.starting(labelDepth, subTaskLabel);
+  return new Promise((resolve, reject) => {
+    // No point starting this task if another important task has already failed.
+    if (!allOK) {
+      reject(new tasksUtil.NotOKError());
+      return;
+    }
+
+    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
 
     gulp
       .src(`./${config.temp.path}/${tempSubpath}/index.html`, { base: './' })
@@ -554,13 +563,20 @@ function indexPageUpdateReferences(gulp, config, labelDepth = 1) {
             `./${config.docs.nodeModulesPath}/`
           );
 
-          // FIXME: Remove `type="module"` from script tags in a more fullprof way.
-          return modifiedContent.replace(/<script type="module"/g, '<script');
+          return modifiedContent;
+        })
+      )
+      .pipe(
+        cheerio($ => {
+          $('script[type="module"]').each((index, element) => {
+            delete element.attribs.type;
+            element.attribs.src = element.attribs.src.replace(/.mjs$/, '.js');
+          });
         })
       )
       .pipe(gulp.dest('./'))
       .on('finish', () => {
-        tasksUtil.tasks.log.successful(labelDepth, subTaskLabel);
+        tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         resolve();
       });
   });
@@ -571,14 +587,20 @@ function indexPageUpdateReferences(gulp, config, labelDepth = 1) {
  *
  * @param {GulpClient.Gulp} gulp - Gulp library
  * @param {Object} config - Config settings
- * @param {number} [labelDepth=1] - The depth the label is at
+ * @param {string} [labelPrefix] - A prefix to print before the label
  * @returns {Promise}
  */
-function demosPagesUpdateReferences(gulp, config, labelDepth = 1) {
+function demosPagesUpdateReferences(gulp, config, labelPrefix) {
   const subTaskLabel = 'index';
 
-  return new Promise(resolve => {
-    tasksUtil.tasks.log.starting(labelDepth, subTaskLabel);
+  return new Promise((resolve, reject) => {
+    // No point starting this task if another important task has already failed.
+    if (!allOK) {
+      reject(new tasksUtil.NotOKError());
+      return;
+    }
+
+    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
 
     gulp
       .src(
@@ -588,14 +610,16 @@ function demosPagesUpdateReferences(gulp, config, labelDepth = 1) {
         { base: './' }
       )
       .pipe(
-        modifyFile(content => {
-          // FIXME: Remove `type="module"` from script tags in a more fullprof way.
-          return content.replace(/<script type="module"/g, '<script');
+        cheerio($ => {
+          $('script[type="module"]').each((index, element) => {
+            delete element.attribs.type;
+            element.attribs.src = element.attribs.src.replace(/.mjs$/, '.js');
+          });
         })
       )
       .pipe(gulp.dest('./'))
       .on('finish', () => {
-        tasksUtil.tasks.log.successful(labelDepth, subTaskLabel);
+        tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         resolve();
       });
   });
@@ -606,14 +630,20 @@ function demosPagesUpdateReferences(gulp, config, labelDepth = 1) {
  *
  * @param {GulpClient.Gulp} gulp - Gulp library
  * @param {Object} config - Config settings
- * @param {number} [labelDepth=1] - The depth the label is at
+ * @param {string} [labelPrefix] - A prefix to print before the label
  * @returns {Promise}
  */
-function indexImportsUpdateReferences(gulp, config, labelDepth = 1) {
+function indexImportsUpdateReferences(gulp, config, labelPrefix) {
   const subTaskLabel = 'imports';
 
-  return new Promise(resolve => {
-    tasksUtil.tasks.log.starting(labelDepth, subTaskLabel);
+  return new Promise((resolve, reject) => {
+    // No point starting this task if another important task has already failed.
+    if (!allOK) {
+      reject(new tasksUtil.NotOKError());
+      return;
+    }
+
+    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
 
     gulp
       .src(
@@ -632,7 +662,7 @@ function indexImportsUpdateReferences(gulp, config, labelDepth = 1) {
       )
       .pipe(gulp.dest('./'))
       .on('finish', () => {
-        tasksUtil.tasks.log.successful(labelDepth, subTaskLabel);
+        tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         resolve();
       });
   });
@@ -643,23 +673,35 @@ function indexImportsUpdateReferences(gulp, config, labelDepth = 1) {
  *
  * @param {GulpClient.Gulp} gulp - Gulp library
  * @param {Object} config - Config settings
- * @param {number} [labelDepth=1] - The depth the label is at
+ * @param {string} [labelPrefix] - A prefix to print before the label
  * @returns {Promise}
  */
-function indexUpdateReferences(gulp, config, labelDepth = 1) {
+function indexUpdateReferences(gulp, config, labelPrefix) {
   const subTaskLabel = 'update references';
 
   return new Promise(async (resolve, reject) => {
-    tasksUtil.tasks.log.starting(labelDepth, subTaskLabel);
+    // No point starting this task if another important task has already failed.
+    if (!allOK) {
+      reject(new tasksUtil.NotOKError());
+      return;
+    }
+
+    const subTaskLabelPrefix = tasksUtil.tasks.log.starting(
+      subTaskLabel,
+      labelPrefix
+    );
 
     try {
-      await indexPageUpdateReferences(gulp, config, labelDepth + 1);
-      await indexImportsUpdateReferences(gulp, config, labelDepth + 1);
+      await tasksUtil.waitForAllPromises([
+        indexPageUpdateReferences(gulp, config, subTaskLabelPrefix),
+        indexImportsUpdateReferences(gulp, config, subTaskLabelPrefix)
+      ]);
 
-      tasksUtil.tasks.log.successful(labelDepth, subTaskLabel);
+      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
       resolve();
     } catch (error) {
-      tasksUtil.tasks.log.failed(labelDepth, subTaskLabel);
+      allOK = false;
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
     }
   });
@@ -670,22 +712,34 @@ function indexUpdateReferences(gulp, config, labelDepth = 1) {
  *
  * @param {GulpClient.Gulp} gulp - Gulp library
  * @param {Object} config - Config settings
- * @param {number} [labelDepth=1] - The depth the label is at
+ * @param {string} [labelPrefix] - A prefix to print before the label
  * @returns {Promise}
  */
-function demosUpdateReferences(gulp, config, labelDepth = 1) {
+function demosUpdateReferences(gulp, config, labelPrefix) {
   const subTaskLabel = 'update references';
 
   return new Promise(async (resolve, reject) => {
-    tasksUtil.tasks.log.starting(labelDepth, subTaskLabel);
+    // No point starting this task if another important task has already failed.
+    if (!allOK) {
+      reject(new tasksUtil.NotOKError());
+      return;
+    }
+
+    const subTaskLabelPrefix = tasksUtil.tasks.log.starting(
+      subTaskLabel,
+      labelPrefix
+    );
 
     try {
-      await demosPagesUpdateReferences(gulp, config, labelDepth + 1);
+      await tasksUtil.waitForAllPromises([
+        demosPagesUpdateReferences(gulp, config, subTaskLabelPrefix)
+      ]);
 
-      tasksUtil.tasks.log.successful(labelDepth, subTaskLabel);
+      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
       resolve();
     } catch (error) {
-      tasksUtil.tasks.log.failed(labelDepth, subTaskLabel);
+      allOK = false;
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
     }
   });
@@ -696,74 +750,90 @@ function demosUpdateReferences(gulp, config, labelDepth = 1) {
  *
  * @param {GulpClient.Gulp} gulp - Gulp library
  * @param {Object} config - Config settings
- * @param {number} [labelDepth=1] - The depth the label is at
+ * @param {string} [labelPrefix] - A prefix to print before the label
  * @returns {Promise}
  */
-function finalizeIndexPage(gulp, config, labelDepth = 1) {
+function finalizeIndexPage(gulp, config, labelPrefix) {
   const subTaskLabel = 'finalize';
 
-  return new Promise(resolve => {
-    tasksUtil.tasks.log.starting(labelDepth, subTaskLabel);
+  return new Promise((resolve, reject) => {
+    // No point starting this task if another important task has already failed.
+    if (!allOK) {
+      reject(new tasksUtil.NotOKError());
+      return;
+    }
+
+    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
 
     const docsImportsBaseName = path.basename(
       config.docs.importsFilename,
-      '.js'
+      path.extname(config.docs.importsFilename)
     );
 
-    gulp
-      .src(
-        `./${config.temp.path}/${tempSubpath}/${
-          config.docs.importsImporterFilename
-        }`,
-        {
-          base: config.temp.path
-        }
-      )
-      .pipe(named())
-      .pipe(
-        webpackStream(
+    const docsImportsImporterBaseName = path.basename(
+      config.docs.importsImporterFilename,
+      path.extname(config.docs.importsImporterFilename)
+    );
+
+    try {
+      gulp
+        .src(
+          `./${config.temp.path}/${tempSubpath}/${
+            config.docs.importsImporterFilename
+          }`,
           {
-            target: 'web',
-            mode: 'none',
-            output: {
-              chunkFilename: `${docsImportsBaseName}.[id].js`,
-              filename: `${config.docs.importsImporterFilename}`
-            },
-            plugins: [
-              new WebpackClosureCompilerPlugin({
-                compiler: {
-                  language_in: 'ECMASCRIPT_NEXT',
-                  language_out: 'ECMASCRIPT5',
-                  compilation_level: 'SIMPLE',
-                  assume_function_wrapper: true,
-                  output_wrapper: '(function(){%output%}).call(this)'
-                }
-              })
-            ]
-          },
-          webpack
+            base: config.temp.path
+          }
         )
-      )
-      .pipe(
-        foreach((stream, file) => {
-          return stream
-            .pipe(
-              modifyFile(content => {
-                return content.replace(/\\\\\$/g, '$');
-              })
-            )
-            .pipe(
-              rename({
-                basename: path.basename(file.path, '.js')
-              })
-            )
-            .pipe(gulp.dest(`./${config.temp.path}/${tempSubpath}`));
-        })
-      )
-      .on('finish', () => {
-        tasksUtil.tasks.log.successful(labelDepth, subTaskLabel);
-        resolve();
-      });
+        .pipe(named())
+        .pipe(
+          webpackStream(
+            {
+              target: 'web',
+              mode: 'none',
+              output: {
+                chunkFilename: `${docsImportsBaseName}.[id].js`,
+                filename: `${docsImportsImporterBaseName}.js`
+              },
+              plugins: [
+                new PreWebpackClosureCompilerPlugin(),
+                new WebpackClosureCompilerPlugin({
+                  compiler: {
+                    language_in: 'ECMASCRIPT_NEXT',
+                    language_out: 'ECMASCRIPT5',
+                    compilation_level: 'SIMPLE',
+                    assume_function_wrapper: true,
+                    output_wrapper: '(function(){%output%}).call(this)'
+                  }
+                })
+              ]
+            },
+            webpack
+          )
+        )
+        .pipe(
+          foreach((stream, file) => {
+            return stream
+              .pipe(
+                modifyFile(content => {
+                  return content.replace(/\\\\\$/g, '$');
+                })
+              )
+              .pipe(
+                rename({
+                  basename: path.basename(file.path, path.extname(file.path))
+                })
+              )
+              .pipe(gulp.dest(`./${config.temp.path}/${tempSubpath}`));
+          })
+        )
+        .on('finish', () => {
+          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
+          resolve();
+        });
+    } catch (error) {
+      reject(error);
+    }
   });
 }
 
@@ -772,18 +842,29 @@ function finalizeIndexPage(gulp, config, labelDepth = 1) {
  *
  * @param {GulpClient.Gulp} gulp - Gulp library
  * @param {Object} config - Config settings
- * @param {number} [labelDepth=1] - The depth the label is at
+ * @param {string} [labelPrefix] - A prefix to print before the label
  * @returns {Promise}
  */
-function finalizeDemos(gulp, config, labelDepth = 1) {
+function finalizeDemos(gulp, config, labelPrefix) {
   const subTaskLabel = 'finalize';
 
-  return new Promise(resolve => {
-    tasksUtil.tasks.log.starting(labelDepth, subTaskLabel);
+  return new Promise((resolve, reject) => {
+    // No point starting this task if another important task has already failed.
+    if (!allOK) {
+      reject(new tasksUtil.NotOKError());
+      return;
+    }
+
+    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
 
     const demoImportsBaseName = path.basename(
       config.demos.importsFilename,
-      '.js'
+      path.extname(config.demos.importsFilename)
+    );
+
+    const docsImportsImporterBaseName = path.basename(
+      config.demos.importsImporterFilename,
+      path.extname(config.demos.importsImporterFilename)
     );
 
     gulp
@@ -803,9 +884,10 @@ function finalizeDemos(gulp, config, labelDepth = 1) {
                   mode: 'none',
                   output: {
                     chunkFilename: `${demoImportsBaseName}.[id].js`,
-                    filename: `${config.demos.importsImporterFilename}`
+                    filename: `${docsImportsImporterBaseName}.js`
                   },
                   plugins: [
+                    new PreWebpackClosureCompilerPlugin(),
                     new WebpackClosureCompilerPlugin({
                       compiler: {
                         language_in: 'ECMASCRIPT_NEXT',
@@ -839,7 +921,7 @@ function finalizeDemos(gulp, config, labelDepth = 1) {
         })
       )
       .on('finish', () => {
-        tasksUtil.tasks.log.successful(labelDepth, subTaskLabel);
+        tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         resolve();
       });
   });
@@ -850,24 +932,33 @@ function finalizeDemos(gulp, config, labelDepth = 1) {
  *
  * @param {GulpClient.Gulp} gulp - Gulp library
  * @param {Object} config - Config settings
- * @param {number} [labelDepth=1] - The depth the label is at
+ * @param {string} [labelPrefix] - A prefix to print before the label
  * @returns {Promise}
  */
-function buildIndexPage(gulp, config, labelDepth = 1) {
+function buildIndexPage(gulp, config, labelPrefix) {
   const subTaskLabel = 'index page';
 
   return new Promise(async (resolve, reject) => {
-    tasksUtil.tasks.log.starting(labelDepth, subTaskLabel);
+    // No point starting this task if another important task has already failed.
+    if (!allOK) {
+      reject(new tasksUtil.NotOKError());
+      return;
+    }
+
+    const subTaskLabelPrefix = tasksUtil.tasks.log.starting(
+      subTaskLabel,
+      labelPrefix
+    );
 
     try {
-      await indexInjectCustomElementsES5Adapter(gulp, config, labelDepth + 1);
-      await indexUpdateReferences(gulp, config, labelDepth + 1);
-      await finalizeIndexPage(gulp, config, labelDepth + 1);
+      await indexUpdateReferences(gulp, config, subTaskLabelPrefix);
+      await finalizeIndexPage(gulp, config, subTaskLabelPrefix);
 
-      tasksUtil.tasks.log.successful(labelDepth, subTaskLabel);
+      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
       resolve();
     } catch (error) {
-      tasksUtil.tasks.log.failed(labelDepth, subTaskLabel);
+      allOK = false;
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
     }
   });
@@ -878,24 +969,33 @@ function buildIndexPage(gulp, config, labelDepth = 1) {
  *
  * @param {GulpClient.Gulp} gulp - Gulp library
  * @param {Object} config - Config settings
- * @param {number} [labelDepth=1] - The depth the label is at
+ * @param {string} [labelPrefix] - A prefix to print before the label
  * @returns {Promise}
  */
-function buildDemos(gulp, config, labelDepth = 1) {
+function buildDemos(gulp, config, labelPrefix) {
   const subTaskLabel = 'demos';
 
   return new Promise(async (resolve, reject) => {
-    tasksUtil.tasks.log.starting(labelDepth, subTaskLabel);
+    // No point starting this task if another important task has already failed.
+    if (!allOK) {
+      reject(new tasksUtil.NotOKError());
+      return;
+    }
+
+    const subTaskLabelPrefix = tasksUtil.tasks.log.starting(
+      subTaskLabel,
+      labelPrefix
+    );
 
     try {
-      await demosInjectCustomElementsES5Adapter(gulp, config, labelDepth + 1);
-      await demosUpdateReferences(gulp, config, labelDepth + 1);
-      await finalizeDemos(gulp, config, labelDepth + 1);
+      await demosUpdateReferences(gulp, config, subTaskLabelPrefix);
+      await finalizeDemos(gulp, config, subTaskLabelPrefix);
 
-      tasksUtil.tasks.log.successful(labelDepth, subTaskLabel);
+      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
       resolve();
     } catch (error) {
-      tasksUtil.tasks.log.failed(labelDepth, subTaskLabel);
+      allOK = false;
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
     }
   });
@@ -906,25 +1006,35 @@ function buildDemos(gulp, config, labelDepth = 1) {
  *
  * @param {GulpClient.Gulp} gulp - Gulp library
  * @param {Object} config - Config settings
- * @param {number} [labelDepth=1] - The depth the label is at
+ * @param {string} [labelPrefix] - A prefix to print before the label
  * @returns {Promise}
  */
-function build(gulp, config, labelDepth = 1) {
+function build(gulp, config, labelPrefix) {
   const subTaskLabel = 'build';
 
   return new Promise(async (resolve, reject) => {
-    tasksUtil.tasks.log.starting(labelDepth, subTaskLabel);
+    // No point starting this task if another important task has already failed.
+    if (!allOK) {
+      reject(new tasksUtil.NotOKError());
+      return;
+    }
+
+    const subTaskLabelPrefix = tasksUtil.tasks.log.starting(
+      subTaskLabel,
+      labelPrefix
+    );
 
     try {
-      await Promise.all([
-        buildIndexPage(gulp, config, labelDepth + 1),
-        buildDemos(gulp, config, labelDepth + 1)
+      await tasksUtil.waitForAllPromises([
+        buildIndexPage(gulp, config, subTaskLabelPrefix),
+        buildDemos(gulp, config, subTaskLabelPrefix)
       ]);
 
-      tasksUtil.tasks.log.successful(labelDepth, subTaskLabel);
+      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
       resolve();
     } catch (error) {
-      tasksUtil.tasks.log.failed(labelDepth, subTaskLabel);
+      allOK = false;
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
     }
   });
@@ -935,29 +1045,40 @@ function build(gulp, config, labelDepth = 1) {
  *
  * @param {GulpClient.Gulp} gulp - Gulp library
  * @param {Object} config - Config settings
- * @param {number} [labelDepth=1] - The depth the label is at
+ * @param {string} [labelPrefix] - A prefix to print before the label
  * @returns {Promise}
  */
-function generate(gulp, config, labelDepth = 1) {
+function generate(gulp, config, labelPrefix) {
   const subTaskLabel = 'generate';
 
   return new Promise((resolve, reject) => {
+    // No point starting this task if another important task has already failed.
+    if (!allOK) {
+      reject(new tasksUtil.NotOKError());
+      return;
+    }
+
     try {
-      tasksUtil.tasks.log.starting(labelDepth, subTaskLabel);
+      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
 
       const docsImportsBaseName = path.basename(
         config.docs.importsFilename,
-        '.js'
+        path.extname(config.docs.importsFilename)
+      );
+
+      const docsImportsImporterBaseName = path.basename(
+        config.docs.importsImporterFilename,
+        path.extname(config.docs.importsImporterFilename)
       );
 
       const buildConfig = {
         root: `${config.temp.path}/${tempSubpath}/`,
-        entrypoint: 'index.html',
+        entrypoint: `index${path.extname(config.docs.indexPage)}`,
         fragments: [],
         sources: [
           `${config.docs.nodeModulesPath}/${
             config.componenet.scope
-          }/catalyst-*/**`
+          }/catalyst-*/**/*`
         ],
         extraDependencies: [
           `${
@@ -966,7 +1087,7 @@ function generate(gulp, config, labelDepth = 1) {
           `${
             config.docs.nodeModulesPath
           }/@webcomponents/shadycss/[!gulpfile]*.js`,
-          `${config.docs.importsImporterFilename}`,
+          `${docsImportsImporterBaseName}.js`,
           `${docsImportsBaseName}.*.js`,
           `${config.docs.analysisFilename}`
         ],
@@ -986,9 +1107,15 @@ function generate(gulp, config, labelDepth = 1) {
         ]
       };
 
-      const docBuilder = new PolymerProject.Builder(buildConfig);
+      const docBuilder = new PolymerBuild.PolymerProject(buildConfig);
+      const sourcesHtmlSplitter = new PolymerBuild.HtmlSplitter();
 
       mergeStream(docBuilder.sources(), docBuilder.dependencies())
+        .pipe(docBuilder.addCustomElementsEs5Adapter())
+        .pipe(sourcesHtmlSplitter.split())
+        .pipe(gulpIf(/\.html$/, htmlmin({ collapseWhitespace: true })))
+        .pipe(gulpIf(/\.css$/, postcss([], config.build.postcss.options)))
+        .pipe(sourcesHtmlSplitter.rejoin())
         .pipe(
           rename(filepath => {
             const prefix = path.normalize(`${config.temp.path}/${tempSubpath}`);
@@ -1001,11 +1128,12 @@ function generate(gulp, config, labelDepth = 1) {
         )
         .pipe(gulp.dest(`./${config.docs.path}`))
         .on('finish', () => {
-          tasksUtil.tasks.log.successful(labelDepth, subTaskLabel);
+          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
           resolve();
         });
     } catch (error) {
-      tasksUtil.tasks.log.failed(labelDepth, subTaskLabel);
+      allOK = false;
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
     }
   });
@@ -1013,13 +1141,18 @@ function generate(gulp, config, labelDepth = 1) {
 
 // Export the build docs function.
 module.exports = (gulp, config) => {
-  return new Promise(async resolve => {
-    await tasksUtil.cleanDocs(config);
-    await copyDependencies(gulp, config);
-    await updateAnalysis(gulp, config);
-    await getDemos(gulp, config);
-    await build(gulp, config);
-    await generate(gulp, config);
-    resolve();
+  return new Promise(async (resolve, reject) => {
+    try {
+      await copyDependencies(gulp, config);
+      await updateAnalysis(gulp, config);
+      await getDemos(gulp, config);
+      await build(gulp, config);
+      await tasksUtil.cleanDocs(config);
+      await generate(gulp, config);
+      resolve();
+    } catch (error) {
+      console.error(error);
+      reject(error);
+    }
   });
 };

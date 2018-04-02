@@ -7,11 +7,21 @@ const deepMerge = require('deepmerge');
 const defaultConfig = require('./default-config');
 const userConfig = deepClone(defaultConfig);
 
+// Load the tasks.
+const analyze = require('./tasks/analyze');
+const build = require('./tasks/build');
+const docs = require('./tasks/docs');
+const fixDependencies = require('./tasks/fix-dependencies');
+const lint = require('./tasks/lint');
+const test = require('./tasks/test');
+const util = require('./tasks/util');
+
 /**
  * Set the config for the build process.
  *
  * @param {string} packagePath - Path to user's package.json
  * @param {Object} config - The config object.
+ * @throws {Error}
  * @returns {Object}
  */
 function setConfig(packagePath, config) {
@@ -24,7 +34,7 @@ function setConfig(packagePath, config) {
       userConfig[key] = value;
     }
 
-    // Delete any the extra keys.
+    // Delete anything in user config that shouldn't be there anymore.
     for (const key of Object.keys(userConfig)) {
       if (newConfig[key] == null) {
         delete userConfig[key];
@@ -35,21 +45,28 @@ function setConfig(packagePath, config) {
     fs.accessSync(packagePath, fs.constants.R_OK);
     userConfig.package = JSON.parse(fs.readFileSync(packagePath));
 
-    // Find and set the package scope.
-    userConfig.componenet.scope = userConfig.package.name.substring(
-      0,
-      userConfig.package.name.lastIndexOf('/')
-    );
-    if (userConfig.componenet.scope === '') {
-      userConfig.componenet.scope = null;
+    // If the scope is not set.
+    if (userConfig.componenet.scope == null) {
+      // Find and set the package scope.
+      userConfig.componenet.scope = userConfig.package.name.substring(
+        0,
+        userConfig.package.name.lastIndexOf('/')
+      );
+
+      // No scope?
+      if (userConfig.componenet.scope === '') {
+        userConfig.componenet.scope = null;
+      }
     }
 
-    // Set the path to the component within node modules.
-    userConfig.componenet.nodeModulesPath = `${userConfig.nodeModulesPath}${
-      userConfig.componenet.scope === null
-        ? ''
-        : `/${userConfig.componenet.scope}`
-    }`;
+    if (userConfig.componenet.nodeModulesPath == null) {
+      // Set the path to the component within the node modules folder.
+      userConfig.componenet.nodeModulesPath = `${userConfig.nodeModulesPath}${
+        userConfig.componenet.scope == null
+          ? ''
+          : `/${userConfig.componenet.scope}`
+      }`;
+    }
 
     // Return the config.
     return userConfig;
@@ -57,15 +74,6 @@ function setConfig(packagePath, config) {
     throw error;
   }
 }
-
-// Load the tasks.
-const analyze = require('./tasks/analyze');
-const build = require('./tasks/build');
-const docs = require('./tasks/docs');
-const fixDependencies = require('./tasks/fix-dependencies');
-const lint = require('./tasks/lint');
-const test = require('./tasks/test');
-const util = require('./tasks/util');
 
 // Export the task functions.
 module.exports = {

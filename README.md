@@ -51,11 +51,32 @@ for (const [name, func] of Object.entries(buildProcess.tasks)) {
 }
 ```
 
-### Step 2. Run gulp tasks
+### Step 2. Set up your package.json
 
-```sh
-node node_modules/.bin/gulp build
-node node_modules/.bin/gulp clean
+Example `package.json` file:
+
+```json
+{
+  "name": "my-element",
+  "scripts": {
+    "analyze": "./node_modules/.bin/gulp analyze",
+    "build": "./node_modules/.bin/gulp build",
+    "build-docs": "./node_modules/.bin/gulp build-docs",
+    "clean": "./node_modules/.bin/gulp clean",
+    "lint": "./node_modules/.bin/gulp lint",
+    "test": "./node_modules/.bin/gulp lint test",
+    "postinstall": "./node_modules/.bin/gulp fix-dependencies",
+  },
+  "devDependencies": {
+    "@catalyst-elements/build-process": "*",
+    "@polymer/iron-component-page": "^3.0.0-pre.1",
+    "@polymer/iron-demo-helpers": "^3.0.0-pre.1",
+    "@polymer/test-fixture": "^3.0.0-pre.1",
+    "@webcomponents/shadycss": "^1.1.1",
+    "@webcomponents/webcomponentsjs": "^1.1.0",
+    "web-component-tester": "^6.5.0"
+  }
+}
 ```
 
 ## Contributions

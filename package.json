@@ -16,7 +16,7 @@
     "url": "https://github.com/catalyst/build-process/issues"
   },
   "homepage": "https://github.com/catalyst/build-process#readme",
-  "devDependencies": {
+  "dependencies": {
     "ansi-colors": "^1.1.0",
     "babel-eslint": "^8.2.1",
     "cssnano": "^3.10.0",

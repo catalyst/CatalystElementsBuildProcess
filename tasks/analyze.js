@@ -1,15 +1,16 @@
+// Load util.
+const tasksUtil = require('./util');
+
 // Libraries.
-const colors = require('ansi-colors');
 const file = require('gulp-file');
 const glob = require('glob');
-const log = require('fancy-log');
-const nodeUtil = require('util');
 const path = require('path');
 const polymerAnalyzer = require('polymer-analyzer');
 const rename = require('gulp-rename');
+const util = require('util');
 
-// Promisify functions.
-const globPromise = nodeUtil.promisify(glob);
+// Promisified functions.
+const globPromise = util.promisify(glob);
 
 /**
  * Fix issues with the automatically generated analysis.
@@ -63,13 +64,14 @@ function fixAnalysis(analysis, config) {
  *
  * @param {GulpClient.Gulp} gulp - Gulp library
  * @param {Object} config - Config settings
+ * @param {string} [labelPrefix] - A prefix to print before the label
  * @returns {Promise}
  */
-function getElementsForAnalysis(gulp, config) {
-  const subTaskLabel = `'${colors.cyan('analyze -> get files ready')}'`;
+function getElementsForAnalysis(gulp, config, labelPrefix) {
+  const subTaskLabel = 'get files ready';
 
   return new Promise(resolve => {
-    log(`Starting ${subTaskLabel}...`);
+    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
 
     gulp
       .src([
@@ -84,7 +86,7 @@ function getElementsForAnalysis(gulp, config) {
       )
       .pipe(gulp.dest(`./${config.temp.path}/analyze`))
       .on('finish', () => {
-        log(`Finished ${subTaskLabel}`);
+        tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         resolve();
       });
   });
@@ -95,13 +97,14 @@ function getElementsForAnalysis(gulp, config) {
  *
  * @param {GulpClient.Gulp} gulp - Gulp library
  * @param {Object} config - Config settings
+ * @param {string} [labelPrefix] - A prefix to print before the label
  * @returns {Promise}
  */
-function generateAnalysis(gulp, config) {
-  const subTaskLabel = `'${colors.cyan('analyze -> generate')}'`;
+function generateAnalysis(gulp, config, labelPrefix) {
+  const subTaskLabel = 'generate';
 
   return new Promise(async resolve => {
-    log(`Starting ${subTaskLabel}...`);
+    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
 
     const files = await globPromise(`./${config.temp.path}/analyze/**/*.js`);
     const analyzer = polymerAnalyzer.Analyzer.createForDirectory('./');
@@ -119,7 +122,7 @@ function generateAnalysis(gulp, config) {
     })
       .pipe(gulp.dest('./'))
       .on('finish', () => {
-        log(`Finished ${subTaskLabel}`);
+        tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         resolve();
       });
   });

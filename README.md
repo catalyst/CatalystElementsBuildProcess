@@ -1,7 +1,7 @@
 # Catalyst Elements' Build Process
 
-[![David](https://img.shields.io/david/catalyst/catalyst-elements-build-process.svg?style=flat-square)](https://david-dm.org/catalyst/catalyst-elements-build-process)
-[![David](https://img.shields.io/david/dev/catalyst/catalyst-elements-build-process.svg?style=flat-square)](https://david-dm.org/catalyst/catalyst-elements-build-process?type=dev)
+[![David](https://img.shields.io/david/catalyst/CatalystElementsBuildProcess.svg?style=flat-square)](https://david-dm.org/catalyst/CatalystElementsBuildProcess)
+[![David](https://img.shields.io/david/dev/catalyst/CatalystElementsBuildProcess.svg?style=flat-square)](https://david-dm.org/catalyst/CatalystElementsBuildProcess?type=dev)
 [![npm (scoped)](https://img.shields.io/npm/v/@catalyst-elements/build-process.svg?style=flat-square)](https://www.npmjs.com/package/@catalyst-elements/build-process)
 
 The build process for catalyst elements and other such components.

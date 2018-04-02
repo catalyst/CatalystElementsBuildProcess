@@ -6,16 +6,16 @@
   "main": "index.js",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/catalyst/catalyst-elements-build-process.git"
+    "url": "git+https://github.com/catalyst/CatalystElementsBuildProcess.git"
   },
   "author": {
     "name": "Rebecca Stevens",
     "email": "rebeccastevens@catalyst.net.nz"
   },
   "bugs": {
-    "url": "https://github.com/catalyst/build-process/issues"
+    "url": "https://github.com/catalyst/CatalystElementsBuildProcess/issues"
   },
-  "homepage": "https://github.com/catalyst/build-process#readme",
+  "homepage": "https://github.com/catalyst/CatalystElementsBuildProcess#readme",
   "dependencies": {
     "ansi-colors": "^1.1.0",
     "babel-eslint": "^8.2.1",

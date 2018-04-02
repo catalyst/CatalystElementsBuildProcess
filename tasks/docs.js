@@ -1,6 +1,6 @@
 // Load util.
 const tasksUtil = require('./util');
-const PreWebpackClosureCompilerPlugin = require('./PreWebpackClosureCompilerPlugin');
+const PreWebpackClosureCompilerPlugin = require('./classes/PreWebpackClosureCompilerPlugin');
 
 // Libraries.
 const cheerio = require('gulp-cheerio');

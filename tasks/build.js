@@ -2,13 +2,11 @@
 const tasksUtil = require('./util');
 
 // Libraries.
-const colors = require('ansi-colors');
 const escodegen = require('escodegen');
 const esprima = require('esprima');
 const fs = require('fs');
 const inject = require('gulp-inject');
 const htmlmin = require('gulp-htmlmin');
-const log = require('fancy-log');
 const modifyFile = require('gulp-modify-file');
 const postcss = require('gulp-postcss');
 const prettier = require('prettier');
@@ -24,13 +22,14 @@ const webpackStream = require('webpack-stream');
  *
  * @param {GulpClient.Gulp} gulp - Gulp library
  * @param {Object} config - Config settings
+ * @param {string} [labelPrefix] - A prefix to print before the label
  * @returns {Promise}
  */
-function checkSourceFiles(gulp, config) {
-  const subTaskLabel = `'${colors.cyan('build -> check source files')}'`;
+function checkSourceFiles(gulp, config, labelPrefix) {
+  const subTaskLabel = 'check source files';
 
   return new Promise((resolve, reject) => {
-    log(`Starting ${subTaskLabel}...`);
+    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
     try {
       const entrypoint = fs.readFileSync(
         `./${config.src.path}/${config.src.entrypoint}`,
@@ -49,10 +48,10 @@ function checkSourceFiles(gulp, config) {
         }
       }
 
-      log(`Finished ${subTaskLabel}`);
+      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
       resolve();
     } catch (error) {
-      log(`${colors.red('Failed')} ${subTaskLabel}`);
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
     }
   });
@@ -63,20 +62,21 @@ function checkSourceFiles(gulp, config) {
  *
  * @param {GulpClient.Gulp} gulp - Gulp library
  * @param {Object} config - Config settings
+ * @param {string} [labelPrefix] - A prefix to print before the label
  * @returns {Promise}
  */
-function minifyHTML(gulp, config) {
-  const subTaskLabel = `'${colors.cyan('build -> minify HTML')}'`;
+function minifyHTML(gulp, config, labelPrefix) {
+  const subTaskLabel = 'minify HTML';
 
   return new Promise(resolve => {
-    log(`Starting ${subTaskLabel}...`);
+    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
     gulp
       .src(`./${config.src.path}/**/[^_]*.html`)
       .pipe(htmlmin({ collapseWhitespace: true }))
       .pipe(replace('\n', ''))
       .pipe(gulp.dest(`./${config.temp.path}/build`))
       .on('finish', () => {
-        log(`Finished ${subTaskLabel}`);
+        tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         resolve();
       });
   });
@@ -87,13 +87,14 @@ function minifyHTML(gulp, config) {
  *
  * @param {GulpClient.Gulp} gulp - Gulp library
  * @param {Object} config - Config settings
+ * @param {string} [labelPrefix] - A prefix to print before the label
  * @returns {Promise}
  */
-function compileSASS(gulp, config) {
-  const subTaskLabel = `'${colors.cyan('build -> compile SASS')}'`;
+function compileSASS(gulp, config, labelPrefix) {
+  const subTaskLabel = 'compile SASS';
 
   return new Promise(resolve => {
-    log(`Starting ${subTaskLabel}...`);
+    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
     gulp
       .src(`./${config.src.path}/**/[^_]*.scss`)
       .pipe(sass({ outputStyle: 'compressed' }).on('error', sass.logError))
@@ -101,7 +102,7 @@ function compileSASS(gulp, config) {
       .pipe(replace('\n', ''))
       .pipe(gulp.dest(`./${config.temp.path}/build`))
       .on('finish', () => {
-        log(`Finished ${subTaskLabel}`);
+        tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         resolve();
       });
   });
@@ -112,13 +113,14 @@ function compileSASS(gulp, config) {
  *
  * @param {GulpClient.Gulp} gulp - Gulp library
  * @param {Object} config - Config settings
+ * @param {string} [labelPrefix] - A prefix to print before the label
  * @returns {Promise}
  */
-function initializeModuleFile(gulp, config) {
-  const subTaskLabel = `'${colors.cyan('build -> module -> initialize file')}'`;
+function initializeModuleFile(gulp, config, labelPrefix) {
+  const subTaskLabel = 'initialize file';
 
   return new Promise(resolve => {
-    log(`Starting ${subTaskLabel}...`);
+    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
     gulp
       .src(`./${config.src.path}/${config.src.entrypoint}`)
       .pipe(
@@ -155,7 +157,7 @@ function initializeModuleFile(gulp, config) {
       )
       .pipe(gulp.dest(`./${config.temp.path}/build`))
       .on('finish', () => {
-        log(`Finished ${subTaskLabel}`);
+        tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         resolve();
       });
   });
@@ -166,13 +168,14 @@ function initializeModuleFile(gulp, config) {
  *
  * @param {GulpClient.Gulp} gulp - Gulp library
  * @param {Object} config - Config settings
+ * @param {string} [labelPrefix] - A prefix to print before the label
  * @returns {Promise}
  */
-function initializeScriptFile(gulp, config) {
-  const subTaskLabel = `'${colors.cyan('build -> script -> initialize file')}'`;
+function initializeScriptFile(gulp, config, labelPrefix) {
+  const subTaskLabel = 'initialize file';
 
   return new Promise(resolve => {
-    log(`Starting ${subTaskLabel}...`);
+    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
     gulp
       .src(`./${config.src.path}/${config.src.entrypoint}`)
       .pipe(
@@ -346,7 +349,7 @@ function initializeScriptFile(gulp, config) {
       )
       .pipe(gulp.dest(`./${config.temp.path}/build`))
       .on('finish', () => {
-        log(`Finished ${subTaskLabel}`);
+        tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         resolve();
       });
   });
@@ -359,15 +362,17 @@ function initializeScriptFile(gulp, config) {
  * @param {Object} config - Config settings
  * @param {Object} options - Options
  * @param {string} options.type - Either `module` or `script`
+ * @param {string} [labelPrefix] - A prefix to print before the label
  * @returns {Promise}
  */
-function injectTemplate(gulp, config, options = {}) {
-  const subTaskLabel = `'${colors.cyan(
-    `build -> ${options.type} -> inject template`
-  )}'`;
+function injectTemplate(gulp, config, options = {}, labelPrefix) {
+  const subTaskLabel = 'inject template';
 
   return new Promise((resolve, reject) => {
-    log(`Starting ${subTaskLabel}'...`);
+    const subTaskLabelPrefix = tasksUtil.tasks.log.starting(
+      subTaskLabel,
+      labelPrefix
+    );
     const stream = (() => {
       switch (options.type) {
         case 'module':
@@ -379,79 +384,78 @@ function injectTemplate(gulp, config, options = {}) {
             `./${config.temp.path}/build/${config.componenet.name}.js`
           );
         default:
-          log(
-            `${colors.red('Error')} '${colors.cyan(
-              `build -> ${options.type} -> inject template`
-            )}'`
-          );
+          tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
           reject(new Error('Invalid type.'));
           return null;
       }
     })();
 
-    if (stream != null) {
-      const innerTaskLabelHTML = `'${colors.cyan(
-        `build -> ${options.type} -> inject template -> html`
-      )}'`;
-      const innerTaskLabelCSS = `'${colors.cyan(
-        `build -> ${options.type} -> inject template -> css`
-      )}'`;
-
-      // Inject the template html.
-      if (config.src.template != null && config.src.template.html == null) {
-        log(`Skipping '${innerTaskLabelHTML}'`);
-      } else {
-        log(`Starting '${innerTaskLabelHTML}'`);
-
-        stream
-          .pipe(
-            inject(
-              gulp.src(
-                `./${config.temp.path}/build/${config.src.template.html}`
-              ),
-              {
-                starttag: '[[inject:template]]',
-                endtag: '[[endinject]]',
-                removeTags: true,
-                transform: tasksUtil.transforms.getFileContents
-              }
-            )
-          )
-          .on('finish', () => {
-            log(`Finished '${innerTaskLabelHTML}'`);
-          });
-      }
-
-      // Inject the style css.
-      if (config.src.template != null && config.src.template.css == null) {
-        log(`Skipping ${innerTaskLabelCSS}`);
-      } else {
-        log(`Starting ${innerTaskLabelCSS}`);
-
-        stream
-          .pipe(
-            inject(
-              gulp.src(
-                `./${config.temp.path}/build/${config.src.template.css}`
-              ),
-              {
-                starttag: '[[inject:style]]',
-                endtag: '[[endinject]]',
-                removeTags: true,
-                transform: tasksUtil.transforms.getFileContents
-              }
-            )
-          )
-          .on('finish', () => {
-            log(`Finished ${innerTaskLabelCSS}`);
-          });
-      }
-
-      stream.pipe(gulp.dest(`./${config.temp.path}/build`)).on('finish', () => {
-        log(`Finished ${subTaskLabel}`);
-        resolve();
-      });
+    if (stream == null) {
+      return;
     }
+
+    const innerTaskLabelHTML = 'html';
+    const innerTaskLabelCSS = 'css';
+
+    // Inject the template html.
+    if (config.src.template == null || config.src.template.html == null) {
+      tasksUtil.tasks.log.info(
+        `skipping ${innerTaskLabelHTML} - no html to inject.`,
+        subTaskLabelPrefix
+      );
+    } else {
+      tasksUtil.tasks.log.starting(innerTaskLabelHTML, subTaskLabelPrefix);
+
+      stream
+        .pipe(
+          inject(
+            gulp.src(`./${config.temp.path}/build/${config.src.template.html}`),
+            {
+              starttag: '[[inject:template]]',
+              endtag: '[[endinject]]',
+              removeTags: true,
+              transform: tasksUtil.transforms.getFileContents
+            }
+          )
+        )
+        .on('finish', () => {
+          tasksUtil.tasks.log.successful(
+            innerTaskLabelHTML,
+            subTaskLabelPrefix
+          );
+        });
+    }
+
+    // Inject the style css.
+    if (config.src.template != null && config.src.template.css == null) {
+      tasksUtil.tasks.log.info(
+        `skipping ${innerTaskLabelCSS} - no css to inject.`,
+        subTaskLabelPrefix
+      );
+    } else {
+      tasksUtil.tasks.log.starting(innerTaskLabelCSS, subTaskLabelPrefix);
+
+      stream
+        .pipe(
+          inject(
+            gulp.src(`./${config.temp.path}/build/${config.src.template.css}`),
+            {
+              starttag: '[[inject:style]]',
+              endtag: '[[endinject]]',
+              removeTags: true,
+              transform: tasksUtil.transforms.getFileContents
+            }
+          )
+        )
+        .on('finish', () => {
+          tasksUtil.tasks.log.successful(innerTaskLabelCSS, subTaskLabelPrefix);
+        });
+    }
+
+    stream.pipe(gulp.dest(`./${config.temp.path}/build`)).on('finish', () => {
+      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
+      resolve();
+    });
   });
 }
 
@@ -460,13 +464,14 @@ function injectTemplate(gulp, config, options = {}) {
  *
  * @param {GulpClient.Gulp} gulp - Gulp library
  * @param {Object} config - Config settings
+ * @param {string} [labelPrefix] - A prefix to print before the label
  * @returns {Promise}
  */
-function finalizeModule(gulp, config) {
-  const subTaskLabel = `'${colors.cyan('build -> module -> finalize')}'`;
+function finalizeModule(gulp, config, labelPrefix) {
+  const subTaskLabel = 'finalize';
 
   return new Promise(resolve => {
-    log(`Starting ${subTaskLabel}...`);
+    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
     gulp
       .src(`./${config.temp.path}/build/${config.componenet.name}.mjs`)
       .pipe(
@@ -476,7 +481,7 @@ function finalizeModule(gulp, config) {
       )
       .pipe(gulp.dest(`./${config.dist.path}`))
       .on('finish', () => {
-        log(`Finished ${subTaskLabel}`);
+        tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         resolve();
       });
   });
@@ -487,13 +492,14 @@ function finalizeModule(gulp, config) {
  *
  * @param {GulpClient.Gulp} gulp - Gulp library
  * @param {Object} config - Config settings
+ * @param {string} [labelPrefix] - A prefix to print before the label
  * @returns {Promise}
  */
-function finalizeScript(gulp, config) {
-  const subTaskLabel = `'${colors.cyan('build -> script -> finalize')}'`;
+function finalizeScript(gulp, config, labelPrefix) {
+  const subTaskLabel = 'finalize';
 
   return new Promise(resolve => {
-    log(`Starting ${subTaskLabel}...`);
+    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
     gulp
       .src(`./${config.temp.path}/build/${config.componenet.name}.js`)
       .pipe(
@@ -522,7 +528,7 @@ function finalizeScript(gulp, config) {
       )
       .pipe(gulp.dest(`./${config.dist.path}`))
       .on('finish', () => {
-        log(`Finished ${subTaskLabel}`);
+        tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         resolve();
       });
   });
@@ -533,19 +539,23 @@ function finalizeScript(gulp, config) {
  *
  * @param {GulpClient.Gulp} gulp - Gulp library
  * @param {Object} config - Config settings
+ * @param {string} [labelPrefix] - A prefix to print before the label
  * @returns {Promise}
  */
-function buildModule(gulp, config) {
-  const subTaskLabel = `'${colors.cyan('build -> module')}'`;
+function buildModule(gulp, config, labelPrefix) {
+  const subTaskLabel = 'module';
 
   return new Promise(async resolve => {
-    log(`Starting ${subTaskLabel}...`);
+    const subTaskLabelPrefix = tasksUtil.tasks.log.starting(
+      subTaskLabel,
+      labelPrefix
+    );
 
-    await initializeModuleFile(gulp, config);
-    await injectTemplate(gulp, config, { type: 'module' });
-    await finalizeModule(gulp, config);
+    await initializeModuleFile(gulp, config, subTaskLabelPrefix);
+    await injectTemplate(gulp, config, { type: 'module' }, subTaskLabelPrefix);
+    await finalizeModule(gulp, config, subTaskLabelPrefix);
 
-    log(`Finished ${subTaskLabel}`);
+    tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
     resolve();
   });
 }
@@ -555,19 +565,23 @@ function buildModule(gulp, config) {
  *
  * @param {GulpClient.Gulp} gulp - Gulp library
  * @param {Object} config - Config settings
+ * @param {string} [labelPrefix] - A prefix to print before the label
  * @returns {Promise}
  */
-function buildScript(gulp, config) {
-  const subTaskLabel = `'${colors.cyan('build -> script')}'`;
+function buildScript(gulp, config, labelPrefix) {
+  const subTaskLabel = 'script';
 
   return new Promise(async resolve => {
-    log(`Starting ${subTaskLabel}...`);
+    const subTaskLabelPrefix = tasksUtil.tasks.log.starting(
+      subTaskLabel,
+      labelPrefix
+    );
 
-    await initializeScriptFile(gulp, config);
-    await injectTemplate(gulp, config, { type: 'script' });
-    await finalizeScript(gulp, config);
+    await initializeScriptFile(gulp, config, subTaskLabelPrefix);
+    await injectTemplate(gulp, config, { type: 'script' }, subTaskLabelPrefix);
+    await finalizeScript(gulp, config, subTaskLabelPrefix);
 
-    log(`Finished ${subTaskLabel}`);
+    tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
     resolve();
   });
 }
@@ -577,18 +591,19 @@ function buildScript(gulp, config) {
  *
  * @param {GulpClient.Gulp} gulp - Gulp library
  * @param {Object} config - Config settings
+ * @param {string} [labelPrefix] - A prefix to print before the label
  * @returns {Promise}
  */
-function finalizeCopyFiles(gulp, config) {
-  const subTaskLabel = `'${colors.cyan('build -> finalize -> copy files')}'`;
+function finalizeCopyFiles(gulp, config, labelPrefix) {
+  const subTaskLabel = 'copy files';
 
   return new Promise(resolve => {
-    log(`Starting ${subTaskLabel}...`);
+    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
     gulp
       .src(['README.md', 'LICENSE'])
       .pipe(gulp.dest(`./${config.dist.path}`))
       .on('finish', () => {
-        log(`Finished ${subTaskLabel}`);
+        tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         resolve();
       });
   });
@@ -599,13 +614,14 @@ function finalizeCopyFiles(gulp, config) {
  *
  * @param {GulpClient.Gulp} gulp - Gulp library
  * @param {Object} config - Config settings
+ * @param {string} [labelPrefix] - A prefix to print before the label
  * @returns {Promise}
  */
-function finalizePackageJson(gulp, config) {
-  const subTaskLabel = `'${colors.cyan('build -> finalize -> package.json')}'`;
+function finalizePackageJson(gulp, config, labelPrefix) {
+  const subTaskLabel = 'package.json';
 
   return new Promise(resolve => {
-    log(`Starting ${subTaskLabel}...`);
+    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
     gulp
       .src('package.json')
       .pipe(
@@ -624,7 +640,7 @@ function finalizePackageJson(gulp, config) {
       )
       .pipe(gulp.dest(`./${config.dist.path}`))
       .on('finish', () => {
-        log(`Finished ${subTaskLabel}`);
+        tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         resolve();
       });
   });
@@ -635,19 +651,23 @@ function finalizePackageJson(gulp, config) {
  *
  * @param {GulpClient.Gulp} gulp - Gulp library
  * @param {Object} config - Config settings
+ * @param {string} [labelPrefix] - A prefix to print before the label
  * @returns {Promise}
  */
-function finalize(gulp, config) {
-  const subTaskLabel = `'${colors.cyan('build -> finalize')}'`;
+function finalize(gulp, config, labelPrefix) {
+  const subTaskLabel = 'finalize';
 
   return new Promise(async resolve => {
-    log(`Starting ${subTaskLabel}...`);
+    const subTaskLabelPrefix = tasksUtil.tasks.log.starting(
+      subTaskLabel,
+      labelPrefix
+    );
     await Promise.all([
-      finalizeCopyFiles(gulp, config),
-      finalizePackageJson(gulp, config)
+      finalizeCopyFiles(gulp, config, subTaskLabelPrefix),
+      finalizePackageJson(gulp, config, subTaskLabelPrefix)
     ]);
 
-    log(`Finished ${subTaskLabel}`);
+    tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
     resolve();
   });
 }
@@ -657,18 +677,19 @@ function finalize(gulp, config) {
  *
  * @param {GulpClient.Gulp} gulp - Gulp library
  * @param {Object} config - Config settings
+ * @param {string} [labelPrefix] - A prefix to print before the label
  * @returns {Promise}
  */
-function buildSymlinks(gulp, config) {
-  const subTaskLabel = `'${colors.cyan('build -> symlinks')}'`;
+function buildSymlinks(gulp, config, labelPrefix) {
+  const subTaskLabel = 'symlinks';
 
   return new Promise(resolve => {
-    log(`Starting ${subTaskLabel}...`);
+    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
     gulp
       .src(`./${config.dist.path}/${config.componenet.name}**.?(m)js`)
       .pipe(gulp.symlink('./'))
       .on('finish', () => {
-        log(`Finished ${subTaskLabel}`);
+        tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         resolve();
       });
   });

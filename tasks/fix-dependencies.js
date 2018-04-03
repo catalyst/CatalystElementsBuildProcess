@@ -5,7 +5,7 @@ const tasksUtil = require('./util');
 const fs = require('graceful-fs');
 const util = require('util');
 
-// Promisify functions.
+// Promisified functions.
 const fsAccess = util.promisify(fs.access);
 const fsMkdir = util.promisify(fs.mkdirSync);
 const fsSymlink = util.promisify(fs.symlink);

@@ -1,7 +1,8 @@
+// Load util.
+const tasksUtil = require('./util');
+
 // Libraries.
-const colors = require('ansi-colors');
 const fs = require('graceful-fs');
-const log = require('fancy-log');
 const wct = require('web-component-tester');
 
 /**
@@ -9,20 +10,21 @@ const wct = require('web-component-tester');
  *
  * @param {GulpClient.Gulp} gulp - Gulp library
  * @param {Object} config - Config settings
+ * @param {string} [labelPrefix] - A prefix to print before the label
  * @returns {Promise}
  */
-function wctTests(gulp, config) {
-  const subTaskLabel = `'${colors.cyan('test -> wct')}'`;
+function wctTests(gulp, config, labelPrefix) {
+  const subTaskLabel = 'wct';
 
   return new Promise(async (resolve, reject) => {
-    log(`Starting ${subTaskLabel}...`);
+    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
 
     if (fs.existsSync(`./${config.dist.path}`)) {
       await wct.test(config.tests.wctConfig);
-      log(`Finished ${subTaskLabel}`);
+      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
       resolve();
     } else {
-      log(`${colors.cyan('Failed')} ${subTaskLabel}`);
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(
         new Error(
           `No ${config.dist.path}/ path exists - cannot run wct tests. ` +

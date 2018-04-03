@@ -107,7 +107,10 @@ function generateAnalysis(gulp, config, labelPrefix) {
     tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
 
     const files = await globPromise(`./${config.temp.path}/analyze/**/*.js`);
-    const analyzer = polymerAnalyzer.Analyzer.createForDirectory('./');
+    const analyzer = new polymerAnalyzer.Analyzer({
+      urlLoader: new polymerAnalyzer.FsUrlLoader('./'),
+      urlResolver: new polymerAnalyzer.PackageUrlResolver({ packageDir: './' })
+    });
     const analysis = await analyzer.analyze(files);
 
     const analysisFileContents = JSON.stringify(

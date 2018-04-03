@@ -2,7 +2,6 @@
 const colorGuard = require('colorguard');
 const cssMQPacker = require('css-mqpacker');
 const cssnano = require('cssnano');
-const postcss = require('postcss');
 const postcssAutoReset = require('postcss-autoreset');
 const postcssCqProlyfill = require('cq-prolyfill/postcss-plugin');
 const postcssFontMagician = require('postcss-font-magician');

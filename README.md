@@ -64,7 +64,7 @@ Example `package.json` file:
     "build-docs": "./node_modules/.bin/gulp build-docs",
     "clean": "./node_modules/.bin/gulp clean",
     "lint": "./node_modules/.bin/gulp lint",
-    "test": "./node_modules/.bin/gulp lint test",
+    "test": "./node_modules/.bin/gulp test",
     "postinstall": "./node_modules/.bin/gulp fix-dependencies",
   },
   "devDependencies": {

@@ -54,7 +54,6 @@ module.exports = {
       collapseWhitespace: true,
       conservativeCollapse: false,
       ignoreCustomFragments: [/<demo-snippet>[\s\S]*<\/demo-snippet>/],
-      minifyCSS: true,
 
       // HtmlMinifier does not have support for async functions.
       // minifyCSS: async css => {
@@ -63,6 +62,8 @@ module.exports = {
       //   );
       //   return processedCss;
       // },
+      minifyCSS: true,
+      minifyJS: true,
       quoteCharacter: '"',
       removeAttributeQuotes: false,
       removeComments: true,

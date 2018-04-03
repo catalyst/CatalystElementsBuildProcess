@@ -24,12 +24,17 @@ function fixAnalysis(analysis, config) {
 
   for (const type of typesToFix) {
     // If the type is defined.
-    if (analysis[type]) {
+    if (analysis[type] != null) {
       // For each component.
       for (const component of analysis[type]) {
+        const basename = path.basename(
+          component.path,
+          path.extname(component.path)
+        );
+
         // Don't refer to the component's temp path, but rather its node path.
         if (
-          component.path &&
+          component.path != null &&
           component.path.indexOf(`${config.temp.path}/analyze/`) === 0
         ) {
           // Remove temp dir prefix.
@@ -37,19 +42,17 @@ function fixAnalysis(analysis, config) {
             `${config.temp.path}/analyze/`.length
           );
 
-          // Not for this component? Change the dir.
-          const basename = path.basename(component.path, '.js');
           component.path = `node_modules/${
             config.componenet.scope
-          }/${basename}/${component.path}`;
+          }/${basename}/${basename}.mjs`;
         }
 
         // If `demos` is defined.
-        if (component.demos) {
+        if (component.demos != null) {
           // For each demo.
           for (const demo of component.demos) {
             // Prefix its url.
-            demo.url = `../${component.tagname}/${demo.url}`;
+            demo.url = path.normalize(`../${basename}/${demo.url}`);
           }
         }
       }
@@ -75,13 +78,13 @@ function getElementsForAnalysis(gulp, config, labelPrefix) {
 
     gulp
       .src([
-        `./${config.dist.path}/**/*.js`,
-        `./${config.componenet.nodeModulesPath}/catalyst-*/**/*.js`,
-        '!**/*.min*'
+        `./${config.dist.path}/**/*.mjs`,
+        `./${config.componenet.nodeModulesPath}/catalyst-*/**/*.mjs`
       ])
       .pipe(
         rename({
-          dirname: '/'
+          dirname: '/',
+          extname: '.js' // Polymer analyser does not yet support .mjs files so rename to .js
         })
       )
       .pipe(gulp.dest(`./${config.temp.path}/analyze`))

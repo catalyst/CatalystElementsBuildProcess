@@ -56,7 +56,6 @@
     "merge-stream": "^1.0.1",
     "polymer-analyzer": "^3.0.0-pre.19",
     "polymer-build": "^2.1.1",
-    "polyserve": "^0.26.0",
     "postcss": "^6.0.21",
     "postcss-autoreset": "^2.0.2",
     "postcss-cssnext": "^3.0.2",

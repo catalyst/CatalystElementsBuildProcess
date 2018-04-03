@@ -15,14 +15,13 @@ const modifyFile = require('gulp-modify-file');
 const named = require('vinyl-named');
 const path = require('path');
 const PolymerBuild = require('polymer-build');
-const postcss = require('gulp-postcss');
 const rename = require('gulp-rename');
 const util = require('util');
 const webpack = require('webpack');
 const WebpackClosureCompilerPlugin = require('webpack-closure-compiler');
 const webpackStream = require('webpack-stream');
 
-// Promisify functions.
+// Promisified functions.
 const gitClone = util.promisify(git.clone);
 const gitCheckout = util.promisify(git.checkout);
 const globPromise = util.promisify(glob);
@@ -1113,8 +1112,7 @@ function generate(gulp, config, labelPrefix) {
       mergeStream(docBuilder.sources(), docBuilder.dependencies())
         .pipe(docBuilder.addCustomElementsEs5Adapter())
         .pipe(sourcesHtmlSplitter.split())
-        .pipe(gulpIf(/\.html$/, htmlmin({ collapseWhitespace: true })))
-        .pipe(gulpIf(/\.css$/, postcss([], config.build.postcss.options)))
+        .pipe(gulpIf(/\.html$/, htmlmin(config.build.htmlMinifier)))
         .pipe(sourcesHtmlSplitter.rejoin())
         .pipe(
           rename(filepath => {

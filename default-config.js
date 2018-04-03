@@ -1,3 +1,44 @@
+// Libraries.
+const colorGuard = require('colorguard');
+const cssMQPacker = require('css-mqpacker');
+const cssnano = require('cssnano');
+const postcss = require('postcss');
+const postcssAutoReset = require('postcss-autoreset');
+const postcssCqProlyfill = require('cq-prolyfill/postcss-plugin');
+const postcssFontMagician = require('postcss-font-magician');
+const postcssInitial = require('postcss-initial');
+const postcssImageSet = require('postcss-image-set-polyfill');
+const postcssImport = require('postcss-import');
+const postcssCssNext = require('postcss-cssnext');
+const postcssPresetEnv = require('postcss-preset-env');
+const postcssReporter = require('postcss-reporter');
+
+// Plugins for postcss.
+const postcssPlugins = [
+  postcssImport(),
+  postcssAutoReset(),
+  postcssInitial(),
+  postcssPresetEnv(),
+  postcssCqProlyfill(),
+  postcssImageSet(),
+  postcssFontMagician(),
+  postcssCssNext({
+    browsers: ['last 5 versions', '>= 1%', 'ie >= 11'],
+    features: {
+      customProperties: false
+    }
+  }),
+  cssMQPacker(),
+  colorGuard(),
+  cssnano({
+    autoprefixer: false,
+    discardComments: {
+      removeAll: true
+    }
+  }),
+  postcssReporter()
+];
+
 module.exports = {
   nodeModulesPath: 'node_modules',
 
@@ -8,21 +49,32 @@ module.exports = {
   },
 
   build: {
+    htmlMinifier: {
+      collapseBooleanAttributes: true,
+      collapseWhitespace: true,
+      conservativeCollapse: false,
+      ignoreCustomFragments: [/<demo-snippet>[\s\S]*<\/demo-snippet>/],
+      minifyCSS: true,
+
+      // HtmlMinifier does not have support for async functions.
+      // minifyCSS: async css => {
+      //   const { css: processedCss } = await postcss(postcssPlugins).process(
+      //     css
+      //   );
+      //   return processedCss;
+      // },
+      quoteCharacter: '"',
+      removeAttributeQuotes: false,
+      removeComments: true,
+      removeRedundantAttributes: true,
+      removeScriptTypeAttributes: true,
+      removeStyleLinkTypeAttributes: true,
+      trimCustomFragments: true,
+      useShortDoctype: true
+    },
     postcss: {
-      options: {
-        plugins: {
-          'postcss-import': {},
-          'postcss-cssnext': {
-            features: {
-              customProperties: false
-            }
-          },
-          cssnano: {
-            autoprefixer: false
-          },
-          'postcss-reporter': {}
-        }
-      }
+      plugins: postcssPlugins,
+      options: {}
     }
   },
 

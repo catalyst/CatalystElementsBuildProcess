@@ -72,7 +72,7 @@ function minifyHTML(gulp, config, labelPrefix) {
     tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
     gulp
       .src(`./${config.src.path}/**/[^_]*.html`)
-      .pipe(htmlmin({ collapseWhitespace: true }))
+      .pipe(htmlmin(config.build.htmlMinifier))
       .pipe(replace('\n', ''))
       .pipe(gulp.dest(`./${config.temp.path}/build`))
       .on('finish', () => {
@@ -98,7 +98,7 @@ function compileSASS(gulp, config, labelPrefix) {
     gulp
       .src(`./${config.src.path}/**/[^_]*.scss`)
       .pipe(sass({ outputStyle: 'compressed' }).on('error', sass.logError))
-      .pipe(postcss([], config.build.postcss.options))
+      .pipe(postcss(config.build.postcss.plugins, config.build.postcss.options))
       .pipe(replace('\n', ''))
       .pipe(gulp.dest(`./${config.temp.path}/build`))
       .on('finish', () => {

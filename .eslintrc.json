@@ -2,6 +2,7 @@
   "root": true,
   "extends": ["catalyst", "plugin:prettier/recommended"],
   "env": {
+    "browser": false,
     "node": true
   },
   "plugins": ["prettier"],

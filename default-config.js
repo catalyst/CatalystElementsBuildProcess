@@ -48,6 +48,8 @@ module.exports = {
   },
 
   build: {
+    bundleImports: false,
+    exportAllStaticImports: false,
     htmlMinifier: {
       collapseBooleanAttributes: true,
       collapseWhitespace: true,

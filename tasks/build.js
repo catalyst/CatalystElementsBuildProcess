@@ -8,6 +8,7 @@ const fs = require('fs');
 const inject = require('gulp-inject');
 const htmlmin = require('gulp-htmlmin');
 const modifyFile = require('gulp-modify-file');
+const path = require('path');
 const postcss = require('gulp-postcss');
 const prettier = require('prettier');
 const replace = require('gulp-replace');
@@ -19,6 +20,37 @@ const webpackStream = require('webpack-stream');
 
 // The temp path.
 const tempSubpath = 'build';
+const tempEntrypointFileBaseName = 'entrypoint';
+
+/**
+ * Get the local names of all the static imports in the given a JavaScript.
+ *
+ * @param {string} javascript - The JavaScript
+ * @returns {string[]}
+ */
+function getStaticImportLocalNames(javascript) {
+  const parsedCode = esprima.parseModule(javascript);
+  const localNames = [];
+
+  // Static imports declaration must be defined in the body.
+  for (const node of parsedCode.body) {
+    if (node.type === 'ImportDeclaration') {
+      for (const specifier of node.specifiers) {
+        if (
+          specifier.type === 'ImportDefaultSpecifier' ||
+          specifier.type === 'ImportSpecifier'
+        ) {
+          if (specifier.local.type === 'Identifier') {
+            localNames.push(specifier.local.name);
+          }
+        }
+      }
+    }
+  }
+
+  return localNames;
+}
+
 /**
  * Check the source files are all good.
  *
@@ -56,6 +88,134 @@ function checkSourceFiles(gulp, config, labelPrefix) {
       tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
     }
+  });
+}
+
+/**
+ * Prepare the entrypoint file.
+ *
+ * @param {GulpClient.Gulp} gulp - Gulp library
+ * @param {Object} config - Config settings
+ * @param {string} [labelPrefix] - A prefix to print before the label
+ * @returns {Promise}
+ */
+function prepareEntrypoint(gulp, config, labelPrefix) {
+  const subTaskLabel = 'prepare entrypoint';
+
+  return new Promise(resolve => {
+    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+
+    gulp
+      .src(`./${config.src.path}/${config.src.entrypoint}`)
+      .pipe(
+        modifyFile(content => {
+          let modifiedContent = content;
+
+          const pathChange = path.relative(
+            `./${config.src.path}`,
+            `./${config.temp.path}/${tempSubpath}`
+          );
+
+          let depthChange = 0;
+          for (const element of pathChange.split('/')) {
+            if (element == null || element === '' || element === '.') {
+              continue;
+            }
+            depthChange += element === '..' ? -1 : 1;
+          }
+
+          if (depthChange > 0) {
+            modifiedContent = modifiedContent.replace(
+              new RegExp(`../node_modules/`, 'g'),
+              `${'../'.repeat(depthChange + 1)}node_modules/`
+            );
+          }
+
+          return modifiedContent;
+        })
+      )
+      .pipe(
+        rename(filepath => {
+          filepath.basename = tempEntrypointFileBaseName;
+        })
+      )
+      .pipe(gulp.dest(`./${config.temp.path}/${tempSubpath}`))
+      .on('finish', () => {
+        tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
+        resolve();
+      });
+  });
+}
+
+/**
+ * Export the static imports in the entrypoint file.
+ *
+ * @param {GulpClient.Gulp} gulp - Gulp library
+ * @param {Object} config - Config settings
+ * @param {string} [labelPrefix] - A prefix to print before the label
+ * @returns {Promise}
+ */
+function exportStaticImports(gulp, config, labelPrefix) {
+  const subTaskLabel = 'export static imports';
+
+  return new Promise(resolve => {
+    if (!config.build.exportAllStaticImports) {
+      tasksUtil.tasks.log.info(
+        `skipping ${subTaskLabel} - turned off in config.`,
+        labelPrefix
+      );
+      resolve();
+      return;
+    }
+
+    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+
+    gulp
+      .src(
+        `./${config.temp.path}/${tempSubpath}/**/${tempEntrypointFileBaseName}*`
+      )
+      .pipe(
+        modifyFile(content => {
+          let modifiedContent = content;
+
+          // Export all imports.
+          modifiedContent += '\n// Export all the imports.\n';
+          modifiedContent = `${modifiedContent}export {\n  ${getStaticImportLocalNames(
+            content
+          ).join(',\n  ')}\n};`;
+
+          return modifiedContent;
+        })
+      )
+      .pipe(gulp.dest(`./${config.temp.path}/${tempSubpath}`))
+      .on('finish', () => {
+        tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
+        resolve();
+      });
+  });
+}
+
+/**
+ * Process the source files before handling them off to be turned into the module/script.
+ *
+ * @param {GulpClient.Gulp} gulp - Gulp library
+ * @param {Object} config - Config settings
+ * @param {string} [labelPrefix] - A prefix to print before the label
+ * @returns {Promise}
+ */
+function preprocessSourceFiles(gulp, config, labelPrefix) {
+  const subTaskLabel = 'preprocess source files';
+
+  return new Promise(async resolve => {
+    const subTaskLabelPrefix = tasksUtil.tasks.log.starting(
+      subTaskLabel,
+      labelPrefix
+    );
+
+    await prepareEntrypoint(gulp, config, subTaskLabelPrefix);
+    await exportStaticImports(gulp, config, subTaskLabelPrefix);
+
+    resolve();
   });
 }
 
@@ -124,7 +284,9 @@ function initializeModuleFile(gulp, config, labelPrefix) {
   return new Promise(resolve => {
     tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
     gulp
-      .src(`./${config.src.path}/${config.src.entrypoint}`)
+      .src(
+        `./${config.temp.path}/${tempSubpath}/**/${tempEntrypointFileBaseName}*`
+      )
       .pipe(
         modifyFile(content => {
           let modifiedContent = content;
@@ -137,16 +299,19 @@ function initializeModuleFile(gulp, config, labelPrefix) {
 
           // Correct `node_modules` links.
           modifiedContent = modifiedContent.replace(
-            new RegExp(`../node_modules/${config.componenet.scope}/`, 'g'),
+            new RegExp(`(../)*node_modules/${config.componenet.scope}/`, 'g'),
             '../'
           );
           modifiedContent = modifiedContent.replace(
-            new RegExp(`../node_modules/`, 'g'),
+            new RegExp(`(../)*node_modules/`, 'g'),
             '../../'
           );
 
           // Trim extra white space.
           modifiedContent = modifiedContent.trim();
+
+          // End with a newline.
+          modifiedContent += '\n';
 
           return modifiedContent;
         })
@@ -179,7 +344,9 @@ function initializeScriptFile(gulp, config, labelPrefix) {
   return new Promise(resolve => {
     tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
     gulp
-      .src(`./${config.src.path}/${config.src.entrypoint}`)
+      .src(
+        `./${config.temp.path}/${tempSubpath}/**/${tempEntrypointFileBaseName}*`
+      )
       .pipe(
         modifyFile(content => {
           /**
@@ -197,30 +364,34 @@ function initializeScriptFile(gulp, config, labelPrefix) {
             for (const [nodeIndex, node] of parsedCode.body.entries()) {
               switch (node.type) {
                 case 'ImportDeclaration':
-                  for (const specifiers of node.specifiers) {
-                    let importedName;
-                    if (specifiers.type === 'ImportDefaultSpecifier') {
-                      importedName = specifiers.local.name;
-                    } else if (specifiers.type === 'ImportSpecifier') {
-                      importedName = specifiers.imported.name;
-                    }
+                  // Not bundling imports? Strip them.
+                  if (!config.build.bundleImports) {
+                    for (const specifiers of node.specifiers) {
+                      let importedName;
+                      if (specifiers.type === 'ImportDefaultSpecifier') {
+                        importedName = specifiers.local.name;
+                      } else if (specifiers.type === 'ImportSpecifier') {
+                        importedName = specifiers.imported.name;
+                      }
 
-                    if (
-                      importedName != null &&
-                      importedName.toLowerCase().startsWith('catalyst')
-                    ) {
-                      esImports.set(nodeIndex, node);
-                      codeIndexesToRemove.push(nodeIndex);
-                    } else {
-                      throw new Error(
-                        `Cannot automatically process import "${importedName}."`
-                      );
+                      if (
+                        importedName != null &&
+                        importedName.toLowerCase().startsWith('catalyst')
+                      ) {
+                        esImports.set(nodeIndex, node);
+                        codeIndexesToRemove.push(nodeIndex);
+                      } else {
+                        throw new Error(
+                          `Cannot automatically process import "${importedName}."`
+                        );
+                      }
                     }
                   }
                   break;
 
                 case 'ExportDefaultDeclaration':
                 case 'ExportNamedDeclaration':
+                  // Strip all exports.
                   esExports.set(nodeIndex, parsedCode.body[nodeIndex]);
                   codeIndexesToRemove.push(nodeIndex);
                   break;
@@ -715,6 +886,7 @@ module.exports = (gulp, config) => {
     } else {
       await tasksUtil.cleanDist(config);
       await checkSourceFiles(gulp, config);
+      await preprocessSourceFiles(gulp, config);
       await Promise.all([minifyHTML(gulp, config), compileSASS(gulp, config)]);
       await Promise.all([buildModule(gulp, config), buildScript(gulp, config)]);
       await finalize(gulp, config);

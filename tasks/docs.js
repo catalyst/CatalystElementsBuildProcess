@@ -3,7 +3,7 @@ const tasksUtil = require('./util');
 const PreWebpackClosureCompilerPlugin = require('./classes/PreWebpackClosureCompilerPlugin');
 
 // Libraries.
-const cheerio = require('gulp-cheerio');
+const cheerio = require('cheerio');
 const flatmap = require('gulp-flatmap');
 const fs = require('fs');
 const git = require('gulp-git');
@@ -554,21 +554,17 @@ function indexPageUpdateReferences(gulp, config, labelPrefix) {
       .src(`./${config.temp.path}/${tempSubpath}/index.html`, { base: './' })
       .pipe(
         modifyFile(content => {
-          let modifiedContent = content;
-          modifiedContent = modifiedContent.replace(
-            /\.\.\/\.\.\//g,
-            `./${config.docs.nodeModulesPath}/`
-          );
-
-          return modifiedContent;
-        })
-      )
-      .pipe(
-        cheerio($ => {
-          $('script[type="module"]').each((index, element) => {
-            delete element.attribs.type;
-            element.attribs.src = element.attribs.src.replace(/.mjs$/, '.js');
+          const $ = cheerio.load(content);
+          $('script').each((index, element) => {
+            if (element.attribs.type === 'module') {
+              delete element.attribs.type;
+            }
+            element.attribs.src = element.attribs.src
+              .replace(/^\.\.\/\.\.\//, `${config.docs.nodeModulesPath}/`)
+              .replace(/.mjs$/, '.js');
           });
+
+          return $.html();
         })
       )
       .pipe(gulp.dest('./'))
@@ -607,11 +603,14 @@ function demosPagesUpdateReferences(gulp, config, labelPrefix) {
         { base: './' }
       )
       .pipe(
-        cheerio($ => {
+        modifyFile(content => {
+          const $ = cheerio.load(content);
           $('script[type="module"]').each((index, element) => {
             delete element.attribs.type;
             element.attribs.src = element.attribs.src.replace(/.mjs$/, '.js');
           });
+
+          return $.html();
         })
       )
       .pipe(gulp.dest('./'))

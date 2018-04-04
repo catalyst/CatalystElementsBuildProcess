@@ -431,7 +431,7 @@ function injectTemplate(gulp, config, options = {}, labelPrefix) {
     }
 
     // Inject the style css.
-    if (config.src.template != null && config.src.template.css == null) {
+    if (config.src.template == null || config.src.template.css == null) {
       tasksUtil.tasks.log.info(
         `skipping ${innerTaskLabelCSS} - no css to inject.`,
         subTaskLabelPrefix

@@ -99,7 +99,7 @@ function compileSASS(gulp, config, labelPrefix) {
     tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
     gulp
       .src(`./${config.src.path}/**/[^_]*.scss`)
-      .pipe(sass({ outputStyle: 'compressed' }).on('error', sass.logError))
+      .pipe(sass({ outputStyle: 'expanded' }).on('error', sass.logError))
       .pipe(postcss(config.build.postcss.plugins, config.build.postcss.options))
       .pipe(replace('\n', ''))
       .pipe(gulp.dest(`./${config.temp.path}/${tempSubpath}`))

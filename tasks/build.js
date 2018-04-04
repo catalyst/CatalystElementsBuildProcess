@@ -288,6 +288,7 @@ function initializeScriptFile(gulp, config, labelPrefix) {
             // Replace exports with globally accessible object exports.
             for (const [exportDefIndex, exportDef] of esExports) {
               if (exportDef.declaration === null) {
+                const inserts = [];
                 for (const specifier of Object.values(exportDef.specifiers)) {
                   const localName = specifier.local.name;
                   const exportedName = specifier.imported
@@ -295,15 +296,16 @@ function initializeScriptFile(gulp, config, labelPrefix) {
                     : localName;
 
                   if (!exportNamesUsed.includes(exportedName)) {
-                    parsedCode.body.splice(
-                      exportDefIndex,
-                      0,
+                    inserts.push(
                       esprima.parseScript(
                         `window.CatalystElements.${exportedName} = ${localName};`
                       )
                     );
                     exportNamesUsed.push(exportedName);
                   }
+                }
+                if (inserts.length > 0) {
+                  parsedCode.body.splice(exportDefIndex, 0, ...inserts);
                 }
               } else if (exportDef.declaration.type === 'Identifier') {
                 if (!exportNamesUsed.includes(exportDef.declaration.name)) {

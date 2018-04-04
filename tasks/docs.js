@@ -4,7 +4,7 @@ const PreWebpackClosureCompilerPlugin = require('./classes/PreWebpackClosureComp
 
 // Libraries.
 const cheerio = require('gulp-cheerio');
-const foreach = require('gulp-foreach');
+const flatmap = require('gulp-flatmap');
 const fs = require('fs');
 const git = require('gulp-git');
 const glob = require('glob');
@@ -809,7 +809,7 @@ function finalizeIndexPage(gulp, config, labelPrefix) {
           )
         )
         .pipe(
-          foreach((stream, file) => {
+          flatmap((stream, file) => {
             return stream
               .pipe(
                 modifyFile(content => {
@@ -871,7 +871,7 @@ function finalizeDemos(gulp, config, labelPrefix) {
         }/*/${config.demos.path}/${config.demos.importsImporterFilename}`
       )
       .pipe(
-        foreach((demoStream, demoFile) => {
+        flatmap((demoStream, demoFile) => {
           const output = path.dirname(demoFile.path);
           return demoStream
             .pipe(
@@ -900,7 +900,7 @@ function finalizeDemos(gulp, config, labelPrefix) {
               )
             )
             .pipe(
-              foreach((builtStream, builtFile) => {
+              flatmap((builtStream, builtFile) => {
                 return builtStream
                   .pipe(
                     modifyFile(content => {

@@ -17,6 +17,8 @@ const webpack = require('webpack');
 const WebpackClosureCompilerPlugin = require('webpack-closure-compiler');
 const webpackStream = require('webpack-stream');
 
+// The temp path.
+const tempSubpath = 'build';
 /**
  * Check the source files are all good.
  *
@@ -74,7 +76,7 @@ function minifyHTML(gulp, config, labelPrefix) {
       .src(`./${config.src.path}/**/[^_]*.html`)
       .pipe(htmlmin(config.build.htmlMinifier))
       .pipe(replace('\n', ''))
-      .pipe(gulp.dest(`./${config.temp.path}/build`))
+      .pipe(gulp.dest(`./${config.temp.path}/${tempSubpath}`))
       .on('finish', () => {
         tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         resolve();
@@ -100,7 +102,7 @@ function compileSASS(gulp, config, labelPrefix) {
       .pipe(sass({ outputStyle: 'compressed' }).on('error', sass.logError))
       .pipe(postcss(config.build.postcss.plugins, config.build.postcss.options))
       .pipe(replace('\n', ''))
-      .pipe(gulp.dest(`./${config.temp.path}/build`))
+      .pipe(gulp.dest(`./${config.temp.path}/${tempSubpath}`))
       .on('finish', () => {
         tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         resolve();
@@ -155,7 +157,7 @@ function initializeModuleFile(gulp, config, labelPrefix) {
           path.extname = `.mjs`;
         })
       )
-      .pipe(gulp.dest(`./${config.temp.path}/build`))
+      .pipe(gulp.dest(`./${config.temp.path}/${tempSubpath}`))
       .on('finish', () => {
         tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         resolve();
@@ -347,7 +349,7 @@ function initializeScriptFile(gulp, config, labelPrefix) {
           path.extname = `.js`;
         })
       )
-      .pipe(gulp.dest(`./${config.temp.path}/build`))
+      .pipe(gulp.dest(`./${config.temp.path}/${tempSubpath}`))
       .on('finish', () => {
         tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         resolve();
@@ -377,11 +379,11 @@ function injectTemplate(gulp, config, options = {}, labelPrefix) {
       switch (options.type) {
         case 'module':
           return gulp.src(
-            `./${config.temp.path}/build/${config.componenet.name}.mjs`
+            `./${config.temp.path}/${tempSubpath}/${config.componenet.name}.mjs`
           );
         case 'script':
           return gulp.src(
-            `./${config.temp.path}/build/${config.componenet.name}.js`
+            `./${config.temp.path}/${tempSubpath}/${config.componenet.name}.js`
           );
         default:
           tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
@@ -409,7 +411,9 @@ function injectTemplate(gulp, config, options = {}, labelPrefix) {
       stream
         .pipe(
           inject(
-            gulp.src(`./${config.temp.path}/build/${config.src.template.html}`),
+            gulp.src(
+              `./${config.temp.path}/${tempSubpath}/${config.src.template.html}`
+            ),
             {
               starttag: '[[inject:template]]',
               endtag: '[[endinject]]',
@@ -438,7 +442,9 @@ function injectTemplate(gulp, config, options = {}, labelPrefix) {
       stream
         .pipe(
           inject(
-            gulp.src(`./${config.temp.path}/build/${config.src.template.css}`),
+            gulp.src(
+              `./${config.temp.path}/${tempSubpath}/${config.src.template.css}`
+            ),
             {
               starttag: '[[inject:style]]',
               endtag: '[[endinject]]',
@@ -452,10 +458,12 @@ function injectTemplate(gulp, config, options = {}, labelPrefix) {
         });
     }
 
-    stream.pipe(gulp.dest(`./${config.temp.path}/build`)).on('finish', () => {
-      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
-      resolve();
-    });
+    stream
+      .pipe(gulp.dest(`./${config.temp.path}/${tempSubpath}`))
+      .on('finish', () => {
+        tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
+        resolve();
+      });
   });
 }
 
@@ -473,7 +481,7 @@ function finalizeModule(gulp, config, labelPrefix) {
   return new Promise(resolve => {
     tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
     gulp
-      .src(`./${config.temp.path}/build/${config.componenet.name}.mjs`)
+      .src(`./${config.temp.path}/${tempSubpath}/${config.componenet.name}.mjs`)
       .pipe(
         rename(path => {
           path.basename = config.componenet.name;
@@ -501,7 +509,7 @@ function finalizeScript(gulp, config, labelPrefix) {
   return new Promise(resolve => {
     tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
     gulp
-      .src(`./${config.temp.path}/build/${config.componenet.name}.js`)
+      .src(`./${config.temp.path}/${tempSubpath}/${config.componenet.name}.js`)
       .pipe(
         webpackStream(
           {

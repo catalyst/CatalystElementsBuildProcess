@@ -4,6 +4,8 @@ const PreWebpackClosureCompilerPlugin = require('./classes/PreWebpackClosureComp
 
 // Libraries.
 const cheerio = require('cheerio');
+const escodegen = require('escodegen');
+const esprima = require('esprima');
 const flatmap = require('gulp-flatmap');
 const fs = require('fs');
 const git = require('gulp-git');
@@ -650,10 +652,23 @@ function indexImportsUpdateReferences(gulp, config, labelPrefix) {
       )
       .pipe(
         modifyFile(content => {
-          return content.replace(
-            /\.\.\/\.\.\//g,
-            `./${config.docs.nodeModulesPath}/`
-          );
+          const parsedCode = esprima.parseModule(content);
+
+          // Static imports declaration must be defined in the body.
+          // This file should only have static imports.
+          for (const node of parsedCode.body) {
+            if (node.type === 'ImportDeclaration') {
+              if (node.source != null && node.source.type === 'Literal') {
+                node.source.value = node.source.value.replace(
+                  /\.\.\/\.\.\//g,
+                  `./${config.docs.nodeModulesPath}/`
+                );
+                node.source.raw = `'${node.source.value}'`;
+              }
+            }
+          }
+
+          return escodegen.generate(parsedCode);
         })
       )
       .pipe(gulp.dest('./'))

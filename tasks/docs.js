@@ -25,8 +25,6 @@ const webpackStream = require('webpack-stream');
 const gitClone = util.promisify(git.clone);
 const gitCheckout = util.promisify(git.checkout);
 const globPromise = util.promisify(glob);
-const fsAccess = util.promisify(fs.access);
-const fsReaddir = util.promisify(fs.readdir);
 
 // The temp path.
 const tempSubpath = 'docs';
@@ -41,11 +39,11 @@ let allOK = true;
  * @returns {Promise}
  */
 function directoryReadyForCloning(dirPath) {
-  return new Promise(async (resolve, reject) => {
+  return new Promise((resolve, reject) => {
     if (fs.existsSync(dirPath)) {
-      await fsAccess(dirPath, fs.constants.R_OK | fs.constants.W_OK);
+      fs.accessSync(dirPath, fs.constants.R_OK | fs.constants.W_OK);
 
-      const files = await fsReaddir(dirPath);
+      const files = fs.readdirSync(dirPath);
 
       if (files.length === 0) {
         resolve();

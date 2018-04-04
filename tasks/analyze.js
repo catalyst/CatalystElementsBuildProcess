@@ -12,6 +12,9 @@ const util = require('util');
 // Promisified functions.
 const globPromise = util.promisify(glob);
 
+// The temp path.
+const tempSubpath = 'analyze';
+
 /**
  * Fix issues with the automatically generated analysis.
  *
@@ -35,11 +38,11 @@ function fixAnalysis(analysis, config) {
         // Don't refer to the component's temp path, but rather its node path.
         if (
           component.path != null &&
-          component.path.indexOf(`${config.temp.path}/analyze/`) === 0
+          component.path.indexOf(`${config.temp.path}/${tempSubpath}/`) === 0
         ) {
           // Remove temp dir prefix.
           component.path = component.path.substring(
-            `${config.temp.path}/analyze/`.length
+            `${config.temp.path}/${tempSubpath}/`.length
           );
 
           component.path = `node_modules/${
@@ -87,7 +90,7 @@ function getElementsForAnalysis(gulp, config, labelPrefix) {
           extname: '.js' // Polymer analyser does not yet support .mjs files so rename to .js
         })
       )
-      .pipe(gulp.dest(`./${config.temp.path}/analyze`))
+      .pipe(gulp.dest(`./${config.temp.path}/${tempSubpath}`))
       .on('finish', () => {
         tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         resolve();
@@ -109,7 +112,9 @@ function generateAnalysis(gulp, config, labelPrefix) {
   return new Promise(async resolve => {
     tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
 
-    const files = await globPromise(`./${config.temp.path}/analyze/**/*.js`);
+    const files = await globPromise(
+      `./${config.temp.path}/${tempSubpath}/**/*.js`
+    );
     const analyzer = new polymerAnalyzer.Analyzer({
       urlLoader: new polymerAnalyzer.FsUrlLoader('./'),
       urlResolver: new polymerAnalyzer.PackageUrlResolver({ packageDir: './' })

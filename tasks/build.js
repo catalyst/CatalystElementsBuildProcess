@@ -126,8 +126,8 @@ function prepareEntrypoint(gulp, config, labelPrefix) {
 
           if (depthChange > 0) {
             modifiedContent = modifiedContent.replace(
-              new RegExp(`../node_modules/`, 'g'),
-              `${'../'.repeat(depthChange + 1)}node_modules/`
+              new RegExp(`../${config.nodeModulesPath}/`, 'g'),
+              `${'../'.repeat(depthChange + 1)}${config.nodeModulesPath}/`
             );
           }
 
@@ -299,11 +299,14 @@ function initializeModuleFile(gulp, config, labelPrefix) {
 
           // Correct `node_modules` links.
           modifiedContent = modifiedContent.replace(
-            new RegExp(`(../)*node_modules/${config.componenet.scope}/`, 'g'),
+            new RegExp(
+              `(../)*${config.nodeModulesPath}/${config.componenet.scope}/`,
+              'g'
+            ),
             '../'
           );
           modifiedContent = modifiedContent.replace(
-            new RegExp(`(../)*node_modules/`, 'g'),
+            new RegExp(`(../)*${config.nodeModulesPath}/`, 'g'),
             '../../'
           );
 

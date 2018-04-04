@@ -45,7 +45,7 @@ function fixAnalysis(analysis, config) {
             `${config.temp.path}/${tempSubpath}/`.length
           );
 
-          component.path = `node_modules/${
+          component.path = `${config.nodeModulesPath}/${
             config.componenet.scope
           }/${basename}/${basename}.mjs`;
         }

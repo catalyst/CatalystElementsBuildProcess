@@ -92,7 +92,7 @@ module.exports = {
       await util.cleanTemp(userConfig);
     },
     'fix-dependencies': () => async () => {
-      await fixDependencies();
+      await fixDependencies(userConfig);
     },
     lint: gulp => async () => {
       await lint(gulp, userConfig);

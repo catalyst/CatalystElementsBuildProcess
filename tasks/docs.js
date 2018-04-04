@@ -586,7 +586,7 @@ function indexPageUpdateReferences(gulp, config, labelPrefix) {
  * @returns {Promise}
  */
 function demosPagesUpdateReferences(gulp, config, labelPrefix) {
-  const subTaskLabel = 'index';
+  const subTaskLabel = 'demo files';
 
   return new Promise((resolve, reject) => {
     // No point starting this task if another important task has already failed.

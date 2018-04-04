@@ -22,10 +22,11 @@ function lintJS(gulp, config, labelPrefix) {
 
     gulp
       .src([
-        './*.js',
-        `./${config.src.path}/**/*.js`,
-        `./${config.tests.path}/**/*.js`,
-        `./${config.demos.path}/**/*.js`
+        './*.?(m)js',
+        `./${config.src.path}/**/*.?(m)js`,
+        `./${config.tests.path}/**/*.?(m)js`,
+        `./${config.demos.path}/**/*.?(m)js`,
+        '!*.min.*'
       ])
       .pipe(eslint())
       .pipe(eslint.format())

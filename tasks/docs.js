@@ -1036,10 +1036,8 @@ function build(gulp, config, labelPrefix) {
     );
 
     try {
-      await tasksUtil.waitForAllPromises([
-        buildIndexPage(gulp, config, subTaskLabelPrefix),
-        buildDemos(gulp, config, subTaskLabelPrefix)
-      ]);
+      await buildIndexPage(gulp, config, subTaskLabelPrefix);
+      await buildDemos(gulp, config, subTaskLabelPrefix);
 
       tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
       resolve();

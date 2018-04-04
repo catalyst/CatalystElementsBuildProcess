@@ -152,9 +152,9 @@ function initializeModuleFile(gulp, config, labelPrefix) {
         })
       )
       .pipe(
-        rename(path => {
-          path.basename = config.componenet.name;
-          path.extname = `.mjs`;
+        rename(filepath => {
+          filepath.basename = config.componenet.name;
+          filepath.extname = `.mjs`;
         })
       )
       .pipe(gulp.dest(`./${config.temp.path}/${tempSubpath}`))
@@ -187,13 +187,13 @@ function initializeScriptFile(gulp, config, labelPrefix) {
            *
            * @param {Program} parsedCode
            *   The parsed code.
-           * @returns {{imports:Map<number,Object>, exports:Map<number,Object>}}
+           * @returns {{esImports:Map<number,Object>, esExports:Map<number,Object>}}
            */
           const stripImportsAndExports = parsedCode => {
             // Get info about the code.
             const codeIndexesToRemove = [];
-            const imports = new Map();
-            const exports = new Map();
+            const esImports = new Map();
+            const esExports = new Map();
             for (const [nodeIndex, node] of parsedCode.body.entries()) {
               switch (node.type) {
                 case 'ImportDeclaration':
@@ -209,7 +209,7 @@ function initializeScriptFile(gulp, config, labelPrefix) {
                       importedName != null &&
                       importedName.toLowerCase().startsWith('catalyst')
                     ) {
-                      imports.set(nodeIndex, node);
+                      esImports.set(nodeIndex, node);
                       codeIndexesToRemove.push(nodeIndex);
                     } else {
                       throw new Error(
@@ -221,7 +221,7 @@ function initializeScriptFile(gulp, config, labelPrefix) {
 
                 case 'ExportDefaultDeclaration':
                 case 'ExportNamedDeclaration':
-                  exports.set(nodeIndex, parsedCode.body[nodeIndex]);
+                  esExports.set(nodeIndex, parsedCode.body[nodeIndex]);
                   codeIndexesToRemove.push(nodeIndex);
                   break;
 
@@ -236,8 +236,8 @@ function initializeScriptFile(gulp, config, labelPrefix) {
             );
 
             return {
-              imports: imports,
-              exports: exports
+              esImports: esImports,
+              esExports: esExports
             };
           };
 
@@ -246,11 +246,11 @@ function initializeScriptFile(gulp, config, labelPrefix) {
            *
            * @param {Program} parsedCode
            *   The parsed code with the imports already stripped out.
-           * @param {Map<number,Object>} imports
+           * @param {Map<number,Object>} esImports
            *   The imports that have been stripped out of the parsed code.
            */
-          const processImports = (parsedCode, imports) => {
-            for (const [importDefIndex, importDef] of imports) {
+          const processImports = (parsedCode, esImports) => {
+            for (const [importDefIndex, importDef] of esImports) {
               for (const specifier of Object.values(importDef.specifiers)) {
                 const localName = specifier.local.name;
                 const importedName = specifier.imported
@@ -279,14 +279,14 @@ function initializeScriptFile(gulp, config, labelPrefix) {
            *
            * @param {Program} parsedCode
            *   The parsed code with the exports already stripped out.
-           * @param {Map<number,Object>} exports
+           * @param {Map<number,Object>} esExports
            *   The exports that have been stripped out of the parsed code.
            */
-          const processExports = (parsedCode, exports) => {
+          const processExports = (parsedCode, esExports) => {
             const exportNamesUsed = [];
 
             // Replace exports with globally accessible object exports.
-            for (const [exportDefIndex, exportDef] of exports) {
+            for (const [exportDefIndex, exportDef] of esExports) {
               if (exportDef.declaration === null) {
                 for (const specifier of Object.values(exportDef.specifiers)) {
                   const localName = specifier.local.name;
@@ -332,9 +332,9 @@ function initializeScriptFile(gulp, config, labelPrefix) {
           const parsedCode = esprima.parseModule(content);
 
           // Run functions defined above.
-          const { imports, exports } = stripImportsAndExports(parsedCode);
-          processImports(parsedCode, imports);
-          processExports(parsedCode, exports);
+          const { esImports, esExports } = stripImportsAndExports(parsedCode);
+          processImports(parsedCode, esImports);
+          processExports(parsedCode, esExports);
 
           // Generate the updated code.
           return (
@@ -344,9 +344,9 @@ function initializeScriptFile(gulp, config, labelPrefix) {
         })
       )
       .pipe(
-        rename(path => {
-          path.basename = config.componenet.name;
-          path.extname = `.js`;
+        rename(filepath => {
+          filepath.basename = config.componenet.name;
+          filepath.extname = `.js`;
         })
       )
       .pipe(gulp.dest(`./${config.temp.path}/${tempSubpath}`))
@@ -483,8 +483,8 @@ function finalizeModule(gulp, config, labelPrefix) {
     gulp
       .src(`./${config.temp.path}/${tempSubpath}/${config.componenet.name}.mjs`)
       .pipe(
-        rename(path => {
-          path.basename = config.componenet.name;
+        rename(filepath => {
+          filepath.basename = config.componenet.name;
         })
       )
       .pipe(gulp.dest(`./${config.dist.path}`))

@@ -175,7 +175,6 @@ module.exports = config => {
       ]);
       resolve();
     } catch (error) {
-      console.error(error);
       reject(error);
     }
   });

@@ -53,11 +53,17 @@ const tasksHelpers = {
 function clean(path, label, labelPrefix) {
   const subTaskLabel = `clean: ${label == null ? path : label}`;
 
-  return new Promise(async resolve => {
+  return new Promise(async (resolve, reject) => {
     tasksHelpers.log.starting(subTaskLabel, labelPrefix);
-    await del(path);
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-    resolve();
+
+    try {
+      await del(path);
+      tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+      resolve();
+    } catch (error) {
+      tasksHelpers.tasks.log.failed(subTaskLabel, labelPrefix);
+      reject(error);
+    }
   });
 }
 

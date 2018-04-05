@@ -37,8 +37,12 @@ function wctTests(gulp, config, labelPrefix) {
 
 // Export the test function.
 module.exports = (gulp, config) => {
-  return new Promise(async resolve => {
-    await wctTests(gulp, config);
-    resolve();
+  return new Promise(async (resolve, reject) => {
+    try {
+      await wctTests(gulp, config);
+      resolve();
+    } catch (error) {
+      reject(error);
+    }
   });
 };

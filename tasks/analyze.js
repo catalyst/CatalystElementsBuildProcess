@@ -76,27 +76,32 @@ function fixAnalysis(analysis, config) {
 function getElementsForAnalysis(gulp, config, labelPrefix) {
   const subTaskLabel = 'get files ready';
 
-  return new Promise(resolve => {
+  return new Promise((resolve, reject) => {
     tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
 
-    gulp
-      .src([
-        `./${config.dist.path}/**/*${config.build.module.extension}`,
-        `./${config.componenet.nodeModulesPath}/catalyst-*/**/*${
-          config.build.module.extension
-        }`
-      ])
-      .pipe(
-        rename({
-          dirname: '/',
-          extname: '.js' // Polymer analyser does not yet support .mjs files so rename to .js
-        })
-      )
-      .pipe(gulp.dest(`./${config.temp.path}/${tempSubpath}`))
-      .on('finish', () => {
-        tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
-        resolve();
-      });
+    try {
+      gulp
+        .src([
+          `./${config.dist.path}/**/*${config.build.module.extension}`,
+          `./${config.componenet.nodeModulesPath}/catalyst-*/**/*${
+            config.build.module.extension
+          }`
+        ])
+        .pipe(
+          rename({
+            dirname: '/',
+            extname: '.js' // Polymer analyser does not yet support .mjs files so rename to .js
+          })
+        )
+        .pipe(gulp.dest(`./${config.temp.path}/${tempSubpath}`))
+        .on('finish', () => {
+          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
+          resolve();
+        });
+    } catch (error) {
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+      reject(error);
+    }
   });
 }
 
@@ -111,43 +116,54 @@ function getElementsForAnalysis(gulp, config, labelPrefix) {
 function generateAnalysis(gulp, config, labelPrefix) {
   const subTaskLabel = 'generate';
 
-  return new Promise(async resolve => {
+  return new Promise(async (resolve, reject) => {
     tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
 
-    const files = await globPromise(
-      `./${config.temp.path}/${tempSubpath}/**/*.js`
-    );
-    const analyzer = new polymerAnalyzer.Analyzer({
-      urlLoader: new polymerAnalyzer.FsUrlLoader('./'),
-      urlResolver: new polymerAnalyzer.PackageUrlResolver({ packageDir: './' })
-    });
-    const analysis = await analyzer.analyze(files);
-
-    const analysisFileContents = JSON.stringify(
-      fixAnalysis(
-        polymerAnalyzer.generateAnalysis(analysis, analyzer.urlResolver),
-        config
-      ),
-      null,
-      2
-    );
-
-    file(config.docs.analysisFilename, analysisFileContents, {
-      src: true
-    })
-      .pipe(gulp.dest('./'))
-      .on('finish', () => {
-        tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
-        resolve();
+    try {
+      const files = await globPromise(
+        `./${config.temp.path}/${tempSubpath}/**/*.js`
+      );
+      const analyzer = new polymerAnalyzer.Analyzer({
+        urlLoader: new polymerAnalyzer.FsUrlLoader('./'),
+        urlResolver: new polymerAnalyzer.PackageUrlResolver({
+          packageDir: './'
+        })
       });
+      const analysis = await analyzer.analyze(files);
+
+      const analysisFileContents = JSON.stringify(
+        fixAnalysis(
+          polymerAnalyzer.generateAnalysis(analysis, analyzer.urlResolver),
+          config
+        ),
+        null,
+        2
+      );
+
+      file(config.docs.analysisFilename, analysisFileContents, {
+        src: true
+      })
+        .pipe(gulp.dest('./'))
+        .on('finish', () => {
+          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
+          resolve();
+        });
+    } catch (error) {
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+      reject(error);
+    }
   });
 }
 
 // Export the analyze function.
 module.exports = (gulp, config) => {
-  return new Promise(async resolve => {
-    await getElementsForAnalysis(gulp, config);
-    await generateAnalysis(gulp, config);
-    resolve();
+  return new Promise(async (resolve, reject) => {
+    try {
+      await getElementsForAnalysis(gulp, config);
+      await generateAnalysis(gulp, config);
+      resolve();
+    } catch (error) {
+      reject(error);
+    }
   });
 };

@@ -42,18 +42,22 @@ let allOK = true;
  */
 function directoryReadyForCloning(dirPath) {
   return new Promise((resolve, reject) => {
-    if (fs.existsSync(dirPath)) {
-      fs.accessSync(dirPath, fs.constants.R_OK | fs.constants.W_OK);
+    try {
+      if (fs.existsSync(dirPath)) {
+        fs.accessSync(dirPath, fs.constants.R_OK | fs.constants.W_OK);
 
-      const files = fs.readdirSync(dirPath);
+        const files = fs.readdirSync(dirPath);
 
-      if (files.length === 0) {
-        resolve();
+        if (files.length === 0) {
+          resolve();
+        } else {
+          reject(new Error('Directory not empty.'));
+        }
       } else {
-        reject(new Error('Directory not empty.'));
+        resolve();
       }
-    } else {
-      resolve();
+    } catch (error) {
+      reject(error);
     }
   });
 }
@@ -101,75 +105,80 @@ function cloneRepositories(packageFilePaths, config, labelPrefix) {
     repos.push(
       // eslint-disable-next-line no-loop-func
       new Promise(async (resolve, reject) => {
-        const data = fs.readFileSync(packageFilePath);
-
-        const json = JSON.parse(data);
-
-        const name = json.name;
-        if (name == null) {
-          reject(
-            new Error(
-              `Name not set in the package.json file "${packageFilePath}".`
-            )
-          );
-          return;
-        }
-
-        const version = json.version;
-        if (version == null) {
-          reject(new Error(`Version not set in ${name}'s package.json file.`));
-          return;
-        }
-
-        const repository = json.repository;
-        if (repository == null) {
-          reject(
-            new Error(`Repository not set in ${name}'s package.json file.`)
-          );
-          return;
-        }
-
-        const repoPath = (() => {
-          let p = '';
-          if (typeof repository === 'object') {
-            if (repository.type !== 'git') {
-              reject(new Error(`"${repoPath}" is not a git repository.`));
-              return null;
-            }
-            p = repository.url;
-          } else {
-            p = repository;
-          }
-
-          return p.replace(/^git\+https:\/\//, 'git://');
-        })();
-
-        const clonePath = `./${
-          config.temp.path
-        }/${tempSubpath}/demo-clones/${name}`;
-
-        let skipClone = false;
         try {
-          await directoryReadyForCloning(clonePath);
-        } catch (error) {
-          if (error.message === 'Directory not empty.') {
-            skipClone = true;
-          } else {
-            throw error;
+          const data = fs.readFileSync(packageFilePath);
+          const json = JSON.parse(data);
+
+          const name = json.name;
+          if (name == null) {
+            reject(
+              new Error(
+                `Name not set in the package.json file "${packageFilePath}".`
+              )
+            );
+            return;
           }
-        }
 
-        if (skipClone) {
-          tasksUtil.tasks.log.info(
-            `skipping clone of "${repoPath}" - output dir not empty.`,
-            labelPrefix
-          );
-        } else {
-          await cloneRepository(repoPath, clonePath, labelPrefix);
-        }
+          const version = json.version;
+          if (version == null) {
+            reject(
+              new Error(`Version not set in ${name}'s package.json file.`)
+            );
+            return;
+          }
 
-        await gitCheckout(`v${version}`, { args: '--quiet', cwd: clonePath });
-        resolve();
+          const repository = json.repository;
+          if (repository == null) {
+            reject(
+              new Error(`Repository not set in ${name}'s package.json file.`)
+            );
+            return;
+          }
+
+          const repoPath = (() => {
+            let p = '';
+            if (typeof repository === 'object') {
+              if (repository.type !== 'git') {
+                reject(new Error(`"${repoPath}" is not a git repository.`));
+                return null;
+              }
+              p = repository.url;
+            } else {
+              p = repository;
+            }
+
+            return p.replace(/^git\+https:\/\//, 'git://');
+          })();
+
+          const clonePath = `./${
+            config.temp.path
+          }/${tempSubpath}/demo-clones/${name}`;
+
+          let skipClone = false;
+          try {
+            await directoryReadyForCloning(clonePath);
+          } catch (error) {
+            if (error.message === 'Directory not empty.') {
+              skipClone = true;
+            } else {
+              throw error;
+            }
+          }
+
+          if (skipClone) {
+            tasksUtil.tasks.log.info(
+              `skipping clone of "${repoPath}" - output dir not empty.`,
+              labelPrefix
+            );
+          } else {
+            await cloneRepository(repoPath, clonePath, labelPrefix);
+          }
+
+          await gitCheckout(`v${version}`, { args: '--quiet', cwd: clonePath });
+          resolve();
+        } catch (error) {
+          reject(error);
+        }
       })
     );
   }
@@ -197,17 +206,24 @@ function copyNodeModules(gulp, config, labelPrefix) {
 
     tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
 
-    gulp
-      .src(`./${config.nodeModulesPath}/**`, { follow: true })
-      .pipe(
-        gulp.dest(
-          `./${config.temp.path}/${tempSubpath}/${config.docs.nodeModulesPath}`
+    try {
+      gulp
+        .src(`./${config.nodeModulesPath}/**`, { follow: true })
+        .pipe(
+          gulp.dest(
+            `./${config.temp.path}/${tempSubpath}/${
+              config.docs.nodeModulesPath
+            }`
+          )
         )
-      )
-      .on('finish', () => {
-        tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
-        resolve();
-      });
+        .on('finish', () => {
+          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
+          resolve();
+        });
+    } catch (error) {
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+      reject(error);
+    }
   });
 }
 
@@ -231,18 +247,23 @@ function copyDocsIndex(gulp, config, labelPrefix) {
 
     tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
 
-    gulp
-      .src(`./${config.docs.indexPage}`)
-      .pipe(
-        rename({
-          basename: 'index'
-        })
-      )
-      .pipe(gulp.dest(`./${config.temp.path}/${tempSubpath}`))
-      .on('finish', () => {
-        tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
-        resolve();
-      });
+    try {
+      gulp
+        .src(`./${config.docs.indexPage}`)
+        .pipe(
+          rename({
+            basename: 'index'
+          })
+        )
+        .pipe(gulp.dest(`./${config.temp.path}/${tempSubpath}`))
+        .on('finish', () => {
+          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
+          resolve();
+        });
+    } catch (error) {
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+      reject(error);
+    }
   });
 }
 
@@ -266,17 +287,22 @@ function copyExtraDocDependencies(gulp, config, labelPrefix) {
 
     tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
 
-    gulp
-      .src([
-        `./${config.docs.importsImporterFilename}`,
-        `./${config.docs.importsFilename}`,
-        `./${config.docs.analysisFilename}`
-      ])
-      .pipe(gulp.dest(`./${config.temp.path}/${tempSubpath}`))
-      .on('finish', () => {
-        tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
-        resolve();
-      });
+    try {
+      gulp
+        .src([
+          `./${config.docs.importsImporterFilename}`,
+          `./${config.docs.importsFilename}`,
+          `./${config.docs.analysisFilename}`
+        ])
+        .pipe(gulp.dest(`./${config.temp.path}/${tempSubpath}`))
+        .on('finish', () => {
+          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
+          resolve();
+        });
+    } catch (error) {
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+      reject(error);
+    }
   });
 }
 
@@ -300,19 +326,24 @@ function copyDistributionFiles(gulp, config, labelPrefix) {
 
     tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
 
-    gulp
-      .src(`./${config.dist.path}/**`)
-      .pipe(
-        gulp.dest(
-          `./${config.temp.path}/${tempSubpath}/${
-            config.docs.nodeModulesPath
-          }/${config.package.name}/`
+    try {
+      gulp
+        .src(`./${config.dist.path}/**`)
+        .pipe(
+          gulp.dest(
+            `./${config.temp.path}/${tempSubpath}/${
+              config.docs.nodeModulesPath
+            }/${config.package.name}/`
+          )
         )
-      )
-      .on('finish', () => {
-        tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
-        resolve();
-      });
+        .on('finish', () => {
+          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
+          resolve();
+        });
+    } catch (error) {
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+      reject(error);
+    }
   });
 }
 
@@ -336,21 +367,26 @@ function copyLocalDemos(gulp, config, labelPrefix) {
 
     tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
 
-    gulp
-      .src(`./${config.demos.path}/**`, {
-        base: './'
-      })
-      .pipe(
-        gulp.dest(
-          `./${config.temp.path}/${tempSubpath}/${
-            config.docs.nodeModulesPath
-          }/${config.package.name}/`
+    try {
+      gulp
+        .src(`./${config.demos.path}/**`, {
+          base: './'
+        })
+        .pipe(
+          gulp.dest(
+            `./${config.temp.path}/${tempSubpath}/${
+              config.docs.nodeModulesPath
+            }/${config.package.name}/`
+          )
         )
-      )
-      .on('finish', () => {
-        tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
-        resolve();
-      });
+        .on('finish', () => {
+          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
+          resolve();
+        });
+    } catch (error) {
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+      reject(error);
+    }
   });
 }
 
@@ -431,39 +467,46 @@ function updateAnalysis(gulp, config, labelPrefix) {
 
     tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
 
-    gulp
-      .src(
-        `./${config.temp.path}/${tempSubpath}/${config.docs.analysisFilename}`,
-        {
-          base: './'
-        }
-      )
-      .pipe(
-        modifyFile(content => {
-          const analysis = JSON.parse(content);
-          const typesToFix = ['elements', 'mixins'];
-          for (const type of typesToFix) {
-            if (analysis[type]) {
-              for (const component of analysis[type]) {
-                if (component.demos) {
-                  for (const demo of component.demos) {
-                    // Fix demo paths.
-                    demo.url = `${config.docs.nodeModulesPath}/${
-                      config.package.name
-                    }/${demo.url}`;
+    try {
+      gulp
+        .src(
+          `./${config.temp.path}/${tempSubpath}/${
+            config.docs.analysisFilename
+          }`,
+          {
+            base: './'
+          }
+        )
+        .pipe(
+          modifyFile(content => {
+            const analysis = JSON.parse(content);
+            const typesToFix = ['elements', 'mixins'];
+            for (const type of typesToFix) {
+              if (analysis[type]) {
+                for (const component of analysis[type]) {
+                  if (component.demos) {
+                    for (const demo of component.demos) {
+                      // Fix demo paths.
+                      demo.url = `${config.docs.nodeModulesPath}/${
+                        config.package.name
+                      }/${demo.url}`;
+                    }
                   }
                 }
               }
             }
-          }
-          return JSON.stringify(analysis);
-        })
-      )
-      .pipe(gulp.dest('./'))
-      .on('finish', () => {
-        tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
-        resolve();
-      });
+            return JSON.stringify(analysis);
+          })
+        )
+        .pipe(gulp.dest('./'))
+        .on('finish', () => {
+          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
+          resolve();
+        });
+    } catch (error) {
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+      reject(error);
+    }
   });
 }
 
@@ -552,28 +595,33 @@ function indexPageUpdateReferences(gulp, config, labelPrefix) {
 
     tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
 
-    gulp
-      .src(`./${config.temp.path}/${tempSubpath}/index.html`, { base: './' })
-      .pipe(
-        modifyFile(content => {
-          const $ = cheerio.load(content);
-          $('script').each((index, element) => {
-            if (element.attribs.type === 'module') {
-              delete element.attribs.type;
-            }
-            element.attribs.src = element.attribs.src
-              .replace(/^\.\.\/\.\.\//, `${config.docs.nodeModulesPath}/`)
-              .replace(/.mjs$/, '.js');
-          });
+    try {
+      gulp
+        .src(`./${config.temp.path}/${tempSubpath}/index.html`, { base: './' })
+        .pipe(
+          modifyFile(content => {
+            const $ = cheerio.load(content);
+            $('script').each((index, element) => {
+              if (element.attribs.type === 'module') {
+                delete element.attribs.type;
+              }
+              element.attribs.src = element.attribs.src
+                .replace(/^\.\.\/\.\.\//, `${config.docs.nodeModulesPath}/`)
+                .replace(/.mjs$/, '.js');
+            });
 
-          return $.html();
-        })
-      )
-      .pipe(gulp.dest('./'))
-      .on('finish', () => {
-        tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
-        resolve();
-      });
+            return $.html();
+          })
+        )
+        .pipe(gulp.dest('./'))
+        .on('finish', () => {
+          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
+          resolve();
+        });
+    } catch (error) {
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+      reject(error);
+    }
   });
 }
 
@@ -597,29 +645,34 @@ function demosPagesUpdateReferences(gulp, config, labelPrefix) {
 
     tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
 
-    gulp
-      .src(
-        `./${config.temp.path}/${tempSubpath}/${config.docs.nodeModulesPath}/${
-          config.componenet.scope
-        }/*/${config.demos.path}/*.html`,
-        { base: './' }
-      )
-      .pipe(
-        modifyFile(content => {
-          const $ = cheerio.load(content);
-          $('script[type="module"]').each((index, element) => {
-            delete element.attribs.type;
-            element.attribs.src = element.attribs.src.replace(/.mjs$/, '.js');
-          });
+    try {
+      gulp
+        .src(
+          `./${config.temp.path}/${tempSubpath}/${
+            config.docs.nodeModulesPath
+          }/${config.componenet.scope}/*/${config.demos.path}/*.html`,
+          { base: './' }
+        )
+        .pipe(
+          modifyFile(content => {
+            const $ = cheerio.load(content);
+            $('script[type="module"]').each((index, element) => {
+              delete element.attribs.type;
+              element.attribs.src = element.attribs.src.replace(/.mjs$/, '.js');
+            });
 
-          return $.html();
-        })
-      )
-      .pipe(gulp.dest('./'))
-      .on('finish', () => {
-        tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
-        resolve();
-      });
+            return $.html();
+          })
+        )
+        .pipe(gulp.dest('./'))
+        .on('finish', () => {
+          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
+          resolve();
+        });
+    } catch (error) {
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+      reject(error);
+    }
   });
 }
 
@@ -643,39 +696,44 @@ function indexImportsUpdateReferences(gulp, config, labelPrefix) {
 
     tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
 
-    gulp
-      .src(
-        `./${config.temp.path}/${tempSubpath}/${config.docs.importsFilename}`,
-        {
-          base: './'
-        }
-      )
-      .pipe(
-        modifyFile(content => {
-          const parsedCode = esprima.parseModule(content);
+    try {
+      gulp
+        .src(
+          `./${config.temp.path}/${tempSubpath}/${config.docs.importsFilename}`,
+          {
+            base: './'
+          }
+        )
+        .pipe(
+          modifyFile(content => {
+            const parsedCode = esprima.parseModule(content);
 
-          // Static imports declaration must be defined in the body.
-          // This file should only have static imports.
-          for (const node of parsedCode.body) {
-            if (node.type === 'ImportDeclaration') {
-              if (node.source != null && node.source.type === 'Literal') {
-                node.source.value = node.source.value.replace(
-                  /\.\.\/\.\.\//g,
-                  `./${config.docs.nodeModulesPath}/`
-                );
-                node.source.raw = `'${node.source.value}'`;
+            // Static imports declaration must be defined in the body.
+            // This file should only have static imports.
+            for (const node of parsedCode.body) {
+              if (node.type === 'ImportDeclaration') {
+                if (node.source != null && node.source.type === 'Literal') {
+                  node.source.value = node.source.value.replace(
+                    /\.\.\/\.\.\//g,
+                    `./${config.docs.nodeModulesPath}/`
+                  );
+                  node.source.raw = `'${node.source.value}'`;
+                }
               }
             }
-          }
 
-          return escodegen.generate(parsedCode);
-        })
-      )
-      .pipe(gulp.dest('./'))
-      .on('finish', () => {
-        tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
-        resolve();
-      });
+            return escodegen.generate(parsedCode);
+          })
+        )
+        .pipe(gulp.dest('./'))
+        .on('finish', () => {
+          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
+          resolve();
+        });
+    } catch (error) {
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+      reject(error);
+    }
   });
 }
 
@@ -776,17 +834,17 @@ function finalizeIndexPage(gulp, config, labelPrefix) {
 
     tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
 
-    const docsImportsBaseName = path.basename(
-      config.docs.importsFilename,
-      path.extname(config.docs.importsFilename)
-    );
-
-    const docsImportsImporterBaseName = path.basename(
-      config.docs.importsImporterFilename,
-      path.extname(config.docs.importsImporterFilename)
-    );
-
     try {
+      const docsImportsBaseName = path.basename(
+        config.docs.importsFilename,
+        path.extname(config.docs.importsFilename)
+      );
+
+      const docsImportsImporterBaseName = path.basename(
+        config.docs.importsImporterFilename,
+        path.extname(config.docs.importsImporterFilename)
+      );
+
       gulp
         .src(
           `./${config.temp.path}/${tempSubpath}/${
@@ -843,6 +901,7 @@ function finalizeIndexPage(gulp, config, labelPrefix) {
           resolve();
         });
     } catch (error) {
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
     }
   });
@@ -868,73 +927,78 @@ function finalizeDemos(gulp, config, labelPrefix) {
 
     tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
 
-    const demoImportsBaseName = path.basename(
-      config.demos.importsFilename,
-      path.extname(config.demos.importsFilename)
-    );
+    try {
+      const demoImportsBaseName = path.basename(
+        config.demos.importsFilename,
+        path.extname(config.demos.importsFilename)
+      );
 
-    const docsImportsImporterBaseName = path.basename(
-      config.demos.importsImporterFilename,
-      path.extname(config.demos.importsImporterFilename)
-    );
+      const docsImportsImporterBaseName = path.basename(
+        config.demos.importsImporterFilename,
+        path.extname(config.demos.importsImporterFilename)
+      );
 
-    gulp
-      .src(
-        `${config.temp.path}/${tempSubpath}/${config.docs.nodeModulesPath}/${
-          config.componenet.scope
-        }/*/${config.demos.path}/${config.demos.importsImporterFilename}`
-      )
-      .pipe(
-        flatmap((demoStream, demoFile) => {
-          const output = path.dirname(demoFile.path);
-          return demoStream
-            .pipe(
-              webpackStream(
-                {
-                  target: 'web',
-                  mode: 'none',
-                  output: {
-                    chunkFilename: `${demoImportsBaseName}.[id].js`,
-                    filename: `${docsImportsImporterBaseName}.js`
+      gulp
+        .src(
+          `${config.temp.path}/${tempSubpath}/${config.docs.nodeModulesPath}/${
+            config.componenet.scope
+          }/*/${config.demos.path}/${config.demos.importsImporterFilename}`
+        )
+        .pipe(
+          flatmap((demoStream, demoFile) => {
+            const output = path.dirname(demoFile.path);
+            return demoStream
+              .pipe(
+                webpackStream(
+                  {
+                    target: 'web',
+                    mode: 'none',
+                    output: {
+                      chunkFilename: `${demoImportsBaseName}.[id].js`,
+                      filename: `${docsImportsImporterBaseName}.js`
+                    },
+                    plugins: [
+                      new PreWebpackClosureCompilerPlugin(),
+                      new WebpackClosureCompilerPlugin({
+                        compiler: {
+                          language_in: 'ECMASCRIPT_NEXT',
+                          language_out: 'ECMASCRIPT5',
+                          compilation_level: 'SIMPLE',
+                          assume_function_wrapper: true,
+                          output_wrapper: '(function(){%output%}).call(this)'
+                        }
+                      })
+                    ]
                   },
-                  plugins: [
-                    new PreWebpackClosureCompilerPlugin(),
-                    new WebpackClosureCompilerPlugin({
-                      compiler: {
-                        language_in: 'ECMASCRIPT_NEXT',
-                        language_out: 'ECMASCRIPT5',
-                        compilation_level: 'SIMPLE',
-                        assume_function_wrapper: true,
-                        output_wrapper: '(function(){%output%}).call(this)'
-                      }
-                    })
-                  ]
-                },
-                webpack
+                  webpack
+                )
               )
-            )
-            .pipe(
-              flatmap((builtStream, builtFile) => {
-                return builtStream
-                  .pipe(
-                    modifyFile(content => {
-                      return content.replace(/\\\\\$/g, '$');
-                    })
-                  )
-                  .pipe(
-                    rename({
-                      basename: path.basename(builtFile.path, '.js')
-                    })
-                  )
-                  .pipe(gulp.dest(output));
-              })
-            );
-        })
-      )
-      .on('finish', () => {
-        tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
-        resolve();
-      });
+              .pipe(
+                flatmap((builtStream, builtFile) => {
+                  return builtStream
+                    .pipe(
+                      modifyFile(content => {
+                        return content.replace(/\\\\\$/g, '$');
+                      })
+                    )
+                    .pipe(
+                      rename({
+                        basename: path.basename(builtFile.path, '.js')
+                      })
+                    )
+                    .pipe(gulp.dest(output));
+                })
+              );
+          })
+        )
+        .on('finish', () => {
+          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
+          resolve();
+        });
+    } catch (error) {
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+      reject(error);
+    }
   });
 }
 
@@ -1067,9 +1131,9 @@ function generate(gulp, config, labelPrefix) {
       return;
     }
 
-    try {
-      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
 
+    try {
       const docsImportsBaseName = path.basename(
         config.docs.importsFilename,
         path.extname(config.docs.importsFilename)
@@ -1159,7 +1223,6 @@ module.exports = (gulp, config) => {
       await generate(gulp, config);
       resolve();
     } catch (error) {
-      console.error(error);
       reject(error);
     }
   });

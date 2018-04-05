@@ -845,6 +845,7 @@ function finalizePackageJson(gulp, config, labelPrefix) {
       .pipe(
         modifyFile(content => {
           const json = JSON.parse(content);
+          json.version = null;
           json.main = `${config.componenet.name}${
             config.build.module.extension
           }`;

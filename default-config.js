@@ -88,6 +88,18 @@ module.exports = {
     }
   },
 
+  publish: {
+    checkFiles: {
+      package: true,
+      script: true,
+      module: true,
+      license: true,
+      readme: true
+    },
+    masterBranch: 'master',
+    prereleaseBranchRegex: /^(?:[1-9][0-9]*)\.0-preview|master$/g
+  },
+
   src: {
     path: 'src',
     entrypoint: null,

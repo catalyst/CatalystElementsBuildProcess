@@ -849,10 +849,7 @@ function finalizePackageJson(gulp, config, labelPrefix) {
           json.main = `${config.componenet.name}${
             config.build.module.extension
           }`;
-          json.scripts = {
-            prepublishOnly:
-              "node -e \"assert.equal(require('./package.json').version, require('../package.json').version)\""
-          };
+          delete json.scripts;
           delete json.directories;
           delete json.engines;
           delete json.devDependencies;

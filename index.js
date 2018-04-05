@@ -13,6 +13,7 @@ const build = require('./tasks/build');
 const docs = require('./tasks/docs');
 const fixDependencies = require('./tasks/fix-dependencies');
 const lint = require('./tasks/lint');
+const publish = require('./tasks/publish');
 const test = require('./tasks/test');
 const util = require('./tasks/util');
 
@@ -112,6 +113,9 @@ module.exports = {
     },
     test: gulp => async () => {
       await test(gulp, userConfig);
+    },
+    prepublish: gulp => async () => {
+      await publish.prepublish(gulp, userConfig);
     }
   }
 };

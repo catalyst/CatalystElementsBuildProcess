@@ -325,8 +325,10 @@ function mergeIntoMajorBranch(gulp, config, promptInput, labelPrefix) {
       const newVersion = `${promptInput.version}`;
       const majorVersion = newVersion.split('.')[0];
 
-      await gitCheckout(`${majorVersion}.x`, { args: '-b' });
-      await gitMerge(config.publish.masterBranch);
+      if (majorVersion > 0) {
+        await gitCheckout(`${majorVersion}.x`, { args: '-b' });
+        await gitMerge(config.publish.masterBranch);
+      }
 
       tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
       resolve();

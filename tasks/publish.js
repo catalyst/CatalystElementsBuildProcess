@@ -319,16 +319,30 @@ function mergeIntoMajorBranch(gulp, config, promptInput, labelPrefix) {
   const subTaskLabel = 'merge into major branch';
 
   return new Promise(async (resolve, reject) => {
+    const majorVersion = promptInput.version.split('.')[0];
+    if (majorVersion === 0) {
+      tasksUtil.tasks.log.info(
+        `skipping ${subTaskLabel} - major version is zero.`,
+        labelPrefix
+      );
+      resolve();
+      return;
+    }
+
+    if (promptInput.prereleaseVersion) {
+      tasksUtil.tasks.log.info(
+        `skipping ${subTaskLabel} - releasing prerelease version.`,
+        labelPrefix
+      );
+      resolve();
+      return;
+    }
+
     tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
 
     try {
-      const newVersion = `${promptInput.version}`;
-      const majorVersion = newVersion.split('.')[0];
-
-      if (majorVersion > 0) {
-        await gitCheckout(`${majorVersion}.x`, { args: '-b' });
-        await gitMerge(config.publish.masterBranch);
-      }
+      await gitCheckout(`${majorVersion}.x`, { args: '-b' });
+      await gitMerge(config.publish.masterBranch);
 
       tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
       resolve();

@@ -244,7 +244,7 @@ function checkFiles(gulp, config, labelPrefix) {
  * @returns {Promise}
  */
 function updateVersion(gulp, config, promptInput, labelPrefix) {
-  const subTaskLabel = 'bump version';
+  const subTaskLabel = 'update version';
 
   return new Promise((resolve, reject) => {
     tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);

@@ -253,7 +253,7 @@ function updateVersion(gulp, config, promptInput, labelPrefix) {
       const newVersion = `${promptInput.version}`;
 
       gulp
-        .src(`./package.json`, `./${config.dist.path}/package.json`, {
+        .src([`./package.json`, `./${config.dist.path}/package.json`], {
           base: './'
         })
         .pipe(

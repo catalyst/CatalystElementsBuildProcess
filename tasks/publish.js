@@ -385,8 +385,22 @@ module.exports = {
     return new Promise(async (resolve, reject) => {
       try {
         const promptInput = await promptUser(config);
-        await checkGit(config, promptInput);
-        await checkFiles(gulp, config);
+        try {
+          await checkGit(config, promptInput);
+        } catch (error) {
+          if (!config.publish.force) {
+            throw error;
+          }
+        }
+
+        try {
+          await checkFiles(gulp, config);
+        } catch (error) {
+          if (!config.publish.force) {
+            throw error;
+          }
+        }
+
         await updateVersion(gulp, config, promptInput);
         await mergeIntoMajorBranch(gulp, config, promptInput);
         await createTag(gulp, config, promptInput);

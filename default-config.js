@@ -97,7 +97,8 @@ module.exports = {
       readme: true
     },
     masterBranch: 'master',
-    prereleaseBranchRegex: /^(?:[1-9][0-9]*)\.0-preview|master$/g
+    prereleaseBranchRegex: /^(?:[1-9][0-9]*)\.0-preview|master$/g,
+    force: false
   },
 
   src: {

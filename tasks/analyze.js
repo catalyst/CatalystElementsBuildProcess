@@ -47,7 +47,7 @@ function fixAnalysis(analysis, config) {
 
           component.path = `${config.nodeModulesPath}/${
             config.componenet.scope
-          }/${basename}/${basename}.mjs`;
+          }/${basename}/${basename}${config.build.module.extension}`;
         }
 
         // If `demos` is defined.
@@ -81,8 +81,10 @@ function getElementsForAnalysis(gulp, config, labelPrefix) {
 
     gulp
       .src([
-        `./${config.dist.path}/**/*.mjs`,
-        `./${config.componenet.nodeModulesPath}/catalyst-*/**/*.mjs`
+        `./${config.dist.path}/**/*${config.build.module.extension}`,
+        `./${config.componenet.nodeModulesPath}/catalyst-*/**/*${
+          config.build.module.extension
+        }`
       ])
       .pipe(
         rename({

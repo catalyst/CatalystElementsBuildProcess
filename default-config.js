@@ -48,10 +48,16 @@ module.exports = {
   },
 
   build: {
-    bundleImports: false,
-    exportAllStaticImports: false,
-    module: true,
-    script: true,
+    module: {
+      build: true,
+      extension: '.mjs'
+    },
+    script: {
+      build: true,
+      extension: '.min.js',
+      bundleImports: false,
+      exportAllStaticImports: false
+    },
     htmlMinifier: {
       collapseBooleanAttributes: true,
       collapseWhitespace: true,

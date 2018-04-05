@@ -159,7 +159,7 @@ function exportStaticImports(gulp, config, labelPrefix) {
   const subTaskLabel = 'export static imports';
 
   return new Promise(resolve => {
-    if (!config.build.exportAllStaticImports) {
+    if (!config.build.script.exportAllStaticImports) {
       tasksUtil.tasks.log.info(
         `skipping ${subTaskLabel} - turned off in config.`,
         labelPrefix
@@ -322,7 +322,7 @@ function initializeModuleFile(gulp, config, labelPrefix) {
       .pipe(
         rename(filepath => {
           filepath.basename = config.componenet.name;
-          filepath.extname = `.mjs`;
+          filepath.extname = config.build.module.extension;
         })
       )
       .pipe(gulp.dest(`./${config.temp.path}/${tempSubpath}`))
@@ -368,7 +368,7 @@ function initializeScriptFile(gulp, config, labelPrefix) {
               switch (node.type) {
                 case 'ImportDeclaration':
                   // Not bundling imports? Strip them.
-                  if (!config.build.bundleImports) {
+                  if (!config.build.script.bundleImports) {
                     for (const specifiers of node.specifiers) {
                       let importedName;
                       if (specifiers.type === 'ImportDefaultSpecifier') {
@@ -522,7 +522,7 @@ function initializeScriptFile(gulp, config, labelPrefix) {
       .pipe(
         rename(filepath => {
           filepath.basename = config.componenet.name;
-          filepath.extname = `.js`;
+          filepath.extname = config.build.script.extension;
         })
       )
       .pipe(gulp.dest(`./${config.temp.path}/${tempSubpath}`))
@@ -555,11 +555,15 @@ function injectTemplate(gulp, config, options = {}, labelPrefix) {
       switch (options.type) {
         case 'module':
           return gulp.src(
-            `./${config.temp.path}/${tempSubpath}/${config.componenet.name}.mjs`
+            `./${config.temp.path}/${tempSubpath}/${config.componenet.name}${
+              config.build.module.extension
+            }`
           );
         case 'script':
           return gulp.src(
-            `./${config.temp.path}/${tempSubpath}/${config.componenet.name}.js`
+            `./${config.temp.path}/${tempSubpath}/${config.componenet.name}${
+              config.build.script.extension
+            }`
           );
         default:
           tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
@@ -657,7 +661,11 @@ function finalizeModule(gulp, config, labelPrefix) {
   return new Promise(resolve => {
     tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
     gulp
-      .src(`./${config.temp.path}/${tempSubpath}/${config.componenet.name}.mjs`)
+      .src(
+        `./${config.temp.path}/${tempSubpath}/${config.componenet.name}${
+          config.build.module.extension
+        }`
+      )
       .pipe(
         rename(filepath => {
           filepath.basename = config.componenet.name;
@@ -685,15 +693,23 @@ function finalizeScript(gulp, config, labelPrefix) {
   return new Promise(resolve => {
     tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
     gulp
-      .src(`./${config.temp.path}/${tempSubpath}/${config.componenet.name}.js`)
+      .src(
+        `./${config.temp.path}/${tempSubpath}/${config.componenet.name}${
+          config.build.script.extension
+        }`
+      )
       .pipe(
         webpackStream(
           {
             target: 'web',
             mode: 'none',
             output: {
-              chunkFilename: `${config.componenet.name}.part-[id].es5.min.js`,
-              filename: `${config.componenet.name}.es5.min.js`
+              chunkFilename: `${config.componenet.name}.part-[id]${
+                config.build.script.extension
+              }`,
+              filename: `${config.componenet.name}${
+                config.build.script.extension
+              }`
             },
             plugins: [
               new WebpackClosureCompilerPlugin({
@@ -730,7 +746,7 @@ function buildModule(gulp, config, labelPrefix) {
   const subTaskLabel = 'module';
 
   return new Promise(async resolve => {
-    if (!config.build.module) {
+    if (!config.build.module.build) {
       tasksUtil.tasks.log.info(
         `skipping ${subTaskLabel} - turned off in config.`,
         labelPrefix
@@ -765,7 +781,7 @@ function buildScript(gulp, config, labelPrefix) {
   const subTaskLabel = 'script';
 
   return new Promise(async resolve => {
-    if (!config.build.script) {
+    if (!config.build.script.build) {
       tasksUtil.tasks.log.info(
         `skipping ${subTaskLabel} - turned off in config.`,
         labelPrefix
@@ -829,7 +845,9 @@ function finalizePackageJson(gulp, config, labelPrefix) {
       .pipe(
         modifyFile(content => {
           const json = JSON.parse(content);
-          json.main = `${config.componenet.name}.mjs`;
+          json.main = `${config.componenet.name}${
+            config.build.module.extension
+          }`;
           json.scripts = {
             prepublishOnly:
               "node -e \"assert.equal(require('./package.json').version, require('../package.json').version)\""

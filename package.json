@@ -16,6 +16,12 @@
     "url": "https://github.com/catalyst/CatalystElementsBuildProcess/issues"
   },
   "homepage": "https://github.com/catalyst/CatalystElementsBuildProcess#readme",
+  "scripts": {
+    "format": "./node_modules/.bin/prettier-eslint --write \"{{src,test,demo,tasks}/**/*.{js,css,scss},./*.{js,json,md}}\"",
+    "format:check": "./node_modules/.bin/prettier-eslint --list-different \"{{src,test,demo,tasks}/**/*.{js,css,scss},./*.{js,json,md}}\"",
+    "lint": "./node_modules/.bin/gulp lint",
+    "prepublishOnly": "./node_modules/.bin/gulp lint prepublish"
+  },
   "dependencies": {
     "ansi-colors": "^1.1.0",
     "babel-eslint": "^8.2.2",

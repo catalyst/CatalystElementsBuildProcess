@@ -730,6 +730,15 @@ function buildModule(gulp, config, labelPrefix) {
   const subTaskLabel = 'module';
 
   return new Promise(async resolve => {
+    if (!config.build.module) {
+      tasksUtil.tasks.log.info(
+        `skipping ${subTaskLabel} - turned off in config.`,
+        labelPrefix
+      );
+      resolve();
+      return;
+    }
+
     const subTaskLabelPrefix = tasksUtil.tasks.log.starting(
       subTaskLabel,
       labelPrefix
@@ -756,6 +765,15 @@ function buildScript(gulp, config, labelPrefix) {
   const subTaskLabel = 'script';
 
   return new Promise(async resolve => {
+    if (!config.build.script) {
+      tasksUtil.tasks.log.info(
+        `skipping ${subTaskLabel} - turned off in config.`,
+        labelPrefix
+      );
+      resolve();
+      return;
+    }
+
     const subTaskLabelPrefix = tasksUtil.tasks.log.starting(
       subTaskLabel,
       labelPrefix

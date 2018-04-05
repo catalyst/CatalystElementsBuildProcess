@@ -68,7 +68,7 @@ Example `package.json` file:
     "lint": "./node_modules/.bin/gulp lint",
     "test": "./node_modules/.bin/gulp test",
     "postinstall": "./node_modules/.bin/gulp fix-dependencies",
-    "prepublishOnly": "./node_modules/.bin/gulp lint build test prepublish"
+    "prepublishOnly": "./node_modules/.bin/gulp lint && ./node_modules/.bin/gulp build && ./node_modules/.bin/gulp test && ./node_modules/.bin/gulp prepublish"
   },
   "devDependencies": {
     "@catalyst-elements/build-process": "*",

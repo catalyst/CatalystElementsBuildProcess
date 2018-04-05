@@ -320,7 +320,7 @@ function mergeIntoMajorBranch(gulp, config, promptInput, labelPrefix) {
 
   return new Promise(async (resolve, reject) => {
     const majorVersion = promptInput.version.split('.')[0];
-    if (majorVersion === 0) {
+    if (Number.parseInt(majorVersion, 10) === 0) {
       tasksUtil.tasks.log.info(
         `skipping ${subTaskLabel} - major version is zero.`,
         labelPrefix

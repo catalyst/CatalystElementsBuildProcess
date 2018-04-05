@@ -856,7 +856,7 @@ function finalizePackageJson(gulp, config, labelPrefix) {
           delete json.directories;
           delete json.engines;
           delete json.devDependencies;
-          return prettier.format(JSON.stringify(json), { parser: 'json' });
+          return JSON.stringify(json, null, 2);
         })
       )
       .pipe(gulp.dest(`./${config.dist.path}`))

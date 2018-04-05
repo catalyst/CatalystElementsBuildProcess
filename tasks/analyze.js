@@ -127,7 +127,9 @@ function generateAnalysis(gulp, config, labelPrefix) {
       fixAnalysis(
         polymerAnalyzer.generateAnalysis(analysis, analyzer.urlResolver),
         config
-      )
+      ),
+      null,
+      2
     );
 
     file(config.docs.analysisFilename, analysisFileContents, {

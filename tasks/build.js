@@ -10,7 +10,6 @@ const htmlmin = require('gulp-htmlmin');
 const modifyFile = require('gulp-modify-file');
 const path = require('path');
 const postcss = require('gulp-postcss');
-const prettier = require('prettier');
 const replace = require('gulp-replace');
 const rename = require('gulp-rename');
 const sass = require('gulp-sass');

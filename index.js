@@ -67,12 +67,25 @@ function setConfig(packagePath, config) {
           : `/${userConfig.componenet.scope}`
       }`;
     }
-
-    // Return the config.
-    return userConfig;
   } catch (error) {
     throw error;
   }
+
+  // Check the new config is all good.
+  if (!userConfig.build.script.build && !userConfig.build.module.build) {
+    throw new Error(
+      'Invalid config - Both building of the module and the script cannot be turned off.'
+    );
+  }
+
+  if (userConfig.build.script.extension === userConfig.build.module.extension) {
+    throw new Error(
+      'Invalid config - The module and the script cannot both have the same file extension.'
+    );
+  }
+
+  // Return the config.
+  return userConfig;
 }
 
 // Export the task functions.

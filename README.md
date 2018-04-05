@@ -33,14 +33,16 @@ const buildProcess = require('@catalyst-elements/build-process');
 // Set the config for my componenet.
 buildProcess.setConfig('./package.json', {
   componenet: {
-    name: 'catalyst-componenet'   // name of the component
+    // The name of the component
+    name: 'catalyst-componenet'
   },
 
   src: {
-    entrypoint: 'componenet.js',  // relative to ./src
+    // Paths are relative to src.path
+    entrypoint: 'componenet.js',
     template: {
-      html: 'template.html',      // relative to ./src
-      css: 'style.css'            // relative to ./src
+      html: 'template.html',
+      css: 'style.css'
     }
   }
 });
@@ -66,6 +68,7 @@ Example `package.json` file:
     "lint": "./node_modules/.bin/gulp lint",
     "test": "./node_modules/.bin/gulp test",
     "postinstall": "./node_modules/.bin/gulp fix-dependencies",
+    "prepublishOnly": "./node_modules/.bin/gulp lint build test prepublish"
   },
   "devDependencies": {
     "@catalyst-elements/build-process": "*",

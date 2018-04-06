@@ -626,6 +626,12 @@ function createArchivesForGitHubRelease(gulp, config, info, labelPrefix) {
     tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
 
     try {
+      if (config.componenet.name == null) {
+        tasksUtil.tasks.log.info(`skipping ${subTaskLabel}`, labelPrefix);
+        resolve();
+        return;
+      }
+
       const archiveFormats = {
         tar: {
           extension: '.tar.gz',

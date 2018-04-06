@@ -529,16 +529,16 @@ module.exports = (gulp, config) => {
       info.publisher = publishResults.publisher;
 
       try {
-        await cleanUp(gulp, config);
-      } catch (error) {}
-
-      try {
         await printReleaseInfo(gulp, config, info);
       } catch (error) {}
 
       resolve();
     } catch (error) {
       reject(error);
+    } finally {
+      try {
+        await cleanUp(gulp, config);
+      } catch (error) {}
     }
   });
 };

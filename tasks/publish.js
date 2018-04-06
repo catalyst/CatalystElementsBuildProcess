@@ -527,17 +527,18 @@ function publishToNpm(gulp, config, info, labelPrefix) {
  *
  * @param {GulpClient.Gulp} gulp - Gulp library
  * @param {Object} config - Config settings
+ * @param {string} branch - The branch the git repo should be on.
  * @param {string} [labelPrefix] - A prefix to print before the label
  * @returns {Promise}
  */
-function cleanUp(gulp, config, labelPrefix) {
+function cleanUp(gulp, config, branch, labelPrefix) {
   const subTaskLabel = 'clean up';
 
   return new Promise(async (resolve, reject) => {
     tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
 
     try {
-      await gitCheckout(config.publish.masterBranch);
+      await gitCheckout(branch);
 
       tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
       resolve();
@@ -854,7 +855,7 @@ module.exports = (gulp, config) => {
       return;
     } finally {
       try {
-        await cleanUp(gulp, config);
+        await cleanUp(gulp, config, info.currentBranch);
       } catch (error) {}
     }
 

@@ -631,15 +631,15 @@ function createArchivesForGitHubRelease(gulp, config, info, labelPrefix) {
   const subTaskLabel = 'create archives';
 
   return new Promise(async (resolve, reject) => {
+    if (config.componenet.name == null) {
+      tasksUtil.tasks.log.info(`skipping ${subTaskLabel}`, labelPrefix);
+      resolve();
+      return;
+    }
+
     tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
 
     try {
-      if (config.componenet.name == null) {
-        tasksUtil.tasks.log.info(`skipping ${subTaskLabel}`, labelPrefix);
-        resolve();
-        return;
-      }
-
       const archiveFormats = {
         tar: {
           extension: '.tar.gz',

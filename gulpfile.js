@@ -13,4 +13,4 @@ buildProcess.setConfig('./package.json', {
 });
 
 gulp.task('lint', buildProcess.tasks.lint(gulp));
-gulp.task('prepublish', buildProcess.tasks.prepublish(gulp));
+gulp.task('publish', buildProcess.tasks.publish(gulp));

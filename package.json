@@ -20,7 +20,7 @@
     "format": "./node_modules/.bin/prettier-eslint --write \"{{src,test,demo,tasks}/**/*.{js,css,scss},./*.{js,json,md}}\"",
     "format:check": "./node_modules/.bin/prettier-eslint --list-different \"{{src,test,demo,tasks}/**/*.{js,css,scss},./*.{js,json,md}}\"",
     "lint": "./node_modules/.bin/gulp lint",
-    "prepublishOnly": "./node_modules/.bin/gulp lint && ./node_modules/.bin/gulp prepublish"
+    "do-publish": "./node_modules/.bin/gulp lint && ./node_modules/.bin/gulp publish"
   },
   "dependencies": {
     "ansi-colors": "^1.1.0",

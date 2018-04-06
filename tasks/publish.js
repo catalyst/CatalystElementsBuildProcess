@@ -227,13 +227,13 @@ function gitChecks(config, info, labelPrefix) {
       await exec('git fetch --quiet');
 
       if (
-        (await gitRevParse({ args: 'HEAD' })) ===
+        (await gitRevParse({ args: 'HEAD' })) !==
         (await gitRevParse({ args: '@{u}' }))
       ) {
         tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
         reject(
           new Error(
-            'Cannot publish - remote history differ. Please pull changes.'
+            'Cannot publish - remote history differ. Please push/pull changes.'
           )
         );
         return;

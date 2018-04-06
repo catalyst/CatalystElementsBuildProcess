@@ -2,17 +2,17 @@
 const tasksUtil = require('./util');
 
 // Libraries.
+const colors = require('ansi-colors');
 const escapeStringRegexp = require('escape-string-regexp');
 const fs = require('fs');
 const git = require('gulp-git');
 const modifyFile = require('gulp-modify-file');
 const prompt = require('prompt');
-const run = require('gulp-run-command');
+const exec = require('exec-chainable');
 const util = require('util');
 
 // Promisified functions.
 const gitCheckout = util.promisify(git.checkout);
-const gitFetch = util.promisify(git.fetch);
 const gitMerge = util.promisify(git.merge);
 const gitRevParse = util.promisify(git.revParse);
 const gitStatus = util.promisify(git.status);
@@ -28,7 +28,7 @@ const promptGet = util.promisify(prompt.get);
  * @returns {Promise}
  */
 function promptUser(config, info, labelPrefix) {
-  const subTaskLabel = 'get publish settings';
+  const subTaskLabel = 'publish settings';
 
   return new Promise(async (resolve, reject) => {
     tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
@@ -118,7 +118,7 @@ function gitChecks(config, info, labelPrefix) {
       }
 
       // Ensure the their are no un pulled changes.
-      await gitFetch('origin', currentBranch, { args: '--quiet' });
+      await exec('git fetch --quiet');
       const remoteStatus = await gitRevParse({
         args: "--count --left-only @'{u}'...HEAD"
       });
@@ -293,9 +293,10 @@ function updateVersion(gulp, config, promptInput, labelPrefix) {
           })
         )
         .pipe(gulp.dest('./'))
-        .pipe(git.add())
-        .pipe(git.commit(newVersion))
-        .on('finish', () => {
+        .on('finish', async () => {
+          if ((await gitStatus({ args: '--porcelain' })) !== '') {
+            await exec(`git add . && git commit -m "${newVersion}"`);
+          }
           tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
           resolve();
         });
@@ -398,18 +399,14 @@ function publishToNpm(gulp, config, info, labelPrefix) {
     tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
 
     try {
-      await run(`npm publish --tag ${info.npmTag}`);
-
-      const lastTag = await run('git tag | tail -r | head -1');
-      const prevTag = await run('git tag | tail -r -2 | tail -1');
+      await exec(`npm publish --tag ${info.npmTag}`);
 
       const data = {
-        versionCommit: await run('git log -1 --oneline'),
-        lastCommit: await run('git log -2 --oneline --reverse | head -1'),
-        numberOfCommits: await run(
-          `git rev-list ${prevTag}..${lastTag} --count`
-        ),
-        publisher: await run('npm whoami --silent')
+        versionCommit: (await exec('git log -1 --oneline')).replace(/\n$/, ''),
+        lastCommit: (await exec(
+          'git log -2 --oneline --reverse | head -1'
+        )).replace(/\n$/, ''),
+        publisher: (await exec('npm whoami --silent')).replace(/\n$/, '')
       };
 
       tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
@@ -463,14 +460,14 @@ function printReleaseInfo(gulp, config, info, labelPrefix) {
     tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
 
     try {
-      let infoString = '';
+      const padding = ' '.repeat(2);
 
-      infoString += ` Version:            ${info.version}\n`;
-      infoString += ` Version commit:     ${info.versionCommit}\n`;
-      infoString += ` Last commit:        ${info.lastCommit}\n`;
-      infoString += ` Commits in version: ${info.numberOfCommits}\n`;
-      infoString += ` NPM tag:            ${info.npmTag}\n`;
-      infoString += ` Publisher:          ${info.publisher}\n`;
+      const infoString = `\
+${padding}${colors.yellow('Version')}:               ${info.version}
+${padding}${colors.yellow('Version commit')}:        ${info.versionCommit}
+${padding}${colors.yellow('Last commit')}:           ${info.lastCommit}
+${padding}${colors.yellow('NPM tag')}:               ${info.npmTag}
+${padding}${colors.yellow('Publisher')}:             ${info.publisher}`;
 
       // eslint-disable-next-line no-console
       console.info(infoString);
@@ -492,7 +489,6 @@ module.exports = (gulp, config) => {
         version: null,
         versionCommit: null,
         lastCommit: null,
-        numberOfCommits: null,
         npmTag: 'latest',
         publisher: null
       };
@@ -525,7 +521,6 @@ module.exports = (gulp, config) => {
       const publishResults = await publishToNpm(gulp, config, info);
       info.versionCommit = publishResults.versionCommit;
       info.lastCommit = publishResults.lastCommit;
-      info.numberOfCommits = publishResults.numberOfCommits;
       info.publisher = publishResults.publisher;
 
       try {

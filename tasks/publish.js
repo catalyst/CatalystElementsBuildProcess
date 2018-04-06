@@ -225,10 +225,11 @@ function gitChecks(config, info, labelPrefix) {
 
       // Ensure the their are no un pulled changes.
       await exec('git fetch --quiet');
-      const remoteStatus = await gitRevParse({
-        args: "--count --left-only @'{u}'...HEAD"
-      });
-      if (Number.parseInt(remoteStatus, 10) !== 0) {
+
+      if (
+        (await gitRevParse({ args: 'HEAD' })) ===
+        (await gitRevParse({ args: '@{u}' }))
+      ) {
         tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
         reject(
           new Error(

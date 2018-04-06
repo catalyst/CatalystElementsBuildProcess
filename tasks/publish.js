@@ -4,11 +4,12 @@ const tasksUtil = require('./util');
 // Libraries.
 const colors = require('ansi-colors');
 const escapeStringRegexp = require('escape-string-regexp');
+const exec = require('exec-chainable');
 const fs = require('fs');
 const git = require('gulp-git');
 const modifyFile = require('gulp-modify-file');
+const path = require('path');
 const prompt = require('prompt');
-const exec = require('exec-chainable');
 const util = require('util');
 
 // Promisified functions.
@@ -399,7 +400,11 @@ function publishToNpm(gulp, config, info, labelPrefix) {
     tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
 
     try {
-      await exec(`npm publish --tag ${info.npmTag}`);
+      await exec(
+        `npm publish ${path.normalize(`./${config.dist.path}`)} --tag ${
+          info.npmTag
+        }`
+      );
 
       const data = {
         versionCommit: (await exec('git log -1 --oneline')).replace(/\n$/, ''),

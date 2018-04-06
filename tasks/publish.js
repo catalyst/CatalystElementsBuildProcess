@@ -598,7 +598,8 @@ function pushToGit(gulp, config, info, labelPrefix) {
         branches.push(info.majorBranch);
       }
 
-      await gitPush('origin', branches, { args: '--follow-tags' });
+      await gitPush('origin', branches);
+      await gitPush('origin', null, { args: '--tags' });
 
       tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
       resolve();

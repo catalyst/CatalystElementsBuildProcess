@@ -219,6 +219,10 @@ function copyNodeModules(gulp, config, labelPrefix) {
         .on('finish', () => {
           tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
           resolve();
+        })
+        .on('error', error => {
+          tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+          reject(error);
         });
     } catch (error) {
       tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
@@ -259,6 +263,10 @@ function copyDocsIndex(gulp, config, labelPrefix) {
         .on('finish', () => {
           tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
           resolve();
+        })
+        .on('error', error => {
+          tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+          reject(error);
         });
     } catch (error) {
       tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
@@ -298,6 +306,10 @@ function copyExtraDocDependencies(gulp, config, labelPrefix) {
         .on('finish', () => {
           tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
           resolve();
+        })
+        .on('error', error => {
+          tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+          reject(error);
         });
     } catch (error) {
       tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
@@ -339,6 +351,10 @@ function copyDistributionFiles(gulp, config, labelPrefix) {
         .on('finish', () => {
           tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
           resolve();
+        })
+        .on('error', error => {
+          tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+          reject(error);
         });
     } catch (error) {
       tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
@@ -382,6 +398,10 @@ function copyLocalDemos(gulp, config, labelPrefix) {
         .on('finish', () => {
           tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
           resolve();
+        })
+        .on('error', error => {
+          tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+          reject(error);
         });
     } catch (error) {
       tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
@@ -502,6 +522,10 @@ function updateAnalysis(gulp, config, labelPrefix) {
         .on('finish', () => {
           tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
           resolve();
+        })
+        .on('error', error => {
+          tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+          reject(error);
         });
     } catch (error) {
       tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
@@ -617,6 +641,10 @@ function indexPageUpdateReferences(gulp, config, labelPrefix) {
         .on('finish', () => {
           tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
           resolve();
+        })
+        .on('error', error => {
+          tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+          reject(error);
         });
     } catch (error) {
       tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
@@ -668,6 +696,10 @@ function demosPagesUpdateReferences(gulp, config, labelPrefix) {
         .on('finish', () => {
           tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
           resolve();
+        })
+        .on('error', error => {
+          tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+          reject(error);
         });
     } catch (error) {
       tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
@@ -729,6 +761,10 @@ function indexImportsUpdateReferences(gulp, config, labelPrefix) {
         .on('finish', () => {
           tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
           resolve();
+        })
+        .on('error', error => {
+          tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+          reject(error);
         });
     } catch (error) {
       tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
@@ -899,6 +935,10 @@ function finalizeIndexPage(gulp, config, labelPrefix) {
         .on('finish', () => {
           tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
           resolve();
+        })
+        .on('error', error => {
+          tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+          reject(error);
         });
     } catch (error) {
       tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
@@ -994,6 +1034,10 @@ function finalizeDemos(gulp, config, labelPrefix) {
         .on('finish', () => {
           tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
           resolve();
+        })
+        .on('error', error => {
+          tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+          reject(error);
         });
     } catch (error) {
       tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
@@ -1202,6 +1246,10 @@ function generate(gulp, config, labelPrefix) {
         .on('finish', () => {
           tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
           resolve();
+        })
+        .on('error', error => {
+          tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+          reject(error);
         });
     } catch (error) {
       allOK = false;

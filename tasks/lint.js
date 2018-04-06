@@ -34,6 +34,10 @@ function lintJS(gulp, config, labelPrefix) {
       .on('finish', () => {
         tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         resolve();
+      })
+      .on('error', error => {
+        tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+        reject(error);
       });
   });
 }
@@ -72,6 +76,10 @@ function lintJSinHTML(gulp, config, labelPrefix) {
         .on('finish', () => {
           tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
           resolve();
+        })
+        .on('error', error => {
+          tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+          reject(error);
         });
     } catch (error) {
       tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
@@ -103,6 +111,10 @@ function lintSASS(gulp, config, labelPrefix) {
         .on('finish', () => {
           tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
           resolve();
+        })
+        .on('error', error => {
+          tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+          reject(error);
         });
     } catch (error) {
       tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);

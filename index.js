@@ -114,8 +114,8 @@ module.exports = {
     test: gulp => async () => {
       await test(gulp, userConfig);
     },
-    prepublish: gulp => async () => {
-      await publish.prepublish(gulp, userConfig);
+    publish: gulp => async () => {
+      await publish(gulp, userConfig);
     }
   }
 };

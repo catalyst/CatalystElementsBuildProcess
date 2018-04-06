@@ -7,10 +7,12 @@ const fs = require('fs');
 const git = require('gulp-git');
 const modifyFile = require('gulp-modify-file');
 const prompt = require('prompt');
+const run = require('gulp-run-command');
 const util = require('util');
 
 // Promisified functions.
 const gitCheckout = util.promisify(git.checkout);
+const gitFetch = util.promisify(git.fetch);
 const gitMerge = util.promisify(git.merge);
 const gitRevParse = util.promisify(git.revParse);
 const gitStatus = util.promisify(git.status);
@@ -64,11 +66,11 @@ function promptUser(config, labelPrefix) {
  * Make sure git is ok.
  *
  * @param {Object} config - Config settings
- * @param {Object} promptInput - The inputs from the user
+ * @param {Object} info - Publishing info
  * @param {string} [labelPrefix] - A prefix to print before the label
  * @returns {Promise}
  */
-function checkGit(config, promptInput, labelPrefix) {
+function gitChecks(config, info, labelPrefix) {
   const subTaskLabel = 'is git ok';
 
   return new Promise(async (resolve, reject) => {
@@ -79,13 +81,13 @@ function checkGit(config, promptInput, labelPrefix) {
       const status = await gitStatus({ args: '--porcelain' });
       if (status !== '') {
         tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
-        reject(new Error('Working directory is not clean.'));
+        reject(new Error('Cannot publish - working directory is not clean.'));
         return;
       }
 
       // Ensure we are on the master branch.
       const currentBranch = await gitRevParse({ args: '--abbrev-ref HEAD' });
-      const branchMuchMatch = promptInput.prereleaseVersion
+      const branchMuchMatch = info.prereleaseVersion
         ? config.publish.prereleaseBranchRegex
         : new RegExp(`^${escapeStringRegexp(config.publish.masterBranch)}$`);
 
@@ -93,11 +95,26 @@ function checkGit(config, promptInput, labelPrefix) {
         tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
         reject(
           new Error(
-            promptInput.prereleaseVersion
+            info.prereleaseVersion
               ? `Cannot publish prerelease - not on valid prerelease branch. Branch name much match this regex: ${config.publish.prereleaseBranchRegex.toString()}`
               : `Cannot publish - you must be on "${
                   config.publish.masterBranch
                 }" branch to publish.`
+          )
+        );
+        return;
+      }
+
+      // Ensure the their are no un pulled changes.
+      await gitFetch('origin', currentBranch, { args: '--quiet' });
+      const remoteStatus = await gitRevParse({
+        args: "--count --left-only @'{u}'...HEAD"
+      });
+      if (Number.parseInt(remoteStatus, 10) !== 0) {
+        tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+        reject(
+          new Error(
+            'Cannot publish - remote history differ. Please pull changes.'
           )
         );
         return;
@@ -239,7 +256,7 @@ function checkFiles(gulp, config, labelPrefix) {
  *
  * @param {GulpClient.Gulp} gulp - Gulp library
  * @param {Object} config - Config settings
- * @param {Object} promptInput - The inputs from the user
+ * @param {Object} promptInput - Publishing info
  * @param {string} [labelPrefix] - A prefix to print before the label
  * @returns {Promise}
  */
@@ -282,7 +299,7 @@ function updateVersion(gulp, config, promptInput, labelPrefix) {
  *
  * @param {GulpClient.Gulp} gulp - Gulp library
  * @param {Object} config - Config settings
- * @param {Object} promptInput - The inputs from the user
+ * @param {Object} promptInput - Publishing info
  * @param {string} [labelPrefix] - A prefix to print before the label
  * @returns {Promise}
  */
@@ -311,15 +328,15 @@ function createTag(gulp, config, promptInput, labelPrefix) {
  *
  * @param {GulpClient.Gulp} gulp - Gulp library
  * @param {Object} config - Config settings
- * @param {Object} promptInput - The inputs from the user
+ * @param {Object} info - Publishing info
  * @param {string} [labelPrefix] - A prefix to print before the label
  * @returns {Promise}
  */
-function mergeIntoMajorBranch(gulp, config, promptInput, labelPrefix) {
+function mergeIntoMajorBranch(gulp, config, info, labelPrefix) {
   const subTaskLabel = 'merge into major branch';
 
   return new Promise(async (resolve, reject) => {
-    const majorVersion = promptInput.version.split('.')[0];
+    const majorVersion = info.version.split('.')[0];
     if (Number.parseInt(majorVersion, 10) === 0) {
       tasksUtil.tasks.log.info(
         `skipping ${subTaskLabel} - major version is zero.`,
@@ -329,7 +346,7 @@ function mergeIntoMajorBranch(gulp, config, promptInput, labelPrefix) {
       return;
     }
 
-    if (promptInput.prereleaseVersion) {
+    if (info.prereleaseVersion) {
       tasksUtil.tasks.log.info(
         `skipping ${subTaskLabel} - releasing prerelease version.`,
         labelPrefix
@@ -346,6 +363,45 @@ function mergeIntoMajorBranch(gulp, config, promptInput, labelPrefix) {
 
       tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
       resolve();
+    } catch (error) {
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+      reject(error);
+    }
+  });
+}
+
+/**
+ * Publish to npm.
+ *
+ * @param {GulpClient.Gulp} gulp - Gulp library
+ * @param {Object} config - Config settings
+ * @param {Object} info - Publishing info
+ * @param {string} [labelPrefix] - A prefix to print before the label
+ * @returns {Promise}
+ */
+function publishToNpm(gulp, config, info, labelPrefix) {
+  const subTaskLabel = 'publish to npm';
+
+  return new Promise(async (resolve, reject) => {
+    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+
+    try {
+      await run(`npm publish --tag ${info.npmTag}`);
+
+      const lastTag = await run('git tag | tail -r | head -1');
+      const prevTag = await run('git tag | tail -r -2 | tail -1');
+
+      const data = {
+        versionCommit: await run('git log -1 --oneline'),
+        lastCommit: await run('git log -2 --oneline --reverse | head -1'),
+        numberOfCommits: await run(
+          `git rev-list ${prevTag}..${lastTag} --count`
+        ),
+        publisher: await run('npm whoami --silent')
+      };
+
+      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
+      resolve(data);
     } catch (error) {
       tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
@@ -379,36 +435,97 @@ function cleanUp(gulp, config, labelPrefix) {
   });
 }
 
-// Export the publish functions.
-module.exports = {
-  prepublish: (gulp, config) => {
-    return new Promise(async (resolve, reject) => {
+/**
+ * Print out info about the release.
+ *
+ * @param {GulpClient.Gulp} gulp - Gulp library
+ * @param {Object} config - Config settings
+ * @param {Object} info - Publishing info
+ * @param {string} [labelPrefix] - A prefix to print before the label
+ * @returns {Promise}
+ */
+function printReleaseInfo(gulp, config, info, labelPrefix) {
+  const subTaskLabel = 'release info';
+
+  return new Promise((resolve, reject) => {
+    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+
+    try {
+      let infoString = '';
+
+      infoString += ` Version:            ${info.version}\n`;
+      infoString += ` Version commit:     ${info.versionCommit}\n`;
+      infoString += ` Last commit:        ${info.lastCommit}\n`;
+      infoString += ` Commits in version: ${info.numberOfCommits}\n`;
+      infoString += ` NPM tag:            ${info.npmTag}\n`;
+      infoString += ` Publisher:          ${info.publisher}\n`;
+
+      // eslint-disable-next-line no-console
+      console.info(infoString);
+
+      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
+      resolve();
+    } catch (error) {
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+      reject(error);
+    }
+  });
+}
+
+// Export the publish function.
+module.exports = (gulp, config) => {
+  return new Promise(async (resolve, reject) => {
+    try {
+      const info = {
+        version: null,
+        versionCommit: null,
+        lastCommit: null,
+        numberOfCommits: null,
+        npmTag: 'latest',
+        publisher: null
+      };
+
+      const promptInput = await promptUser(config);
+      info.version = promptInput.version;
+      info.prereleaseVersion = prompt.prereleaseVersion;
+
       try {
-        const promptInput = await promptUser(config);
-        try {
-          await checkGit(config, promptInput);
-        } catch (error) {
-          if (!config.publish.force) {
-            throw error;
-          }
-        }
-
-        try {
-          await checkFiles(gulp, config);
-        } catch (error) {
-          if (!config.publish.force) {
-            throw error;
-          }
-        }
-
-        await updateVersion(gulp, config, promptInput);
-        await mergeIntoMajorBranch(gulp, config, promptInput);
-        await createTag(gulp, config, promptInput);
-        await cleanUp(gulp, config);
-        resolve();
+        await gitChecks(config, info);
       } catch (error) {
-        reject(error);
+        if (!config.publish.force) {
+          throw error;
+        }
       }
-    });
-  }
+
+      try {
+        await checkFiles(gulp, config);
+      } catch (error) {
+        if (!config.publish.force) {
+          throw error;
+        }
+      }
+
+      await updateVersion(gulp, config, info);
+      await mergeIntoMajorBranch(gulp, config, info);
+      await createTag(gulp, config, info);
+
+      const publishResults = await publishToNpm(gulp, config, info);
+      info.versionCommit = publishResults.versionCommit;
+      info.lastCommit = publishResults.lastCommit;
+      info.numberOfCommits = publishResults.numberOfCommits;
+      info.publisher = publishResults.publisher;
+
+      try {
+        await cleanUp(gulp, config);
+      } catch (error) {}
+
+      try {
+        await printReleaseInfo(gulp, config, info);
+      } catch (error) {}
+
+      resolve();
+    } catch (error) {
+      reject(error);
+    }
+  });
 };

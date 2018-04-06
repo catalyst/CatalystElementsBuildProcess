@@ -67,8 +67,9 @@ Example `package.json` file:
     "clean": "./node_modules/.bin/gulp clean",
     "lint": "./node_modules/.bin/gulp lint",
     "test": "./node_modules/.bin/gulp test",
+    "do-publish": "./node_modules/.bin/gulp lint && ./node_modules/.bin/gulp build && ./node_modules/.bin/gulp test && ./node_modules/.bin/gulp publish",
     "postinstall": "./node_modules/.bin/gulp fix-dependencies",
-    "prepublishOnly": "./node_modules/.bin/gulp lint && ./node_modules/.bin/gulp build && ./node_modules/.bin/gulp test && ./node_modules/.bin/gulp prepublish"
+    "prepublishOnly": "echo \"Error: use the 'do-publish' script to publish.\" && exit 1"
   },
   "devDependencies": {
     "@catalyst-elements/build-process": "*",

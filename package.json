@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "ansi-colors": "^1.1.0",
+    "archiver": "^2.1.1",
     "babel-eslint": "^8.2.2",
     "cheerio": "^1.0.0-rc.2",
     "colorguard": "^1.2.1",
@@ -51,6 +52,7 @@
     "gulp-file": "^0.4.0",
     "gulp-flatmap": "^1.0.2",
     "gulp-git": "^2.5.2",
+    "gulp-github-release": "^1.2.1",
     "gulp-html-extract": "^0.3.0",
     "gulp-htmlmin": "^4.0.0",
     "gulp-if": "^2.0.2",

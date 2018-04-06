@@ -41,7 +41,7 @@ function promptUserForPublishSettings(config, info, labelPrefix) {
     try {
       prompt.start();
 
-      const result = await promptGet({
+      const versionResult = await promptGet({
         properties: {
           version: {
             description: 'Release semantic version',
@@ -49,25 +49,32 @@ function promptUserForPublishSettings(config, info, labelPrefix) {
             pattern: /^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-[0-9a-z-]+(?:\.[0-9a-z-]+)*)?(?:\+[0-9a-z-]+(?:\.[0-9a-z-]+)*)?$/gi,
             message: 'Must be a semantic version e.g. 1.2.3',
             required: true
-          },
+          }
+        }
+      });
+
+      const prereleaseVersion =
+        versionResult.version.search(
+          /^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$/gi
+        ) !== 0;
+
+      const npmResult = await promptGet({
+        properties: {
           npmTag: {
             description: 'npm-dist-tag',
             type: 'string',
             pattern: /^[a-z][a-z0-9-_]*$/gi,
             message: 'Invalid tag',
-            default: info.npmTag,
+            default: prereleaseVersion ? 'beta' : 'latest',
             required: true
           }
         }
       });
 
       const input = {
-        version: result.version,
-        prereleaseVersion:
-          result.version.search(
-            /^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$/gi
-          ) !== 0,
-        npmTag: result.npmTag
+        version: versionResult.version,
+        prereleaseVersion: prereleaseVersion,
+        npmTag: npmResult.npmTag
       };
 
       tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
@@ -795,7 +802,7 @@ module.exports = (gulp, config) => {
         prereleaseVersion: false,
         versionCommit: null,
         lastCommit: null,
-        npmTag: 'latest',
+        npmTag: null,
         gitTag: null,
         publisher: null,
         majorBranch: null,

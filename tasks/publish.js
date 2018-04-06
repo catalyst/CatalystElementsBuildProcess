@@ -23,10 +23,11 @@ const promptGet = util.promisify(prompt.get);
  * Prompt the user for information about how to publish.
  *
  * @param {Object} config - Config settings
+ * @param {Object} info - Publishing info
  * @param {string} [labelPrefix] - A prefix to print before the label
  * @returns {Promise}
  */
-function promptUser(config, labelPrefix) {
+function promptUser(config, info, labelPrefix) {
   const subTaskLabel = 'get publish settings';
 
   return new Promise(async (resolve, reject) => {
@@ -38,8 +39,18 @@ function promptUser(config, labelPrefix) {
       const result = await promptGet({
         properties: {
           version: {
+            description: 'Release semantic version',
+            type: 'string',
             pattern: /^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-[0-9a-z-]+(?:\.[0-9a-z-]+)*)?(?:\+[0-9a-z-]+(?:\.[0-9a-z-]+)*)?$/gi,
             message: 'Must be a semantic version e.g. 1.2.3',
+            required: true
+          },
+          npmTag: {
+            description: 'npm-dist-tag',
+            type: 'string',
+            pattern: /^[a-z][a-z0-9-_]*$/gi,
+            message: 'Invalid tag',
+            default: info.npmTag,
             required: true
           }
         }
@@ -50,7 +61,8 @@ function promptUser(config, labelPrefix) {
         prereleaseVersion:
           result.version.search(
             /^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$/gi
-          ) !== 0
+          ) !== 0,
+        npmTag: result.npmTag
       };
 
       tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
@@ -485,9 +497,10 @@ module.exports = (gulp, config) => {
         publisher: null
       };
 
-      const promptInput = await promptUser(config);
-      info.version = promptInput.version;
-      info.prereleaseVersion = prompt.prereleaseVersion;
+      const userInput = await promptUser(config, info);
+      info.version = userInput.version;
+      info.prereleaseVersion = userInput.prereleaseVersion;
+      info.npmTag = userInput.npmTag;
 
       try {
         await gitChecks(config, info);

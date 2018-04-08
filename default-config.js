@@ -96,8 +96,33 @@ module.exports = {
       license: true,
       readme: true
     },
+    runGitChecks: true,
+    runFileChecks: true,
     masterBranch: 'master',
     prereleaseBranchRegex: /^(?:[1-9][0-9]*)\.0-preview|master$/g,
+    hostedOnGitHub: true,
+    archiveFormats: {
+      tar: {
+        ignore: false,
+        extension: '.tar.gz',
+        options: {
+          gzip: true,
+          gzipOptions: {
+            level: 1
+          }
+        }
+      },
+      zip: {
+        ignore: false,
+        extension: '.zip',
+        options: {
+          zlib: {
+            level: 6
+          }
+        }
+      }
+    },
+    dryrun: false,
     force: false
   },
 

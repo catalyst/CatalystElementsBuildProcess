@@ -8,7 +8,13 @@ buildProcess.setConfig('./package.json', {
     path: '.'
   },
   publish: {
-    force: true
+    checkFiles: {
+      package: true,
+      script: false,
+      module: false,
+      license: true,
+      readme: true
+    }
   }
 });
 

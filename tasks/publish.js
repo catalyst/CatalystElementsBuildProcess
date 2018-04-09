@@ -1180,7 +1180,7 @@ module.exports = (gulp, config) => {
         // Get publishing settings from the user.
         input.publishing = await promptUserForPublishSettings();
         info.version.semantic = input.publishing.symver;
-        info.version.prerelease = input.publishing.prereleaseVersion;
+        info.version.prerelease = input.publishing.isPrerelease;
         info.releaseInfo.npmTag = input.publishing.npmTag;
 
         info.git.tag = `v${info.version.semantic}`;

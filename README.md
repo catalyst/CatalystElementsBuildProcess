@@ -1,5 +1,6 @@
 # Catalyst Elements' Build Process
 
+[![Travis](https://img.shields.io/travis/catalyst/CatalystElementsBuildProcess/master.svg?style=flat-square)](https://travis-ci.org/catalyst/CatalystElementsBuildProcess)
 [![David](https://img.shields.io/david/catalyst/CatalystElementsBuildProcess.svg?style=flat-square)](https://david-dm.org/catalyst/CatalystElementsBuildProcess)
 [![David](https://img.shields.io/david/dev/catalyst/CatalystElementsBuildProcess.svg?style=flat-square)](https://david-dm.org/catalyst/CatalystElementsBuildProcess?type=dev)
 [![npm (scoped)](https://img.shields.io/npm/v/@catalyst-elements/build-process.svg?style=flat-square)](https://www.npmjs.com/package/@catalyst-elements/build-process)

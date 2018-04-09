@@ -1012,7 +1012,7 @@ function createArchivesForGitHubRelease(gulp, config, version, labelPrefix) {
   return new Promise(async (resolve, reject) => {
     try {
       if (config.componenet.name == null) {
-        resolve();
+        resolve([]);
         tasksUtil.tasks.log.info(`skipping ${subTaskLabel}`, labelPrefix);
         return;
       }
@@ -1060,11 +1060,11 @@ function createArchivesForGitHubRelease(gulp, config, version, labelPrefix) {
  * @param {GulpClient.Gulp} gulp - Gulp library
  * @param {Object} config - Config settings
  * @param {Object} settings - Settings for the release
- * @param {string[]} assets - Extra assets to upload
+ * @param {string[]} [assets=[]] - Extra assets to upload
  * @param {string} [labelPrefix] - A prefix to print before the label
  * @returns {Promise}
  */
-function commitGitHubRelease(gulp, config, settings, assets, labelPrefix) {
+function commitGitHubRelease(gulp, config, settings, assets = [], labelPrefix) {
   const subTaskLabel = 'commit';
 
   return new Promise((resolve, reject) => {

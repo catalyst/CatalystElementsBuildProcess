@@ -1128,13 +1128,29 @@ function createGitHubRelease(gulp, config, settings, labelPrefix) {
         settings,
         subTaskLabelPrefix
       );
-      await commitGitHubRelease(
-        gulp,
-        config,
-        settings,
-        archives,
-        subTaskLabelPrefix
-      );
+
+      try {
+        await commitGitHubRelease(
+          gulp,
+          config,
+          settings,
+          archives,
+          subTaskLabelPrefix
+        );
+      } catch (error) {
+        // TODO: Prompt the user if they want to try again.
+        // TODO: Prompt for new parameters.
+
+        // Display the error message.
+        // console.error(
+        //   `Failed to commit GitHub release.\nReturned error message: ${
+        //     error.message
+        //   }`
+        // );
+
+        // TODO: Replace with user abort error (once prompts above are working).
+        throw error;
+      }
 
       resolve();
       tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
@@ -1285,6 +1301,8 @@ module.exports = (gulp, config) => {
     } catch (error) {
       // Resolve regardless of any errors caught here.
       resolve();
+
+      console.error(`Something when wrong: ${error.message}`);
     }
   });
 };

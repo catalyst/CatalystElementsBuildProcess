@@ -28,16 +28,11 @@ const promptGet = util.promisify(prompt.get);
 /**
  * Prompt the user for information about how to publish.
  *
- * @param {string} [labelPrefix] - A prefix to print before the label
  * @returns {Promise}
  */
-function promptUserForPublishSettings(labelPrefix) {
-  const subTaskLabel = 'prompt: publish settings';
-
+function promptUserForPublishSettings() {
   return new Promise(async (resolve, reject) => {
     try {
-      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
-
       prompt.start();
 
       // Get version.
@@ -55,7 +50,7 @@ function promptUserForPublishSettings(labelPrefix) {
 
       // Prerelease version?
       const isPrerelease =
-        promptSemVer.version.search(
+        promptSemVer.symver.search(
           /^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$/gi
         ) !== 0;
 
@@ -79,10 +74,8 @@ function promptUserForPublishSettings(labelPrefix) {
         isPrerelease: isPrerelease,
         npmTag: promptNpm.tag
       });
-      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
     } catch (error) {
       reject(error);
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -90,16 +83,11 @@ function promptUserForPublishSettings(labelPrefix) {
 /**
  * Prompt the user if they want to push the changes to git.
  *
- * @param {string} [labelPrefix] - A prefix to print before the label
  * @returns {Promise}
  */
-function promptUserPushToGit(labelPrefix) {
-  const subTaskLabel = 'prompt: push to git';
-
+function promptUserPushToGit() {
   return new Promise(async (resolve, reject) => {
     try {
-      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
-
       prompt.start();
 
       const promptPush = await promptGet({
@@ -114,10 +102,8 @@ function promptUserPushToGit(labelPrefix) {
       });
 
       resolve(promptPush.push);
-      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
     } catch (error) {
       reject(error);
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -128,21 +114,11 @@ function promptUserPushToGit(labelPrefix) {
  * @param {string} tag - The tag to release
  * @param {boolean} prerelease - Prerelease?
  * @param {Object} packageJson - The package.json info
- * @param {string} [labelPrefix] - A prefix to print before the label
  * @returns {Promise}
  */
-function promptUserGitHubReleaseSettings(
-  tag,
-  prerelease,
-  packageJson,
-  labelPrefix
-) {
-  const subTaskLabel = 'prompt: GitHub release';
-
+function promptUserGitHubReleaseSettings(tag, prerelease, packageJson) {
   return new Promise(async (resolve, reject) => {
     try {
-      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
-
       prompt.start();
 
       const input = {
@@ -204,10 +180,8 @@ function promptUserGitHubReleaseSettings(
       }
 
       resolve(input);
-      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
     } catch (error) {
       reject(error);
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -215,16 +189,11 @@ function promptUserGitHubReleaseSettings(
 /**
  * Prompt the user to confirm the publish.
  *
- * @param {string} [labelPrefix] - A prefix to print before the label
  * @returns {Promise}
  */
-function promptUserConfirmPublish(labelPrefix) {
-  const subTaskLabel = 'prompt: confirm publish';
-
+function promptUserConfirmPublish() {
   return new Promise(async (resolve, reject) => {
     try {
-      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
-
       prompt.start();
 
       const promptConfirmPublish = await promptGet({
@@ -239,10 +208,8 @@ function promptUserConfirmPublish(labelPrefix) {
       });
 
       resolve(promptConfirmPublish.confirmPublish);
-      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
     } catch (error) {
       reject(error);
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -356,7 +323,7 @@ function gitCheckSynced(config, labelPrefix) {
  * @returns {Promise}
  */
 function gitChecks(config, branch, prerelease, labelPrefix) {
-  const subTaskLabel = 'is git ok';
+  const subTaskLabel = 'git checks';
 
   return new Promise(async (resolve, reject) => {
     try {
@@ -594,11 +561,11 @@ function fileCheckReadme(gulp, config, distFiles, labelPrefix) {
  * @returns {Promise}
  */
 function fileChecks(gulp, config, labelPrefix) {
-  const subTaskLabel = 'check files';
+  const subTaskLabel = 'file checks';
 
   return new Promise(async (resolve, reject) => {
     try {
-      if (config.publish.runFileChecks) {
+      if (!config.publish.runFileChecks) {
         resolve();
         tasksUtil.tasks.log.info(`skipping ${subTaskLabel}`, labelPrefix);
         return;
@@ -649,6 +616,16 @@ function updateVersion(gulp, config, newVersion, labelPrefix) {
 
   return new Promise((resolve, reject) => {
     try {
+      // Are we doing a dryrun?
+      if (config.publish.dryrun) {
+        resolve();
+        tasksUtil.tasks.log.info(
+          `skipping ${subTaskLabel}${colors.magenta(' - dry run')}`,
+          labelPrefix
+        );
+        return;
+      }
+
       tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
 
       gulp
@@ -697,6 +674,16 @@ function createTag(gulp, config, tag, labelPrefix) {
 
   return new Promise(async (resolve, reject) => {
     try {
+      // Are we doing a dryrun?
+      if (config.publish.dryrun) {
+        resolve();
+        tasksUtil.tasks.log.info(
+          `skipping ${subTaskLabel}${colors.magenta(' - dry run')}`,
+          labelPrefix
+        );
+        return;
+      }
+
       tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
 
       await gitTag(tag, null, null);
@@ -737,9 +724,19 @@ function mergeIntoMajorBranch(
         return;
       }
 
+      // Are we doing a dryrun?
+      if (config.publish.dryrun) {
+        resolve();
+        tasksUtil.tasks.log.info(
+          `skipping ${subTaskLabel}${colors.magenta(' - dry run')}`,
+          labelPrefix
+        );
+        return;
+      }
+
       tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
 
-      await gitCheckout(majorBranch.majorBranch, { args: '-b' });
+      await gitCheckout(majorBranch, { args: '-b' });
       await gitMerge(fromBranch);
 
       resolve();
@@ -765,37 +762,44 @@ function publishToNpm(gulp, config, npmTag, labelPrefix) {
 
   return new Promise(async (resolve, reject) => {
     try {
+      // Are we doing a dryrun?
+      if (config.publish.dryrun) {
+        resolve({
+          versionCommit: '?????',
+          lastCommit: (await exec('git log -1 --oneline')).replace(/\n$/, ''),
+          publisher: (await exec('npm whoami --silent')).replace(/\n$/, '')
+        });
+        tasksUtil.tasks.log.info(
+          `skipping ${subTaskLabel}${colors.magenta(' - dry run')}`,
+          labelPrefix
+        );
+        return;
+      }
+
       const subTaskLabelPrefix = tasksUtil.tasks.log.starting(
         subTaskLabel,
         labelPrefix
       );
 
-      // Are we doing a dryrun?
-      if (config.publish.dryrun) {
-        tasksUtil.tasks.log.info(`skipping npm publish - dry run`, labelPrefix);
-      } else {
-        const confirm = await promptUserConfirmPublish(subTaskLabelPrefix);
+      const confirm = await promptUserConfirmPublish(subTaskLabelPrefix);
 
-        if (confirm) {
-          await exec(
-            `npm publish ${path.normalize(
-              `./${config.dist.path}`
-            )} --tag ${npmTag}`
-          );
-        } else {
-          throw new Error('User aborted.');
-        }
+      if (confirm) {
+        await exec(
+          `npm publish ${path.normalize(
+            `./${config.dist.path}`
+          )} --tag ${npmTag}`
+        );
+      } else {
+        throw new Error('User aborted.');
       }
 
-      const data = {
+      resolve({
         versionCommit: (await exec('git log -1 --oneline')).replace(/\n$/, ''),
         lastCommit: (await exec(
           'git log -2 --oneline --reverse | head -1'
         )).replace(/\n$/, ''),
         publisher: (await exec('npm whoami --silent')).replace(/\n$/, '')
-      };
-
-      resolve(data);
+      });
       tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
     } catch (error) {
       reject(error);
@@ -880,6 +884,12 @@ function printNpmReleaseInfo(gulp, config, releaseInfo, labelPrefix) {
     try {
       tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
 
+      // Are we doing a dryrun?
+      if (config.publish.dryrun) {
+        // eslint-disable-next-line no-console
+        console.info(`  ${colors.magenta('=== Dry Run ===')}`);
+      }
+
       // eslint-disable-next-line no-console
       console.info(`\
   ${colors.yellow('Version')}:               ${releaseInfo.version}
@@ -912,6 +922,16 @@ function pushToGit(gulp, config, currentBranch, majorBranch, labelPrefix) {
 
   return new Promise(async (resolve, reject) => {
     try {
+      // Are we doing a dryrun?
+      if (config.publish.dryrun) {
+        resolve();
+        tasksUtil.tasks.log.info(
+          `skipping ${subTaskLabel}${colors.magenta(' - dry run')}`,
+          labelPrefix
+        );
+        return;
+      }
+
       tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
 
       const branches = [currentBranch];
@@ -919,13 +939,8 @@ function pushToGit(gulp, config, currentBranch, majorBranch, labelPrefix) {
         branches.push(majorBranch);
       }
 
-      // Are we doing a dryrun?
-      if (config.publish.dryrun) {
-        tasksUtil.tasks.log.info(`skipping git push - dry run`, labelPrefix);
-      } else {
-        await gitPush('origin', branches);
-        await gitPush('origin', null, { args: '--tags' });
-      }
+      await gitPush('origin', branches);
+      await gitPush('origin', null, { args: '--tags' });
 
       resolve();
       tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
@@ -1056,34 +1071,33 @@ function commitGitHubRelease(gulp, config, settings, assets, labelPrefix) {
 
   return new Promise((resolve, reject) => {
     try {
+      // Are we doing a dryrun?
+      if (config.publish.dryrun) {
+        resolve();
+        tasksUtil.tasks.log.info(
+          `skipping ${subTaskLabel}${colors.magenta(' - dry run')}`,
+          labelPrefix
+        );
+        return;
+      }
+
       tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
 
       let rejected = false;
 
-      // Are we doing a dryrun?
-      if (config.publish.dryrun) {
-        tasksUtil.tasks.log.info(
-          `skipping GitHub release - dry run`,
-          labelPrefix
-        );
-
-        resolve();
-        tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
-      } else {
-        gulp
-          .src(assets, { allowEmpty: true })
-          .pipe(release(settings))
-          .on('end', () => {
-            if (!rejected) {
-              resolve();
-              tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
-            }
-          })
-          .on('error', error => {
-            rejected = true;
-            throw error;
-          });
-      }
+      gulp
+        .src(assets, { allowEmpty: true })
+        .pipe(release(settings))
+        .on('end', () => {
+          if (!rejected) {
+            resolve();
+            tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
+          }
+        })
+        .on('error', error => {
+          rejected = true;
+          throw error;
+        });
     } catch (error) {
       reject(error);
       tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
@@ -1163,7 +1177,7 @@ module.exports = (gulp, config) => {
       try {
         // Get publishing settings from the user.
         input.publishing = await promptUserForPublishSettings();
-        info.version.semantic = input.publishing.version;
+        info.version.semantic = input.publishing.symver;
         info.version.prerelease = input.publishing.prereleaseVersion;
         info.releaseInfo.npmTag = input.publishing.npmTag;
 
@@ -1221,55 +1235,57 @@ module.exports = (gulp, config) => {
         info.releaseInfo.versionCommit = publishResults.versionCommit;
         info.releaseInfo.lastCommit = publishResults.lastCommit;
         info.releaseInfo.publisher = publishResults.publisher;
-
-        // If the release to npm was successful, this promise is considered successful
-        // regardless of any error that may occur from now on.
-        resolve();
       } catch (error) {
         reject(error);
         return;
       } finally {
-        // Clean up, ignore any errors.
-        try {
-          await cleanUp(gulp, config, info.currentBranch);
-        } catch (error) {}
+        // Clean up.
+        await cleanUp(gulp, config, info.git.currentBranch);
       }
 
       // Print out information about the npm release. Ignore any errors.
       try {
         await printNpmReleaseInfo(gulp, config, {
-          version: info.version.symver,
+          version: info.version.semantic,
           ...info.releaseInfo
         });
       } catch (error) {}
 
-      // Ask the user if they want to push the changes to git.
-      input.pushToGit = await promptUserPushToGit();
+      // Are we doing an actual run?
+      if (!config.publish.dryrun) {
+        // Ask the user if they want to push the changes to git.
+        input.pushToGit = await promptUserPushToGit();
 
-      // User want to push changes.
-      if (input.pushToGit) {
-        // Push changes to GitHub.
-        await pushToGit(gulp, config);
+        // User want to push changes.
+        if (input.pushToGit) {
+          // Push changes to GitHub.
+          await pushToGit(gulp, config);
 
-        // Only prompt about a GitHub release if the hosted on GitHub.
-        if (config.publish.hostedOnGitHub) {
-          // Ask the user if they want to do a GitHub release.
-          input.gitHubRelease = await promptUserGitHubReleaseSettings(
-            info.git.tag,
-            info.version.prerelease,
-            config.package
-          );
-
-          // User wants to create a release.
-          if (input.gitHubRelease.create) {
-            await createGitHubRelease(
-              gulp,
-              config,
-              input.gitHubRelease.settings
+          // Only prompt about a GitHub release if the hosted on GitHub.
+          if (config.publish.hostedOnGitHub) {
+            // Ask the user if they want to do a GitHub release.
+            input.gitHubRelease = await promptUserGitHubReleaseSettings(
+              info.git.tag,
+              info.version.prerelease,
+              config.package
             );
+
+            // User wants to create a release.
+            if (input.gitHubRelease.create) {
+              await createGitHubRelease(
+                gulp,
+                config,
+                input.gitHubRelease.settings
+              );
+            }
           }
         }
       }
-    } catch (error) {}
+
+      resolve();
+    } catch (error) {
+      // Resolve regardless of any errors caught here.
+      resolve();
+    }
   });
 };

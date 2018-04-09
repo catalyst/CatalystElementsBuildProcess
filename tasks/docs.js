@@ -543,39 +543,53 @@ function getDemos(gulp, config, labelPrefix) {
         `./${config.componenet.nodeModulesPath}/catalyst-*/package.json`
       );
 
-      await cloneRepositories(files, config, subTaskLabelPrefix);
+      if (files.length > 0) {
+        await cloneRepositories(files, config, subTaskLabelPrefix);
 
-      for (const file of files) {
-        const fileDirPath = path.dirname(file);
-        const name =
-          config.componenet.scope === null
-            ? fileDirPath.substring(fileDirPath.lastIndexOf('/') + 1)
-            : fileDirPath.substring(
-                fileDirPath.lastIndexOf(config.componenet.scope)
-              );
-        const dir = `./${config.temp.path}/${tempSubpath}/demo-clones/${name}`;
+        const promises = [];
 
-        const base = path.normalize(
-          config.componenet.scope === null ? `${dir}/..` : `${dir}/../..`
-        );
+        for (const file of files) {
+          const fileDirPath = path.dirname(file);
+          const name =
+            config.componenet.scope === null
+              ? fileDirPath.substring(fileDirPath.lastIndexOf('/') + 1)
+              : fileDirPath.substring(
+                  fileDirPath.lastIndexOf(config.componenet.scope)
+                );
+          const dir = `./${
+            config.temp.path
+          }/${tempSubpath}/demo-clones/${name}`;
 
-        gulp
-          .src(`${dir}/${config.demos.path}/**`, { base: base })
-          .pipe(
-            gulp.dest(
-              `./${config.temp.path}/${tempSubpath}/${
-                config.docs.nodeModulesPath
-              }`
-            )
-          )
-          .on('finish', () => {
-            resolve();
-            tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
-          })
-          .on('error', error => {
-            throw error;
-          });
+          const base = path.normalize(
+            config.componenet.scope === null ? `${dir}/..` : `${dir}/../..`
+          );
+
+          promises.push(
+            new Promise((resolve, reject) => {
+              gulp
+                .src(`${dir}/${config.demos.path}/**`, { base: base })
+                .pipe(
+                  gulp.dest(
+                    `./${config.temp.path}/${tempSubpath}/${
+                      config.docs.nodeModulesPath
+                    }`
+                  )
+                )
+                .on('finish', () => {
+                  resolve();
+                })
+                .on('error', error => {
+                  reject(error);
+                });
+            })
+          );
+        }
+
+        await tasksUtil.waitForAllPromises(promises);
       }
+
+      resolve();
+      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
     } catch (error) {
       allOK = false;
       reject(error);

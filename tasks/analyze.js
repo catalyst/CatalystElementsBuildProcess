@@ -134,26 +134,44 @@ function generateAnalysis(gulp, config, labelPrefix) {
       });
       const analysis = await analyzer.analyze(files);
 
-      const analysisFileContents = JSON.stringify(
-        fixAnalysis(
-          polymerAnalyzer.generateAnalysis(analysis, analyzer.urlResolver),
-          config
-        ),
-        null,
-        2
+      const fixedAnalysis = fixAnalysis(
+        polymerAnalyzer.generateAnalysis(analysis, analyzer.urlResolver),
+        config
       );
 
-      file(config.docs.analysisFilename, analysisFileContents, {
-        src: true
-      })
-        .pipe(gulp.dest('./'))
-        .on('finish', () => {
-          resolve();
-          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
+      const analysisFileContents = JSON.stringify(fixedAnalysis, null, 2);
+      const minifiedAnalysisFileContents = JSON.stringify(fixedAnalysis);
+
+      await tasksUtil.waitForAllPromises([
+        new Promise((resolve, reject) => {
+          file(config.docs.analysisFilename, analysisFileContents, {
+            src: true
+          })
+            .pipe(gulp.dest('./'))
+            .on('finish', () => {
+              resolve();
+            })
+            .on('error', error => {
+              reject(error);
+            });
+        }),
+
+        new Promise((resolve, reject) => {
+          file(config.docs.analysisFilename, minifiedAnalysisFileContents, {
+            src: true
+          })
+            .pipe(gulp.dest(`./${config.docs.path}`))
+            .on('finish', () => {
+              resolve();
+            })
+            .on('error', error => {
+              reject(error);
+            });
         })
-        .on('error', error => {
-          throw error;
-        });
+      ]);
+
+      resolve();
+      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
     } catch (error) {
       reject(error);
       tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);

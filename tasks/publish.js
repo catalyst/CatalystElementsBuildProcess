@@ -1111,11 +1111,10 @@ function commitGitHubRelease(gulp, config, settings, assets, labelPrefix) {
  * @param {GulpClient.Gulp} gulp - Gulp library
  * @param {Object} config - Config settings
  * @param {Object} settings - Settings for the release
- * @param {string[]} assets - Extra assets to upload (archives will automatically be included)
  * @param {string} [labelPrefix] - A prefix to print before the label
  * @returns {Promise}
  */
-function createGitHubRelease(gulp, config, settings, assets, labelPrefix) {
+function createGitHubRelease(gulp, config, settings, labelPrefix) {
   const subTaskLabel = 'GitHub release';
 
   return new Promise(async (resolve, reject) => {
@@ -1135,7 +1134,7 @@ function createGitHubRelease(gulp, config, settings, assets, labelPrefix) {
         gulp,
         config,
         settings,
-        [...archives, ...assets],
+        archives,
         subTaskLabelPrefix
       );
 

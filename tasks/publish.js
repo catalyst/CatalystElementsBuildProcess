@@ -171,12 +171,10 @@ function promptUserGitHubReleaseSettings(tag, prerelease, packageJson) {
           }
         });
 
-        input.settings = {
-          token: releaseSettingsResult.token,
-          name: releaseSettingsResult.name,
-          notes: releaseSettingsResult.notes,
-          draft: releaseSettingsResult.draft
-        };
+        input.settings.token = releaseSettingsResult.token;
+        input.settings.name = releaseSettingsResult.name;
+        input.settings.notes = releaseSettingsResult.notes;
+        input.settings.draft = releaseSettingsResult.draft;
       }
 
       resolve(input);

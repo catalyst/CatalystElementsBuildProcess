@@ -2,7 +2,12 @@
 const tasksUtil = require('./util');
 
 // Libraries.
-const fs = require('graceful-fs');
+const fs = require('fs');
+const util = require('util');
+
+// Promisified functions.
+const fsMkdir = util.promisify(fs.mkdir);
+const fsSymlink = util.promisify(fs.symlink);
 
 /**
  * Fix prismjs.
@@ -14,26 +19,29 @@ const fs = require('graceful-fs');
 function fixPrismjs(config, labelPrefix) {
   const subTaskLabel = `prismjs`;
 
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     try {
       const good = fs.existsSync(`./${config.nodeModulesPath}/prismjs`);
       const bad = fs.existsSync(`./${config.nodeModulesPath}/prism`);
 
-      if (good && !bad) {
-        tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
-        fs.symlinkSync('./prismjs', `./${config.nodeModulesPath}/prism`, 'dir');
-        tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
-      } else {
+      if (!good || bad) {
+        resolve();
         tasksUtil.tasks.log.info(
           `skipping "${subTaskLabel}" - seems ok.`,
           labelPrefix
         );
+        return;
       }
 
+      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+
+      await fsSymlink('./prismjs', `./${config.nodeModulesPath}/prism`, 'dir');
+
       resolve();
+      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
     } catch (error) {
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -48,31 +56,35 @@ function fixPrismjs(config, labelPrefix) {
 function fixTestFixture(config, labelPrefix) {
   const subTaskLabel = `test-fixture`;
 
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     try {
       const good = fs.existsSync(
         `./${config.nodeModulesPath}/@polymer/test-fixture`
       );
       const bad = fs.existsSync(`./${config.nodeModulesPath}/test-fixture`);
 
-      if (good && !bad) {
-        tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
-        fs.symlinkSync(
-          './@polymer/test-fixture',
-          `./${config.nodeModulesPath}/test-fixture`,
-          'dir'
-        );
-        tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
-      } else {
+      if (!good || bad) {
+        resolve();
         tasksUtil.tasks.log.info(
           `skipping "${subTaskLabel}" - seems ok.`,
           labelPrefix
         );
+        return;
       }
+
+      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+
+      await fsSymlink(
+        './@polymer/test-fixture',
+        `./${config.nodeModulesPath}/test-fixture`,
+        'dir'
+      );
+
       resolve();
+      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
     } catch (error) {
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -87,7 +99,7 @@ function fixTestFixture(config, labelPrefix) {
 function fixAsync(config, labelPrefix) {
   const subTaskLabel = `async`;
 
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     try {
       const good = fs.existsSync(
         `./${config.nodeModulesPath}/async/dist/async.js`
@@ -96,27 +108,32 @@ function fixAsync(config, labelPrefix) {
         `./${config.nodeModulesPath}/async/lib/async.js`
       );
 
-      if (good && !bad) {
-        tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
-        if (!fs.existsSync(`./${config.nodeModulesPath}/async/lib/`)) {
-          fs.mkdirSync(`./${config.nodeModulesPath}/async/lib/`);
-        }
-        fs.symlinkSync(
-          '../dist/async.js',
-          `./${config.nodeModulesPath}/async/lib/async.js`,
-          'file'
-        );
-        tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
-      } else {
+      if (!good || bad) {
+        resolve();
         tasksUtil.tasks.log.info(
           `skipping "${subTaskLabel}" - seems ok.`,
           labelPrefix
         );
+        return;
       }
+
+      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+
+      if (!fs.existsSync(`./${config.nodeModulesPath}/async/lib/`)) {
+        await fsMkdir(`./${config.nodeModulesPath}/async/lib/`, 0o777);
+      }
+
+      await fsSymlink(
+        '../dist/async.js',
+        `./${config.nodeModulesPath}/async/lib/async.js`,
+        'file'
+      );
+
       resolve();
+      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
     } catch (error) {
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -131,34 +148,39 @@ function fixAsync(config, labelPrefix) {
 function fixSinon(config, labelPrefix) {
   const subTaskLabel = `sinon`;
 
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     try {
       const good = fs.existsSync(
         `./${config.nodeModulesPath}/sinon/pkg/sinon.js`
       );
       const bad = fs.existsSync(`./${config.nodeModulesPath}/sinonjs/sinon.js`);
 
-      if (good && !bad) {
-        tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
-        if (!fs.existsSync(`./${config.nodeModulesPath}/sinonjs`)) {
-          fs.mkdirSync(`./${config.nodeModulesPath}/sinonjs`);
-        }
-        fs.symlinkSync(
-          '../sinon/pkg/sinon.js',
-          `./${config.nodeModulesPath}/sinonjs/sinon.js`,
-          'file'
-        );
-        tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
-      } else {
+      if (!good || bad) {
+        resolve();
         tasksUtil.tasks.log.info(
           `skipping "${subTaskLabel}" - seems ok.`,
           labelPrefix
         );
+        return;
       }
+
+      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+
+      if (!fs.existsSync(`./${config.nodeModulesPath}/sinonjs`)) {
+        await fsMkdir(`./${config.nodeModulesPath}/sinonjs`, 0o777);
+      }
+
+      await fsSymlink(
+        '../sinon/pkg/sinon.js',
+        `./${config.nodeModulesPath}/sinonjs/sinon.js`,
+        'file'
+      );
+
       resolve();
+      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
     } catch (error) {
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -167,12 +189,13 @@ function fixSinon(config, labelPrefix) {
 module.exports = config => {
   return new Promise(async (resolve, reject) => {
     try {
-      await Promise.all([
+      await tasksUtil.waitForAllPromises([
         fixPrismjs(config),
         fixTestFixture(config),
         fixAsync(config),
         fixSinon(config)
       ]);
+
       resolve();
     } catch (error) {
       reject(error);

@@ -13,9 +13,12 @@ const postcss = require('gulp-postcss');
 const replace = require('gulp-replace');
 const rename = require('gulp-rename');
 const sass = require('gulp-sass');
+const util = require('util');
 const webpack = require('webpack');
-const WebpackClosureCompilerPlugin = require('webpack-closure-compiler');
 const webpackStream = require('webpack-stream');
+
+// Promisified functions.
+const fsReadFile = util.promisify(fs.readFile);
 
 // The temp path.
 const tempSubpath = 'build';
@@ -61,31 +64,31 @@ function getStaticImportLocalNames(javascript) {
 function checkSourceFiles(gulp, config, labelPrefix) {
   const subTaskLabel = 'check source files';
 
-  return new Promise((resolve, reject) => {
-    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+  return new Promise(async (resolve, reject) => {
     try {
-      const entrypoint = fs.readFileSync(
+      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+
+      const entrypoint = await fsReadFile(
         `./${config.src.path}/${config.src.entrypoint}`,
-        'utf-8'
+        'utf8'
       );
       const parsedCode = esprima.parseModule(entrypoint);
 
       for (const node of parsedCode.body) {
         switch (node.type) {
           case 'ExportDefaultDeclaration':
-            reject(new Error('Do not use default exports.'));
-            return;
+            throw new Error('Do not use default exports.');
 
           // Different type? Do nothing.
           default:
         }
       }
 
-      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
       resolve();
+      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
     } catch (error) {
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -102,9 +105,9 @@ function prepareEntrypoint(gulp, config, labelPrefix) {
   const subTaskLabel = 'prepare entrypoint';
 
   return new Promise((resolve, reject) => {
-    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
-
     try {
+      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+
       gulp
         .src(`./${config.src.path}/${config.src.entrypoint}`)
         .pipe(
@@ -141,16 +144,15 @@ function prepareEntrypoint(gulp, config, labelPrefix) {
         )
         .pipe(gulp.dest(`./${config.temp.path}/${tempSubpath}`))
         .on('finish', () => {
-          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
           resolve();
+          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         })
         .on('error', error => {
-          tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
-          reject(error);
+          throw error;
         });
     } catch (error) {
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -167,18 +169,18 @@ function exportStaticImports(gulp, config, labelPrefix) {
   const subTaskLabel = 'export static imports';
 
   return new Promise((resolve, reject) => {
-    if (!config.build.script.exportAllStaticImports) {
-      tasksUtil.tasks.log.info(
-        `skipping ${subTaskLabel} - turned off in config.`,
-        labelPrefix
-      );
-      resolve();
-      return;
-    }
-
-    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
-
     try {
+      if (!config.build.script.exportAllStaticImports) {
+        resolve();
+        tasksUtil.tasks.log.info(
+          `skipping ${subTaskLabel} - turned off in config.`,
+          labelPrefix
+        );
+        return;
+      }
+
+      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+
       gulp
         .src(
           `./${
@@ -200,16 +202,16 @@ function exportStaticImports(gulp, config, labelPrefix) {
         )
         .pipe(gulp.dest(`./${config.temp.path}/${tempSubpath}`))
         .on('finish', () => {
-          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
           resolve();
+          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         })
         .on('error', error => {
           tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
-          reject(error);
+          throw error;
         });
     } catch (error) {
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -226,20 +228,20 @@ function preprocessSourceFiles(gulp, config, labelPrefix) {
   const subTaskLabel = 'preprocess source files';
 
   return new Promise(async (resolve, reject) => {
-    const subTaskLabelPrefix = tasksUtil.tasks.log.starting(
-      subTaskLabel,
-      labelPrefix
-    );
-
     try {
+      const subTaskLabelPrefix = tasksUtil.tasks.log.starting(
+        subTaskLabel,
+        labelPrefix
+      );
+
       await prepareEntrypoint(gulp, config, subTaskLabelPrefix);
       await exportStaticImports(gulp, config, subTaskLabelPrefix);
 
-      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
       resolve();
+      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
     } catch (error) {
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -256,25 +258,24 @@ function minifyHTML(gulp, config, labelPrefix) {
   const subTaskLabel = 'minify HTML';
 
   return new Promise((resolve, reject) => {
-    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
-
     try {
+      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+
       gulp
         .src(`./${config.src.path}/**/[^_]*.html`)
         .pipe(htmlmin(config.build.htmlMinifier))
         .pipe(replace('\n', ''))
         .pipe(gulp.dest(`./${config.temp.path}/${tempSubpath}`))
         .on('finish', () => {
-          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
           resolve();
+          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         })
         .on('error', error => {
-          tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
-          reject(error);
+          throw error;
         });
     } catch (error) {
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -291,9 +292,9 @@ function compileSASS(gulp, config, labelPrefix) {
   const subTaskLabel = 'compile SASS';
 
   return new Promise((resolve, reject) => {
-    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
-
     try {
+      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+
       gulp
         .src(`./${config.src.path}/**/[^_]*.scss`)
         .pipe(sass({ outputStyle: 'expanded' }).on('error', sass.logError))
@@ -303,16 +304,16 @@ function compileSASS(gulp, config, labelPrefix) {
         .pipe(replace('\n', ''))
         .pipe(gulp.dest(`./${config.temp.path}/${tempSubpath}`))
         .on('finish', () => {
-          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
           resolve();
+          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         })
         .on('error', error => {
           tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
-          reject(error);
+          throw error;
         });
     } catch (error) {
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -329,9 +330,9 @@ function initializeModuleFile(gulp, config, labelPrefix) {
   const subTaskLabel = 'initialize file';
 
   return new Promise((resolve, reject) => {
-    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
-
     try {
+      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+
       gulp
         .src(
           `./${
@@ -378,12 +379,11 @@ function initializeModuleFile(gulp, config, labelPrefix) {
         )
         .pipe(gulp.dest(`./${config.temp.path}/${tempSubpath}`))
         .on('finish', () => {
-          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
           resolve();
+          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         })
         .on('error', error => {
-          tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
-          reject(error);
+          throw error;
         });
     } catch (error) {
       tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
@@ -404,9 +404,9 @@ function initializeScriptFile(gulp, config, labelPrefix) {
   const subTaskLabel = 'initialize file';
 
   return new Promise((resolve, reject) => {
-    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
-
     try {
+      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+
       gulp
         .src(
           `./${
@@ -590,18 +590,101 @@ function initializeScriptFile(gulp, config, labelPrefix) {
         )
         .pipe(gulp.dest(`./${config.temp.path}/${tempSubpath}`))
         .on('finish', () => {
-          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
           resolve();
+          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         })
         .on('error', error => {
-          tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
-          reject(error);
+          throw error;
         });
     } catch (error) {
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
     }
   });
+}
+
+/**
+ * Pipe the task to inject the template html into the given stream.
+ *
+ * @param {GulpClient.Gulp} gulp - Gulp library
+ * @param {Object} config - Config settings
+ * @param {Node.Stream} stream - The stream
+ * @param {string} [labelPrefix] - A prefix to print before the label
+ */
+function injectTemplateHTML(gulp, config, stream, labelPrefix) {
+  const subTaskLabel = 'html';
+
+  if (config.src.template == null || config.src.template.html == null) {
+    tasksUtil.tasks.log.info(
+      `skipping ${subTaskLabel} - no html to inject.`,
+      labelPrefix
+    );
+  } else {
+    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+
+    stream
+      .pipe(
+        inject(
+          gulp.src(
+            `./${config.temp.path}/${tempSubpath}/${config.src.template.html}`
+          ),
+          {
+            starttag: '[[inject:template]]',
+            endtag: '[[endinject]]',
+            removeTags: true,
+            transform: tasksUtil.transforms.getFileContents
+          }
+        )
+      )
+      .on('finish', () => {
+        tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
+      })
+      .on('error', error => {
+        throw error;
+      });
+  }
+}
+
+/**
+ * Pipe the task to inject the template css into the given stream.
+ *
+ * @param {GulpClient.Gulp} gulp - Gulp library
+ * @param {Object} config - Config settings
+ * @param {Node.Stream} stream - The stream
+ * @param {string} [labelPrefix] - A prefix to print before the label
+ */
+function injectTemplateCSS(gulp, config, stream, labelPrefix) {
+  const subTaskLabel = 'css';
+
+  if (config.src.template == null || config.src.template.css == null) {
+    tasksUtil.tasks.log.info(
+      `skipping ${subTaskLabel} - no css to inject.`,
+      labelPrefix
+    );
+  } else {
+    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+
+    stream
+      .pipe(
+        inject(
+          gulp.src(
+            `./${config.temp.path}/${tempSubpath}/${config.src.template.css}`
+          ),
+          {
+            starttag: '[[inject:style]]',
+            endtag: '[[endinject]]',
+            removeTags: true,
+            transform: tasksUtil.transforms.getFileContents
+          }
+        )
+      )
+      .on('finish', () => {
+        tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
+      })
+      .on('error', error => {
+        throw error;
+      });
+  }
 }
 
 /**
@@ -618,12 +701,12 @@ function injectTemplate(gulp, config, options = {}, labelPrefix) {
   const subTaskLabel = 'inject template';
 
   return new Promise((resolve, reject) => {
-    const subTaskLabelPrefix = tasksUtil.tasks.log.starting(
-      subTaskLabel,
-      labelPrefix
-    );
-
     try {
+      const subTaskLabelPrefix = tasksUtil.tasks.log.starting(
+        subTaskLabel,
+        labelPrefix
+      );
+
       const stream = (() => {
         switch (options.type) {
           case 'module':
@@ -639,106 +722,25 @@ function injectTemplate(gulp, config, options = {}, labelPrefix) {
               }`
             );
           default:
-            tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
-            reject(new Error('Invalid type.'));
-            return null;
+            throw new Error('Invalid type.');
         }
       })();
 
-      if (stream == null) {
-        return;
-      }
-
-      const innerTaskLabelHTML = 'html';
-      const innerTaskLabelCSS = 'css';
-
-      // Inject the template html.
-      if (config.src.template == null || config.src.template.html == null) {
-        tasksUtil.tasks.log.info(
-          `skipping ${innerTaskLabelHTML} - no html to inject.`,
-          subTaskLabelPrefix
-        );
-      } else {
-        tasksUtil.tasks.log.starting(innerTaskLabelHTML, subTaskLabelPrefix);
-
-        stream
-          .pipe(
-            inject(
-              gulp.src(
-                `./${config.temp.path}/${tempSubpath}/${
-                  config.src.template.html
-                }`
-              ),
-              {
-                starttag: '[[inject:template]]',
-                endtag: '[[endinject]]',
-                removeTags: true,
-                transform: tasksUtil.transforms.getFileContents
-              }
-            )
-          )
-          .on('finish', () => {
-            tasksUtil.tasks.log.successful(
-              innerTaskLabelHTML,
-              subTaskLabelPrefix
-            );
-          })
-          .on('error', error => {
-            tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
-            reject(error);
-          });
-      }
-
-      // Inject the style css.
-      if (config.src.template == null || config.src.template.css == null) {
-        tasksUtil.tasks.log.info(
-          `skipping ${innerTaskLabelCSS} - no css to inject.`,
-          subTaskLabelPrefix
-        );
-      } else {
-        tasksUtil.tasks.log.starting(innerTaskLabelCSS, subTaskLabelPrefix);
-
-        stream
-          .pipe(
-            inject(
-              gulp.src(
-                `./${config.temp.path}/${tempSubpath}/${
-                  config.src.template.css
-                }`
-              ),
-              {
-                starttag: '[[inject:style]]',
-                endtag: '[[endinject]]',
-                removeTags: true,
-                transform: tasksUtil.transforms.getFileContents
-              }
-            )
-          )
-          .on('finish', () => {
-            tasksUtil.tasks.log.successful(
-              innerTaskLabelCSS,
-              subTaskLabelPrefix
-            );
-          })
-          .on('error', error => {
-            tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
-            reject(error);
-          });
-      }
+      injectTemplateHTML(gulp, config, stream, subTaskLabelPrefix);
+      injectTemplateCSS(gulp, config, stream, subTaskLabelPrefix);
 
       stream
         .pipe(gulp.dest(`./${config.temp.path}/${tempSubpath}`))
         .on('finish', () => {
-          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
           resolve();
+          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         })
         .on('error', error => {
-          tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
-          reject(error);
+          throw error;
         });
     } catch (error) {
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -755,9 +757,9 @@ function finalizeModule(gulp, config, labelPrefix) {
   const subTaskLabel = 'finalize';
 
   return new Promise((resolve, reject) => {
-    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
-
     try {
+      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+
       gulp
         .src(
           `./${config.temp.path}/${tempSubpath}/${config.componenet.name}${
@@ -771,16 +773,15 @@ function finalizeModule(gulp, config, labelPrefix) {
         )
         .pipe(gulp.dest(`./${config.dist.path}`))
         .on('finish', () => {
-          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
           resolve();
+          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         })
         .on('error', error => {
-          tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
-          reject(error);
+          throw error;
         });
     } catch (error) {
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -797,9 +798,9 @@ function finalizeScript(gulp, config, labelPrefix) {
   const subTaskLabel = 'finalize';
 
   return new Promise((resolve, reject) => {
-    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
-
     try {
+      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+
       gulp
         .src(
           `./${config.temp.path}/${tempSubpath}/${config.componenet.name}${
@@ -819,33 +820,22 @@ function finalizeScript(gulp, config, labelPrefix) {
                   config.build.script.extension
                 }`
               },
-              plugins: [
-                new WebpackClosureCompilerPlugin({
-                  compiler: {
-                    language_in: 'ECMASCRIPT_NEXT',
-                    language_out: 'ECMASCRIPT5',
-                    compilation_level: 'SIMPLE',
-                    assume_function_wrapper: true,
-                    output_wrapper: '(function(){%output%}).call(this)'
-                  }
-                })
-              ]
+              plugins: tasksUtil.getWebpackPlugIns()
             },
             webpack
           )
         )
         .pipe(gulp.dest(`./${config.dist.path}`))
         .on('finish', () => {
-          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
           resolve();
+          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         })
         .on('error', error => {
-          tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
-          reject(error);
+          throw error;
         });
     } catch (error) {
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -862,21 +852,21 @@ function buildModule(gulp, config, labelPrefix) {
   const subTaskLabel = 'module';
 
   return new Promise(async (resolve, reject) => {
-    if (!config.build.module.build) {
-      tasksUtil.tasks.log.info(
-        `skipping ${subTaskLabel} - turned off in config.`,
+    try {
+      if (!config.build.module.build) {
+        resolve();
+        tasksUtil.tasks.log.info(
+          `skipping ${subTaskLabel} - turned off in config.`,
+          labelPrefix
+        );
+        return;
+      }
+
+      const subTaskLabelPrefix = tasksUtil.tasks.log.starting(
+        subTaskLabel,
         labelPrefix
       );
-      resolve();
-      return;
-    }
 
-    const subTaskLabelPrefix = tasksUtil.tasks.log.starting(
-      subTaskLabel,
-      labelPrefix
-    );
-
-    try {
       await initializeModuleFile(gulp, config, subTaskLabelPrefix);
       await injectTemplate(
         gulp,
@@ -886,11 +876,11 @@ function buildModule(gulp, config, labelPrefix) {
       );
       await finalizeModule(gulp, config, subTaskLabelPrefix);
 
-      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
       resolve();
+      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
     } catch (error) {
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -907,21 +897,21 @@ function buildScript(gulp, config, labelPrefix) {
   const subTaskLabel = 'script';
 
   return new Promise(async (resolve, reject) => {
-    if (!config.build.script.build) {
-      tasksUtil.tasks.log.info(
-        `skipping ${subTaskLabel} - turned off in config.`,
+    try {
+      if (!config.build.script.build) {
+        resolve();
+        tasksUtil.tasks.log.info(
+          `skipping ${subTaskLabel} - turned off in config.`,
+          labelPrefix
+        );
+        return;
+      }
+
+      const subTaskLabelPrefix = tasksUtil.tasks.log.starting(
+        subTaskLabel,
         labelPrefix
       );
-      resolve();
-      return;
-    }
 
-    const subTaskLabelPrefix = tasksUtil.tasks.log.starting(
-      subTaskLabel,
-      labelPrefix
-    );
-
-    try {
       await initializeScriptFile(gulp, config, subTaskLabelPrefix);
       await injectTemplate(
         gulp,
@@ -931,11 +921,11 @@ function buildScript(gulp, config, labelPrefix) {
       );
       await finalizeScript(gulp, config, subTaskLabelPrefix);
 
-      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
       resolve();
+      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
     } catch (error) {
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -952,23 +942,22 @@ function finalizeCopyFiles(gulp, config, labelPrefix) {
   const subTaskLabel = 'copy files';
 
   return new Promise((resolve, reject) => {
-    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
-
     try {
+      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+
       gulp
         .src(['README.md', 'LICENSE'])
         .pipe(gulp.dest(`./${config.dist.path}`))
         .on('finish', () => {
-          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
           resolve();
+          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         })
         .on('error', error => {
-          tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
-          reject(error);
+          throw error;
         });
     } catch (error) {
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -985,9 +974,9 @@ function finalizePackageJson(gulp, config, labelPrefix) {
   const subTaskLabel = 'package.json';
 
   return new Promise((resolve, reject) => {
-    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
-
     try {
+      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+
       gulp
         .src('package.json')
         .pipe(
@@ -1006,16 +995,15 @@ function finalizePackageJson(gulp, config, labelPrefix) {
         )
         .pipe(gulp.dest(`./${config.dist.path}`))
         .on('finish', () => {
-          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
           resolve();
+          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         })
         .on('error', error => {
-          tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
-          reject(error);
+          throw error;
         });
     } catch (error) {
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -1032,22 +1020,22 @@ function finalize(gulp, config, labelPrefix) {
   const subTaskLabel = 'finalize';
 
   return new Promise(async (resolve, reject) => {
-    const subTaskLabelPrefix = tasksUtil.tasks.log.starting(
-      subTaskLabel,
-      labelPrefix
-    );
-
     try {
-      await Promise.all([
+      const subTaskLabelPrefix = tasksUtil.tasks.log.starting(
+        subTaskLabel,
+        labelPrefix
+      );
+
+      await tasksUtil.waitForAllPromises([
         finalizeCopyFiles(gulp, config, subTaskLabelPrefix),
         finalizePackageJson(gulp, config, subTaskLabelPrefix)
       ]);
 
-      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
       resolve();
+      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
     } catch (error) {
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -1064,23 +1052,22 @@ function buildSymlinks(gulp, config, labelPrefix) {
   const subTaskLabel = 'symlinks';
 
   return new Promise((resolve, reject) => {
-    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
-
     try {
+      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+
       gulp
         .src(`./${config.dist.path}/${config.componenet.name}**.?(m)js`)
         .pipe(gulp.symlink('./'))
         .on('finish', () => {
-          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
           resolve();
+          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         })
         .on('error', error => {
-          tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
-          reject(error);
+          throw error;
         });
     } catch (error) {
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -1090,20 +1077,25 @@ module.exports = (gulp, config) => {
   return new Promise(async (resolve, reject) => {
     try {
       if (config.componenet.name == null) {
-        reject(new Error('Cannot build: `config.componenet.name` is not set.'));
-        return;
+        throw new Error('Cannot build: `config.componenet.name` is not set.');
       }
       if (config.src.entrypoint == null) {
-        reject(new Error('Cannot build: `config.src.entrypoint` is not set.'));
-        return;
+        throw new Error('Cannot build: `config.src.entrypoint` is not set.');
       }
       await tasksUtil.cleanDist(config);
       await checkSourceFiles(gulp, config);
       await preprocessSourceFiles(gulp, config);
-      await Promise.all([minifyHTML(gulp, config), compileSASS(gulp, config)]);
-      await Promise.all([buildModule(gulp, config), buildScript(gulp, config)]);
+      await tasksUtil.waitForAllPromises([
+        minifyHTML(gulp, config),
+        compileSASS(gulp, config)
+      ]);
+      await tasksUtil.waitForAllPromises([
+        buildModule(gulp, config),
+        buildScript(gulp, config)
+      ]);
       await finalize(gulp, config);
       await buildSymlinks(gulp, config);
+
       resolve();
     } catch (error) {
       reject(error);

@@ -1,6 +1,5 @@
 // Load util.
 const tasksUtil = require('./util');
-const PreWebpackClosureCompilerPlugin = require('./classes/PreWebpackClosureCompilerPlugin');
 
 // Libraries.
 const cheerio = require('cheerio');
@@ -20,10 +19,12 @@ const PolymerBuild = require('polymer-build');
 const rename = require('gulp-rename');
 const util = require('util');
 const webpack = require('webpack');
-const WebpackClosureCompilerPlugin = require('webpack-closure-compiler');
 const webpackStream = require('webpack-stream');
 
 // Promisified functions.
+const fsAccess = util.promisify(fs.access);
+const fsReaddir = util.promisify(fs.readdir);
+const fsReadfile = util.promisify(fs.readFile);
 const gitClone = util.promisify(git.clone);
 const gitCheckout = util.promisify(git.checkout);
 const globPromise = util.promisify(glob);
@@ -41,12 +42,12 @@ let allOK = true;
  * @returns {Promise}
  */
 function directoryReadyForCloning(dirPath) {
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     try {
       if (fs.existsSync(dirPath)) {
-        fs.accessSync(dirPath, fs.constants.R_OK | fs.constants.W_OK);
+        await fsAccess(dirPath, fs.constants.R_OK | fs.constants.W_OK);
 
-        const files = fs.readdirSync(dirPath);
+        const files = await fsReaddir(dirPath, 'utf8');
 
         if (files.length === 0) {
           resolve();
@@ -74,16 +75,17 @@ function cloneRepository(repoPath, dirPath, labelPrefix) {
   const subTaskLabel = `clone of ${repoPath}`;
 
   return new Promise(async (resolve, reject) => {
-    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
-
     try {
+      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+
       await gitClone(repoPath, { args: `${dirPath} --quiet` });
-      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
+
       resolve();
+      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
     } catch (error) {
       allOK = false;
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -106,41 +108,33 @@ function cloneRepositories(packageFilePaths, config, labelPrefix) {
       // eslint-disable-next-line no-loop-func
       new Promise(async (resolve, reject) => {
         try {
-          const data = fs.readFileSync(packageFilePath);
+          const data = await fsReadfile(packageFilePath, 'utf8');
           const json = JSON.parse(data);
 
           const name = json.name;
           if (name == null) {
-            reject(
-              new Error(
-                `Name not set in the package.json file "${packageFilePath}".`
-              )
+            throw new Error(
+              `Name not set in the package.json file "${packageFilePath}".`
             );
-            return;
           }
 
           const version = json.version;
           if (version == null) {
-            reject(
-              new Error(`Version not set in ${name}'s package.json file.`)
-            );
-            return;
+            throw new Error(`Version not set in ${name}'s package.json file.`);
           }
 
           const repository = json.repository;
           if (repository == null) {
-            reject(
-              new Error(`Repository not set in ${name}'s package.json file.`)
+            throw new Error(
+              `Repository not set in ${name}'s package.json file.`
             );
-            return;
           }
 
           const repoPath = (() => {
             let p = '';
             if (typeof repository === 'object') {
               if (repository.type !== 'git') {
-                reject(new Error(`"${repoPath}" is not a git repository.`));
-                return null;
+                throw new Error(`"${repoPath}" is not a git repository.`);
               }
               p = repository.url;
             } else {
@@ -175,6 +169,7 @@ function cloneRepositories(packageFilePaths, config, labelPrefix) {
           }
 
           await gitCheckout(`v${version}`, { args: '--quiet', cwd: clonePath });
+
           resolve();
         } catch (error) {
           reject(error);
@@ -198,15 +193,14 @@ function copyNodeModules(gulp, config, labelPrefix) {
   const subTaskLabel = 'node modules';
 
   return new Promise((resolve, reject) => {
-    // No point starting this task if another important task has already failed.
-    if (!allOK) {
-      reject(new tasksUtil.NotOKError());
-      return;
-    }
-
-    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
-
     try {
+      // No point starting this task if another important task has already failed.
+      if (!allOK) {
+        throw new tasksUtil.NotOKError();
+      }
+
+      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+
       gulp
         .src(`./${config.nodeModulesPath}/**`, { follow: true })
         .pipe(
@@ -217,16 +211,15 @@ function copyNodeModules(gulp, config, labelPrefix) {
           )
         )
         .on('finish', () => {
-          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
           resolve();
+          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         })
         .on('error', error => {
-          tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
-          reject(error);
+          throw error;
         });
     } catch (error) {
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -243,15 +236,14 @@ function copyDocsIndex(gulp, config, labelPrefix) {
   const subTaskLabel = 'index page';
 
   return new Promise((resolve, reject) => {
-    // No point starting this task if another important task has already failed.
-    if (!allOK) {
-      reject(new tasksUtil.NotOKError());
-      return;
-    }
-
-    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
-
     try {
+      // No point starting this task if another important task has already failed.
+      if (!allOK) {
+        throw new tasksUtil.NotOKError();
+      }
+
+      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+
       gulp
         .src(`./${config.docs.indexPage}`)
         .pipe(
@@ -261,16 +253,15 @@ function copyDocsIndex(gulp, config, labelPrefix) {
         )
         .pipe(gulp.dest(`./${config.temp.path}/${tempSubpath}`))
         .on('finish', () => {
-          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
           resolve();
+          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         })
         .on('error', error => {
-          tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
-          reject(error);
+          throw error;
         });
     } catch (error) {
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -287,15 +278,14 @@ function copyExtraDocDependencies(gulp, config, labelPrefix) {
   const subTaskLabel = 'extra dependencies';
 
   return new Promise((resolve, reject) => {
-    // No point starting this task if another important task has already failed.
-    if (!allOK) {
-      reject(new tasksUtil.NotOKError());
-      return;
-    }
-
-    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
-
     try {
+      // No point starting this task if another important task has already failed.
+      if (!allOK) {
+        throw new tasksUtil.NotOKError();
+      }
+
+      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+
       gulp
         .src([
           `./${config.docs.importsImporterFilename}`,
@@ -304,16 +294,15 @@ function copyExtraDocDependencies(gulp, config, labelPrefix) {
         ])
         .pipe(gulp.dest(`./${config.temp.path}/${tempSubpath}`))
         .on('finish', () => {
-          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
           resolve();
+          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         })
         .on('error', error => {
-          tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
-          reject(error);
+          throw error;
         });
     } catch (error) {
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -330,15 +319,14 @@ function copyDistributionFiles(gulp, config, labelPrefix) {
   const subTaskLabel = 'distribution files';
 
   return new Promise((resolve, reject) => {
-    // No point starting this task if another important task has already failed.
-    if (!allOK) {
-      reject(new tasksUtil.NotOKError());
-      return;
-    }
-
-    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
-
     try {
+      // No point starting this task if another important task has already failed.
+      if (!allOK) {
+        throw new tasksUtil.NotOKError();
+      }
+
+      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+
       gulp
         .src(`./${config.dist.path}/**`)
         .pipe(
@@ -349,16 +337,15 @@ function copyDistributionFiles(gulp, config, labelPrefix) {
           )
         )
         .on('finish', () => {
-          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
           resolve();
+          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         })
         .on('error', error => {
-          tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
-          reject(error);
+          throw error;
         });
     } catch (error) {
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -375,15 +362,14 @@ function copyLocalDemos(gulp, config, labelPrefix) {
   const subTaskLabel = 'local demos';
 
   return new Promise((resolve, reject) => {
-    // No point starting this task if another important task has already failed.
-    if (!allOK) {
-      reject(new tasksUtil.NotOKError());
-      return;
-    }
-
-    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
-
     try {
+      // No point starting this task if another important task has already failed.
+      if (!allOK) {
+        throw new tasksUtil.NotOKError();
+      }
+
+      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+
       gulp
         .src(`./${config.demos.path}/**`, {
           base: './'
@@ -396,16 +382,15 @@ function copyLocalDemos(gulp, config, labelPrefix) {
           )
         )
         .on('finish', () => {
-          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
           resolve();
+          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         })
         .on('error', error => {
-          tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
-          reject(error);
+          throw error;
         });
     } catch (error) {
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -422,18 +407,17 @@ function copyDependencies(gulp, config, labelPrefix) {
   const subTaskLabel = 'copy dependencies';
 
   return new Promise(async (resolve, reject) => {
-    // No point starting this task if another important task has already failed.
-    if (!allOK) {
-      reject(new tasksUtil.NotOKError());
-      return;
-    }
-
-    const subTaskLabelPrefix = tasksUtil.tasks.log.starting(
-      subTaskLabel,
-      labelPrefix
-    );
-
     try {
+      // No point starting this task if another important task has already failed.
+      if (!allOK) {
+        throw new tasksUtil.NotOKError();
+      }
+
+      const subTaskLabelPrefix = tasksUtil.tasks.log.starting(
+        subTaskLabel,
+        labelPrefix
+      );
+
       const subTasks = [
         copyDocsIndex(gulp, config, subTaskLabelPrefix),
         copyExtraDocDependencies(gulp, config, subTaskLabelPrefix),
@@ -461,8 +445,8 @@ function copyDependencies(gulp, config, labelPrefix) {
       resolve();
     } catch (error) {
       allOK = false;
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -479,15 +463,14 @@ function updateAnalysis(gulp, config, labelPrefix) {
   const subTaskLabel = 'update analysis';
 
   return new Promise((resolve, reject) => {
-    // No point starting this task if another important task has already failed.
-    if (!allOK) {
-      reject(new tasksUtil.NotOKError());
-      return;
-    }
-
-    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
-
     try {
+      // No point starting this task if another important task has already failed.
+      if (!allOK) {
+        throw new tasksUtil.NotOKError();
+      }
+
+      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+
       gulp
         .src(
           `./${config.temp.path}/${tempSubpath}/${
@@ -520,16 +503,15 @@ function updateAnalysis(gulp, config, labelPrefix) {
         )
         .pipe(gulp.dest('./'))
         .on('finish', () => {
-          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
           resolve();
+          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         })
         .on('error', error => {
-          tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
-          reject(error);
+          throw error;
         });
     } catch (error) {
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -546,18 +528,17 @@ function getDemos(gulp, config, labelPrefix) {
   const subTaskLabel = 'get demos';
 
   return new Promise(async (resolve, reject) => {
-    // No point starting this task if another important task has already failed.
-    if (!allOK) {
-      reject(new tasksUtil.NotOKError());
-      return;
-    }
-
-    const subTaskLabelPrefix = tasksUtil.tasks.log.starting(
-      subTaskLabel,
-      labelPrefix
-    );
-
     try {
+      // No point starting this task if another important task has already failed.
+      if (!allOK) {
+        throw new tasksUtil.NotOKError();
+      }
+
+      const subTaskLabelPrefix = tasksUtil.tasks.log.starting(
+        subTaskLabel,
+        labelPrefix
+      );
+
       const files = await globPromise(
         `./${config.componenet.nodeModulesPath}/catalyst-*/package.json`
       );
@@ -586,15 +567,19 @@ function getDemos(gulp, config, labelPrefix) {
                 config.docs.nodeModulesPath
               }`
             )
-          );
+          )
+          .on('finish', () => {
+            resolve();
+            tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
+          })
+          .on('error', error => {
+            throw error;
+          });
       }
-
-      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
-      resolve();
     } catch (error) {
       allOK = false;
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -611,15 +596,14 @@ function indexPageUpdateReferences(gulp, config, labelPrefix) {
   const subTaskLabel = 'index';
 
   return new Promise((resolve, reject) => {
-    // No point starting this task if another important task has already failed.
-    if (!allOK) {
-      reject(new tasksUtil.NotOKError());
-      return;
-    }
-
-    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
-
     try {
+      // No point starting this task if another important task has already failed.
+      if (!allOK) {
+        throw new tasksUtil.NotOKError();
+      }
+
+      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+
       gulp
         .src(`./${config.temp.path}/${tempSubpath}/index.html`, { base: './' })
         .pipe(
@@ -639,16 +623,15 @@ function indexPageUpdateReferences(gulp, config, labelPrefix) {
         )
         .pipe(gulp.dest('./'))
         .on('finish', () => {
-          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
           resolve();
+          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         })
         .on('error', error => {
-          tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
-          reject(error);
+          throw error;
         });
     } catch (error) {
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -665,15 +648,14 @@ function demosPagesUpdateReferences(gulp, config, labelPrefix) {
   const subTaskLabel = 'demo files';
 
   return new Promise((resolve, reject) => {
-    // No point starting this task if another important task has already failed.
-    if (!allOK) {
-      reject(new tasksUtil.NotOKError());
-      return;
-    }
-
-    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
-
     try {
+      // No point starting this task if another important task has already failed.
+      if (!allOK) {
+        throw new tasksUtil.NotOKError();
+      }
+
+      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+
       gulp
         .src(
           `./${config.temp.path}/${tempSubpath}/${
@@ -694,16 +676,15 @@ function demosPagesUpdateReferences(gulp, config, labelPrefix) {
         )
         .pipe(gulp.dest('./'))
         .on('finish', () => {
-          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
           resolve();
+          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         })
         .on('error', error => {
-          tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
-          reject(error);
+          throw error;
         });
     } catch (error) {
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -720,15 +701,14 @@ function indexImportsUpdateReferences(gulp, config, labelPrefix) {
   const subTaskLabel = 'imports';
 
   return new Promise((resolve, reject) => {
-    // No point starting this task if another important task has already failed.
-    if (!allOK) {
-      reject(new tasksUtil.NotOKError());
-      return;
-    }
-
-    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
-
     try {
+      // No point starting this task if another important task has already failed.
+      if (!allOK) {
+        throw new tasksUtil.NotOKError();
+      }
+
+      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+
       gulp
         .src(
           `./${config.temp.path}/${tempSubpath}/${config.docs.importsFilename}`,
@@ -759,16 +739,15 @@ function indexImportsUpdateReferences(gulp, config, labelPrefix) {
         )
         .pipe(gulp.dest('./'))
         .on('finish', () => {
-          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
           resolve();
+          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         })
         .on('error', error => {
-          tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
-          reject(error);
+          throw error;
         });
     } catch (error) {
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -785,29 +764,28 @@ function indexUpdateReferences(gulp, config, labelPrefix) {
   const subTaskLabel = 'update references';
 
   return new Promise(async (resolve, reject) => {
-    // No point starting this task if another important task has already failed.
-    if (!allOK) {
-      reject(new tasksUtil.NotOKError());
-      return;
-    }
-
-    const subTaskLabelPrefix = tasksUtil.tasks.log.starting(
-      subTaskLabel,
-      labelPrefix
-    );
-
     try {
+      // No point starting this task if another important task has already failed.
+      if (!allOK) {
+        throw new tasksUtil.NotOKError();
+      }
+
+      const subTaskLabelPrefix = tasksUtil.tasks.log.starting(
+        subTaskLabel,
+        labelPrefix
+      );
+
       await tasksUtil.waitForAllPromises([
         indexPageUpdateReferences(gulp, config, subTaskLabelPrefix),
         indexImportsUpdateReferences(gulp, config, subTaskLabelPrefix)
       ]);
 
-      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
       resolve();
+      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
     } catch (error) {
       allOK = false;
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -824,28 +802,27 @@ function demosUpdateReferences(gulp, config, labelPrefix) {
   const subTaskLabel = 'update references';
 
   return new Promise(async (resolve, reject) => {
-    // No point starting this task if another important task has already failed.
-    if (!allOK) {
-      reject(new tasksUtil.NotOKError());
-      return;
-    }
-
-    const subTaskLabelPrefix = tasksUtil.tasks.log.starting(
-      subTaskLabel,
-      labelPrefix
-    );
-
     try {
+      // No point starting this task if another important task has already failed.
+      if (!allOK) {
+        throw new tasksUtil.NotOKError();
+      }
+
+      const subTaskLabelPrefix = tasksUtil.tasks.log.starting(
+        subTaskLabel,
+        labelPrefix
+      );
+
       await tasksUtil.waitForAllPromises([
         demosPagesUpdateReferences(gulp, config, subTaskLabelPrefix)
       ]);
 
-      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
       resolve();
+      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
     } catch (error) {
       allOK = false;
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -862,15 +839,14 @@ function finalizeIndexPage(gulp, config, labelPrefix) {
   const subTaskLabel = 'finalize';
 
   return new Promise((resolve, reject) => {
-    // No point starting this task if another important task has already failed.
-    if (!allOK) {
-      reject(new tasksUtil.NotOKError());
-      return;
-    }
-
-    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
-
     try {
+      // No point starting this task if another important task has already failed.
+      if (!allOK) {
+        throw new tasksUtil.NotOKError();
+      }
+
+      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+
       const docsImportsBaseName = path.basename(
         config.docs.importsFilename,
         path.extname(config.docs.importsFilename)
@@ -900,18 +876,7 @@ function finalizeIndexPage(gulp, config, labelPrefix) {
                 chunkFilename: `${docsImportsBaseName}.[id].js`,
                 filename: `${docsImportsImporterBaseName}.js`
               },
-              plugins: [
-                new PreWebpackClosureCompilerPlugin(),
-                new WebpackClosureCompilerPlugin({
-                  compiler: {
-                    language_in: 'ECMASCRIPT_NEXT',
-                    language_out: 'ECMASCRIPT5',
-                    compilation_level: 'SIMPLE',
-                    assume_function_wrapper: true,
-                    output_wrapper: '(function(){%output%}).call(this)'
-                  }
-                })
-              ]
+              plugins: tasksUtil.getWebpackPlugIns()
             },
             webpack
           )
@@ -933,16 +898,15 @@ function finalizeIndexPage(gulp, config, labelPrefix) {
           })
         )
         .on('finish', () => {
-          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
           resolve();
+          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         })
         .on('error', error => {
-          tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
-          reject(error);
+          throw error;
         });
     } catch (error) {
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -959,15 +923,14 @@ function finalizeDemos(gulp, config, labelPrefix) {
   const subTaskLabel = 'finalize';
 
   return new Promise((resolve, reject) => {
-    // No point starting this task if another important task has already failed.
-    if (!allOK) {
-      reject(new tasksUtil.NotOKError());
-      return;
-    }
-
-    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
-
     try {
+      // No point starting this task if another important task has already failed.
+      if (!allOK) {
+        throw new tasksUtil.NotOKError();
+      }
+
+      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+
       const demoImportsBaseName = path.basename(
         config.demos.importsFilename,
         path.extname(config.demos.importsFilename)
@@ -997,18 +960,7 @@ function finalizeDemos(gulp, config, labelPrefix) {
                       chunkFilename: `${demoImportsBaseName}.[id].js`,
                       filename: `${docsImportsImporterBaseName}.js`
                     },
-                    plugins: [
-                      new PreWebpackClosureCompilerPlugin(),
-                      new WebpackClosureCompilerPlugin({
-                        compiler: {
-                          language_in: 'ECMASCRIPT_NEXT',
-                          language_out: 'ECMASCRIPT5',
-                          compilation_level: 'SIMPLE',
-                          assume_function_wrapper: true,
-                          output_wrapper: '(function(){%output%}).call(this)'
-                        }
-                      })
-                    ]
+                    plugins: tasksUtil.getWebpackPlugIns()
                   },
                   webpack
                 )
@@ -1032,16 +984,15 @@ function finalizeDemos(gulp, config, labelPrefix) {
           })
         )
         .on('finish', () => {
-          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
           resolve();
+          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         })
         .on('error', error => {
-          tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
-          reject(error);
+          throw error;
         });
     } catch (error) {
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -1058,27 +1009,26 @@ function buildIndexPage(gulp, config, labelPrefix) {
   const subTaskLabel = 'index page';
 
   return new Promise(async (resolve, reject) => {
-    // No point starting this task if another important task has already failed.
-    if (!allOK) {
-      reject(new tasksUtil.NotOKError());
-      return;
-    }
-
-    const subTaskLabelPrefix = tasksUtil.tasks.log.starting(
-      subTaskLabel,
-      labelPrefix
-    );
-
     try {
+      // No point starting this task if another important task has already failed.
+      if (!allOK) {
+        throw new tasksUtil.NotOKError();
+      }
+
+      const subTaskLabelPrefix = tasksUtil.tasks.log.starting(
+        subTaskLabel,
+        labelPrefix
+      );
+
       await indexUpdateReferences(gulp, config, subTaskLabelPrefix);
       await finalizeIndexPage(gulp, config, subTaskLabelPrefix);
 
-      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
       resolve();
+      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
     } catch (error) {
       allOK = false;
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -1095,27 +1045,26 @@ function buildDemos(gulp, config, labelPrefix) {
   const subTaskLabel = 'demos';
 
   return new Promise(async (resolve, reject) => {
-    // No point starting this task if another important task has already failed.
-    if (!allOK) {
-      reject(new tasksUtil.NotOKError());
-      return;
-    }
-
-    const subTaskLabelPrefix = tasksUtil.tasks.log.starting(
-      subTaskLabel,
-      labelPrefix
-    );
-
     try {
+      // No point starting this task if another important task has already failed.
+      if (!allOK) {
+        throw new tasksUtil.NotOKError();
+      }
+
+      const subTaskLabelPrefix = tasksUtil.tasks.log.starting(
+        subTaskLabel,
+        labelPrefix
+      );
+
       await demosUpdateReferences(gulp, config, subTaskLabelPrefix);
       await finalizeDemos(gulp, config, subTaskLabelPrefix);
 
-      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
       resolve();
+      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
     } catch (error) {
       allOK = false;
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -1132,27 +1081,26 @@ function build(gulp, config, labelPrefix) {
   const subTaskLabel = 'build';
 
   return new Promise(async (resolve, reject) => {
-    // No point starting this task if another important task has already failed.
-    if (!allOK) {
-      reject(new tasksUtil.NotOKError());
-      return;
-    }
-
-    const subTaskLabelPrefix = tasksUtil.tasks.log.starting(
-      subTaskLabel,
-      labelPrefix
-    );
-
     try {
+      // No point starting this task if another important task has already failed.
+      if (!allOK) {
+        throw new tasksUtil.NotOKError();
+      }
+
+      const subTaskLabelPrefix = tasksUtil.tasks.log.starting(
+        subTaskLabel,
+        labelPrefix
+      );
+
       await buildIndexPage(gulp, config, subTaskLabelPrefix);
       await buildDemos(gulp, config, subTaskLabelPrefix);
 
-      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
       resolve();
+      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
     } catch (error) {
       allOK = false;
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -1169,15 +1117,14 @@ function generate(gulp, config, labelPrefix) {
   const subTaskLabel = 'generate';
 
   return new Promise((resolve, reject) => {
-    // No point starting this task if another important task has already failed.
-    if (!allOK) {
-      reject(new tasksUtil.NotOKError());
-      return;
-    }
-
-    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
-
     try {
+      // No point starting this task if another important task has already failed.
+      if (!allOK) {
+        throw new tasksUtil.NotOKError();
+      }
+
+      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+
       const docsImportsBaseName = path.basename(
         config.docs.importsFilename,
         path.extname(config.docs.importsFilename)
@@ -1244,17 +1191,16 @@ function generate(gulp, config, labelPrefix) {
         )
         .pipe(gulp.dest(`./${config.docs.path}`))
         .on('finish', () => {
-          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
           resolve();
+          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         })
         .on('error', error => {
-          tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
-          reject(error);
+          throw error;
         });
     } catch (error) {
       allOK = false;
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -1269,6 +1215,7 @@ module.exports = (gulp, config) => {
       await build(gulp, config);
       await tasksUtil.cleanDocs(config);
       await generate(gulp, config);
+
       resolve();
     } catch (error) {
       reject(error);

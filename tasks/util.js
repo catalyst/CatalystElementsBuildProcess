@@ -1,8 +1,11 @@
+const PreWebpackClosureCompilerPlugin = require('./classes/PreWebpackClosureCompilerPlugin');
+
 // Libraries.
 const colors = require('ansi-colors');
 const del = require('del');
 const log = require('fancy-log');
 const stripColor = require('strip-color');
+const WebpackClosureCompilerPlugin = require('webpack-closure-compiler');
 
 // Helper functions for tasks.
 const tasksHelpers = {
@@ -96,6 +99,26 @@ function waitForAllPromises(promises) {
 }
 
 /**
+ * Get a new WebpackClosureCompilerPlugin that has been configured.
+ *
+ * @returns {Object[]}
+ */
+function getWebpackPlugIns() {
+  return [
+    new PreWebpackClosureCompilerPlugin(),
+    new WebpackClosureCompilerPlugin({
+      compiler: {
+        language_in: 'ECMASCRIPT_NEXT',
+        language_out: 'ECMASCRIPT5',
+        compilation_level: 'SIMPLE',
+        assume_function_wrapper: true,
+        output_wrapper: '(function(){%output%}).call(this)'
+      }
+    })
+  ];
+}
+
+/**
  * Transform function that returns the contents of the given file.
  *
  * @param {string} filePath
@@ -125,6 +148,8 @@ module.exports = {
   tasks: tasksHelpers,
 
   waitForAllPromises: waitForAllPromises,
+
+  getWebpackPlugIns: getWebpackPlugIns,
 
   NotOKError: class NotOKError extends Error {}
 };

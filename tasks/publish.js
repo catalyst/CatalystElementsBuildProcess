@@ -577,7 +577,7 @@ function fileChecks(gulp, config, labelPrefix) {
       );
 
       // Read the files that will be published.
-      const distFiles = await fsReaddir(config.dist.path, null);
+      const distFiles = await fsReaddir(config.dist.path, 'utf8');
 
       // Make sure there are files.
       if (distFiles.length === 0) {

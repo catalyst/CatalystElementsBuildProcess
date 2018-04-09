@@ -18,27 +18,31 @@ function lintJS(gulp, config, labelPrefix) {
   const subTaskLabel = 'JS files';
 
   return new Promise((resolve, reject) => {
-    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+    try {
+      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
 
-    gulp
-      .src([
-        './*.?(m)js',
-        `./${config.src.path}/**/*.?(m)js`,
-        `./${config.tests.path}/**/*.?(m)js`,
-        `./${config.demos.path}/**/*.?(m)js`,
-        '!*.min.*'
-      ])
-      .pipe(eslint())
-      .pipe(eslint.format())
-      .pipe(eslint.failOnError())
-      .on('finish', () => {
-        tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
-        resolve();
-      })
-      .on('error', error => {
-        tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
-        reject(error);
-      });
+      gulp
+        .src([
+          './*.?(m)js',
+          `./${config.src.path}/**/*.?(m)js`,
+          `./${config.tests.path}/**/*.?(m)js`,
+          `./${config.demos.path}/**/*.?(m)js`,
+          '!*.min.*'
+        ])
+        .pipe(eslint())
+        .pipe(eslint.format())
+        .pipe(eslint.failOnError())
+        .on('finish', () => {
+          resolve();
+          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
+        })
+        .on('error', error => {
+          throw error;
+        });
+    } catch (error) {
+      reject(error);
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+    }
   });
 }
 
@@ -54,9 +58,9 @@ function lintJSinHTML(gulp, config, labelPrefix) {
   const subTaskLabel = 'JS in HTML files';
 
   return new Promise((resolve, reject) => {
-    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
-
     try {
+      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+
       gulp
         .src([
           './*.html',
@@ -74,16 +78,15 @@ function lintJSinHTML(gulp, config, labelPrefix) {
         .pipe(eslint.format())
         .pipe(eslint.failOnError())
         .on('finish', () => {
-          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
           resolve();
+          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         })
         .on('error', error => {
-          tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
-          reject(error);
+          throw error;
         });
     } catch (error) {
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -100,25 +103,24 @@ function lintSASS(gulp, config, labelPrefix) {
   const subTaskLabel = 'SASS files';
 
   return new Promise((resolve, reject) => {
-    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
-
     try {
+      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+
       gulp
         .src(`./${config.src.path}/**/*.scss`)
         .pipe(sassLint())
         .pipe(sassLint.format())
         .pipe(sassLint.failOnError())
         .on('finish', () => {
-          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
           resolve();
+          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         })
         .on('error', error => {
-          tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
-          reject(error);
+          throw error;
         });
     } catch (error) {
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -127,11 +129,12 @@ function lintSASS(gulp, config, labelPrefix) {
 module.exports = (gulp, config) => {
   return new Promise(async (resolve, reject) => {
     try {
-      await Promise.all([
+      await tasksUtil.waitForAllPromises([
         lintJS(gulp, config),
         lintJSinHTML(gulp, config),
         lintSASS(gulp, config)
       ]);
+
       resolve();
     } catch (error) {
       reject(error);

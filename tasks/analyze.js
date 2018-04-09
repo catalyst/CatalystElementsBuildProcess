@@ -74,12 +74,12 @@ function fixAnalysis(analysis, config) {
  * @returns {Promise}
  */
 function getElementsForAnalysis(gulp, config, labelPrefix) {
-  const subTaskLabel = 'get files ready';
+  const subTaskLabel = 'get files';
 
   return new Promise((resolve, reject) => {
-    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
-
     try {
+      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+
       gulp
         .src([
           `./${config.dist.path}/**/*${config.build.module.extension}`,
@@ -95,16 +95,15 @@ function getElementsForAnalysis(gulp, config, labelPrefix) {
         )
         .pipe(gulp.dest(`./${config.temp.path}/${tempSubpath}`))
         .on('finish', () => {
-          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
           resolve();
+          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         })
         .on('error', error => {
-          tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
-          reject(error);
+          throw error;
         });
     } catch (error) {
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -121,9 +120,9 @@ function generateAnalysis(gulp, config, labelPrefix) {
   const subTaskLabel = 'generate';
 
   return new Promise(async (resolve, reject) => {
-    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
-
     try {
+      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+
       const files = await globPromise(
         `./${config.temp.path}/${tempSubpath}/**/*.js`
       );
@@ -149,16 +148,15 @@ function generateAnalysis(gulp, config, labelPrefix) {
       })
         .pipe(gulp.dest('./'))
         .on('finish', () => {
-          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
           resolve();
+          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
         })
         .on('error', error => {
-          tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
-          reject(error);
+          throw error;
         });
     } catch (error) {
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
       reject(error);
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }

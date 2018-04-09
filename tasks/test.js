@@ -2,7 +2,7 @@
 const tasksUtil = require('./util');
 
 // Libraries.
-const fs = require('graceful-fs');
+const fs = require('fs');
 const wct = require('web-component-tester');
 
 /**
@@ -17,20 +17,23 @@ function wctTests(gulp, config, labelPrefix) {
   const subTaskLabel = 'wct';
 
   return new Promise(async (resolve, reject) => {
-    tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+    try {
+      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
 
-    if (fs.existsSync(`./${config.dist.path}`)) {
-      await wct.test(config.tests.wctConfig);
-      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
-      resolve();
-    } else {
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
-      reject(
-        new Error(
+      if (fs.existsSync(`./${config.dist.path}`)) {
+        await wct.test(config.tests.wctConfig);
+
+        resolve();
+        tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
+      } else {
+        throw new Error(
           `No ${config.dist.path}/ path exists - cannot run wct tests. ` +
             `Please build the component before testing.`
-        )
-      );
+        );
+      }
+    } catch (error) {
+      reject(error);
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -40,6 +43,7 @@ module.exports = (gulp, config) => {
   return new Promise(async (resolve, reject) => {
     try {
       await wctTests(gulp, config);
+
       resolve();
     } catch (error) {
       reject(error);

@@ -1248,33 +1248,30 @@ module.exports = (gulp, config) => {
         });
       } catch (error) {}
 
-      // Are we doing an actual run?
-      if (!config.publish.dryrun) {
-        // Ask the user if they want to push the changes to git.
-        input.pushToGit = await promptUserPushToGit();
+      // Ask the user if they want to push the changes to git.
+      input.pushToGit = await promptUserPushToGit();
 
-        // User want to push changes.
-        if (input.pushToGit) {
-          // Push changes to GitHub.
-          await pushToGit(gulp, config);
+      // User want to push changes.
+      if (input.pushToGit) {
+        // Push changes to GitHub.
+        await pushToGit(gulp, config);
 
-          // Only prompt about a GitHub release if the hosted on GitHub.
-          if (config.publish.hostedOnGitHub) {
-            // Ask the user if they want to do a GitHub release.
-            input.gitHubRelease = await promptUserGitHubReleaseSettings(
-              info.git.tag,
-              info.version.prerelease,
-              config.package
+        // Only prompt about a GitHub release if the hosted on GitHub.
+        if (config.publish.hostedOnGitHub) {
+          // Ask the user if they want to do a GitHub release.
+          input.gitHubRelease = await promptUserGitHubReleaseSettings(
+            info.git.tag,
+            info.version.prerelease,
+            config.package
+          );
+
+          // User wants to create a release.
+          if (input.gitHubRelease.create) {
+            await createGitHubRelease(
+              gulp,
+              config,
+              input.gitHubRelease.settings
             );
-
-            // User wants to create a release.
-            if (input.gitHubRelease.create) {
-              await createGitHubRelease(
-                gulp,
-                config,
-                input.gitHubRelease.settings
-              );
-            }
           }
         }
       }

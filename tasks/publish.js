@@ -1149,6 +1149,11 @@ function createGitHubRelease(gulp, config, settings, labelPrefix) {
 module.exports = (gulp, config) => {
   return new Promise(async (resolve, reject) => {
     try {
+      // Are we doing a dryrun?
+      if (config.publish.dryrun) {
+        tasksUtil.tasks.log.info(`${colors.magenta('Performing dry run')}`);
+      }
+
       // Information about the environment and setting the user want for publishing.
       const info = {
         version: {

@@ -7,7 +7,9 @@ const util = require('util');
 
 // Promisified functions.
 const fsMkdir = util.promisify(fs.mkdir);
+const fsReadFile = util.promisify(fs.readFile);
 const fsSymlink = util.promisify(fs.symlink);
+const fsWriteFile = util.promisify(fs.writeFile);
 
 /**
  * Fix prismjs.
@@ -185,6 +187,56 @@ function fixSinon(config, labelPrefix) {
   });
 }
 
+/**
+ * Fix iron-scroll-manager.js
+ *
+ * @param {Object} config - Config settings
+ * @param {string} [labelPrefix] - A prefix to print before the label
+ * @returns {Promise}
+ */
+function fixIronScrollManager(config, labelPrefix) {
+  const subTaskLabel = `iron-scroll-manager.js`;
+
+  return new Promise(async (resolve, reject) => {
+    try {
+      const file = `./${
+        config.nodeModulesPath
+      }/@polymer/iron-overlay-behavior/iron-scroll-manager.js`;
+
+      const content = await fsReadFile(file, 'utf8');
+
+      const updatedContent = content
+        .replace(
+          /export const _lockedElementCache = null;/g,
+          'export let _lockedElementCache = null;'
+        )
+        .replace(
+          /export const _unlockedElementCache = null;/g,
+          'export let _unlockedElementCache = null;'
+        );
+
+      if (updatedContent === content) {
+        resolve();
+        tasksUtil.tasks.log.info(
+          `skipping "${subTaskLabel}" - seems ok.`,
+          labelPrefix
+        );
+        return;
+      }
+
+      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+
+      await fsWriteFile(file, updatedContent, 'utf8');
+
+      resolve();
+      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
+    } catch (error) {
+      reject(error);
+      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+    }
+  });
+}
+
 // Export the fix dependencies function.
 module.exports = config => {
   return new Promise(async (resolve, reject) => {
@@ -193,7 +245,8 @@ module.exports = config => {
         fixPrismjs(config),
         fixTestFixture(config),
         fixAsync(config),
-        fixSinon(config)
+        fixSinon(config),
+        fixIronScrollManager(config)
       ]);
 
       resolve();

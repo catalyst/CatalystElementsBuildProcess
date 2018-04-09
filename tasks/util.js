@@ -1,4 +1,5 @@
-const PreWebpackClosureCompilerPlugin = require('./classes/PreWebpackClosureCompilerPlugin');
+const PreWebpackClosureCompilerPlugin = require(`${__dirname}/classes/PreWebpackClosureCompilerPlugin`);
+const MultiPromiseRejectionError = require(`${__dirname}/classes/MultiPromiseRejectionError`);
 
 // Libraries.
 const colors = require('ansi-colors');
@@ -93,7 +94,7 @@ function waitForAllPromises(promises) {
     if (results.filter(result => result.status === 1).length === 0) {
       resolve(results);
     } else {
-      reject(new Error(results));
+      reject(new MultiPromiseRejectionError(results));
     }
   });
 }

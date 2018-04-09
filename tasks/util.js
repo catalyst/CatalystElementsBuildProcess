@@ -76,7 +76,7 @@ function clean(path, label, labelPrefix) {
  * promises to finish either resolved or rejected.
  *
  * @param {Promise[]} promises - The promise to wait for
- * @returns {Promise}
+ * @returns {Promise<Object[]>}
  */
 function waitForAllPromises(promises) {
   return new Promise(async (resolve, reject) => {

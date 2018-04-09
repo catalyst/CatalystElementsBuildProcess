@@ -28,7 +28,7 @@ const promptGet = util.promisify(prompt.get);
 /**
  * Prompt the user for information about how to publish.
  *
- * @returns {Promise}
+ * @returns {Promise<Object>}
  */
 function promptUserForPublishSettings() {
   return new Promise(async (resolve, reject) => {
@@ -83,7 +83,7 @@ function promptUserForPublishSettings() {
 /**
  * Prompt the user if they want to push the changes to git.
  *
- * @returns {Promise}
+ * @returns {Promise<boolean>}
  */
 function promptUserPushToGit() {
   return new Promise(async (resolve, reject) => {
@@ -114,7 +114,7 @@ function promptUserPushToGit() {
  * @param {string} tag - The tag to release
  * @param {boolean} prerelease - Prerelease?
  * @param {Object} packageJson - The package.json info
- * @returns {Promise}
+ * @returns {Promise<Object>}
  */
 function promptUserGitHubReleaseSettings(tag, prerelease, packageJson) {
   return new Promise(async (resolve, reject) => {
@@ -187,7 +187,7 @@ function promptUserGitHubReleaseSettings(tag, prerelease, packageJson) {
 /**
  * Prompt the user to confirm the publish.
  *
- * @returns {Promise}
+ * @returns {Promise<boolean>}
  */
 function promptUserConfirmPublish() {
   return new Promise(async (resolve, reject) => {
@@ -753,7 +753,7 @@ function mergeIntoMajorBranch(
  * @param {Object} config - Config settings
  * @param {string} npmTag - The npm release tag
  * @param {string} [labelPrefix] - A prefix to print before the label
- * @returns {Promise}
+ * @returns {Promise<Object>}
  */
 function publishToNpm(gulp, config, npmTag, labelPrefix) {
   const subTaskLabel = 'publish to npm';

@@ -1125,7 +1125,7 @@ function createGitHubRelease(gulp, config, settings, labelPrefix) {
       const archives = await createArchivesForGitHubRelease(
         gulp,
         config,
-        settings,
+        settings.version,
         subTaskLabelPrefix
       );
 
@@ -1288,11 +1288,10 @@ module.exports = (gulp, config) => {
 
           // User wants to create a release.
           if (input.gitHubRelease.create) {
-            await createGitHubRelease(
-              gulp,
-              config,
-              input.gitHubRelease.settings
-            );
+            await createGitHubRelease(gulp, config, {
+              version: info.version.semantic,
+              ...input.gitHubRelease.settings
+            });
           }
         }
       }

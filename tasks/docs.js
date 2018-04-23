@@ -738,7 +738,11 @@ function indexImportsUpdateReferences(gulp, config, labelPrefix) {
             // This file should only have static imports.
             for (const node of parsedCode.body) {
               if (node.type === 'ImportDeclaration') {
-                if (node.source != null && node.source.type === 'Literal') {
+                if (
+                  node.source != null &&
+                  node.source.type === 'Literal' &&
+                  typeof node.source.value === 'string'
+                ) {
                   node.source.value = node.source.value.replace(
                     /\.\.\/\.\.\//g,
                     `./${config.docs.nodeModulesPath}/`

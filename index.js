@@ -44,7 +44,9 @@ function setConfig(packagePath, config) {
 
     // Read and save the package.json file.
     fs.accessSync(packagePath, fs.constants.R_OK);
-    userConfig.package = JSON.parse(fs.readFileSync(packagePath));
+    userConfig.package = JSON.parse(
+      fs.readFileSync(packagePath, { encoding: 'utf8' })
+    );
 
     // If the scope is not set.
     if (userConfig.componenet.scope == null) {

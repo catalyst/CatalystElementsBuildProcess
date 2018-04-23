@@ -608,7 +608,7 @@ function initializeScriptFile(gulp, config, labelPrefix) {
  *
  * @param {GulpClient.Gulp} gulp - Gulp library
  * @param {Object} config - Config settings
- * @param {Node.Stream} stream - The stream
+ * @param {NodeJS.ReadWriteStream} stream - The stream
  * @param {string} [labelPrefix] - A prefix to print before the label
  */
 function injectTemplateHTML(gulp, config, stream, labelPrefix) {
@@ -650,7 +650,7 @@ function injectTemplateHTML(gulp, config, stream, labelPrefix) {
  *
  * @param {GulpClient.Gulp} gulp - Gulp library
  * @param {Object} config - Config settings
- * @param {Node.Stream} stream - The stream
+ * @param {NodeJS.ReadWriteStream} stream - The stream
  * @param {string} [labelPrefix] - A prefix to print before the label
  */
 function injectTemplateCSS(gulp, config, stream, labelPrefix) {
@@ -693,7 +693,6 @@ function injectTemplateCSS(gulp, config, stream, labelPrefix) {
  * @param {GulpClient.Gulp} gulp - Gulp library
  * @param {Object} config - Config settings
  * @param {Object} options - Options
- * @param {string} options.type - Either `module` or `script`
  * @param {string} [labelPrefix] - A prefix to print before the label
  * @returns {Promise}
  */

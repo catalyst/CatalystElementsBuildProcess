@@ -955,7 +955,7 @@ function pushToGit(gulp, config, currentBranch, majorBranch, labelPrefix) {
  * @param {Object} directory - The directory that contains the files to add.
  * @param {string} outputFile - The output file
  * @param {string} format - The format of the archive
- * @param {string} formatConfig - The format settings
+ * @param {Object} formatConfig - The format settings
  * @returns {Promise}
  */
 function createArchive(directory, outputFile, format, formatConfig) {
@@ -1275,7 +1275,12 @@ module.exports = (gulp, config) => {
       // User want to push changes.
       if (input.pushToGit) {
         // Push changes to GitHub.
-        await pushToGit(gulp, config);
+        await pushToGit(
+          gulp,
+          config,
+          info.git.currentBranch,
+          info.git.majorBranch
+        );
 
         // Only prompt about a GitHub release if the hosted on GitHub.
         if (config.publish.hostedOnGitHub) {

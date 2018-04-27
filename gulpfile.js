@@ -4,9 +4,6 @@ const gulp = require('gulp');
 const buildProcess = require('.');
 
 buildProcess.setConfig('./package.json', {
-  dist: {
-    path: '.'
-  },
   publish: {
     checkFiles: {
       package: true,

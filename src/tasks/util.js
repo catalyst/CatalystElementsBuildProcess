@@ -1,5 +1,5 @@
-const PreWebpackClosureCompilerPlugin = require(`${__dirname}/classes/PreWebpackClosureCompilerPlugin`);
-const MultiPromiseRejectionError = require(`${__dirname}/classes/MultiPromiseRejectionError`);
+const PreWebpackClosureCompilerPlugin = require(`${__dirname}/../classes/PreWebpackClosureCompilerPlugin`);
+const MultiPromiseRejectionError = require(`${__dirname}/../classes/MultiPromiseRejectionError`);
 
 // Libraries.
 const colors = require('ansi-colors');

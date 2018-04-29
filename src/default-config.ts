@@ -4,7 +4,7 @@ import colorGuard from 'colorguard';
 import postcssCqProlyfill from 'cq-prolyfill/postcss-plugin';
 import cssMQPacker from 'css-mqpacker';
 import cssnano from 'cssnano';
-import { Options as htmlMinifyOptions } from 'html-minifier';
+import { Options as htmlMinifierOptions } from 'html-minifier';
 import postcssAutoReset from 'postcss-autoreset';
 import postcssCssNext from 'postcss-cssnext';
 import postcssFontMagician from 'postcss-font-magician';
@@ -16,139 +16,143 @@ import postcssReporter from 'postcss-reporter';
 
 declare interface IConfig {
   /** Build settings. */
-  build?: {
+  build: {
     /** Module settings */
-    module?: {
+    module: {
       /** Build the module? */
-      build?: boolean;
+      build: boolean;
       /** Module extension */
-      extension?: string;
+      extension: string;
     };
     /** Script settings */
-    script?: {
+    script: {
       /** Build the script? */
-      build?: boolean;
+      build: boolean;
       /** Script extension */
-      extension?: string;
+      extension: string;
       /** Bundle in all the imports? */
-      bundleImports?: boolean;
+      bundleImports: boolean;
       /** Export all the static imports? */
-      exportAllStaticImports?: boolean;
+      exportAllStaticImports: boolean;
     };
     /** Config options for tools used in the build process. */
     tools?: {
       /** HTML Minifier settings */
-      htmlMinifier?: htmlMinifyOptions;
+      htmlMinifier?: htmlMinifierOptions;
       /** PostCSS settings */
       postcss?: {
-        plugins: any[];
-        options: object;
+        plugins?: any[];
+        options?: object;
       }
     };
   };
   /** Component settings. */
-  componenet?: {
+  componenet: {
     /** The name of the component. */
-    name?: string | null;
+    name?: string;
+    /** @private The npm scope of the component */
+    scope?: string | null;
+    /** @private The path to the component when it is in node modules. */
+    nodeModulesPath?: string;
   };
   /** Demo settings. */
-  demos?: {
+  demos: {
     /** The file that imports the demo dependencies relative to `demos.path`. */
-    importsFilename?: string;
+    importsFilename: string;
     /** The file that imports `demos.importsFilename` relative to `demos.path`. */
-    importsImporterFilename?: string;
+    importsImporterFilename: string;
     /** The path to the demos folder relative to the component's project root. */
-    path?: string;
+    path: string;
   };
   /** Distribution settings. */
-  dist?: {
+  dist: {
     /** The path to the distribution folder relative to the component's project root. */
-    path?: string;
+    path: string;
   };
   /** Documentation settings. */
-  docs?: {
+  docs: {
     /** The file that contains the analysis data relative to the component's project root. */
-    analysisFilename?: string;
+    analysisFilename: string;
     /** The file that imports the docs dependencies relative to the component's project root. */
-    importsFilename?: string;
+    importsFilename: string;
     /** The file that imports `docs.importsFilename` relative to the component's project root. */
-    importsImporterFilename?: string;
+    importsImporterFilename: string;
     /** The index page of the documentation relative to the component's project root. */
-    indexPage?: string;
+    indexPage: string;
     /** The folder name for the node modules inside docs. */
-    nodeModulesPath?: string;
+    nodeModulesPath: string;
     /** The path to the documentation folder relative to the component's project root. */
-    path?: string;
+    path: string;
   };
   /** Where the node module files are relative to the component's project root. */
   nodeModulesPath?: string;
   /** Publish settings. */
-  publish?: {
+  publish: {
     /** Archives formats to upload to GitHub Release. */
-    archiveFormats?: {
+    archiveFormats: {
       /** Tar archive. */
-      tar?: {
+      tar: {
         /** File extension. */
-        extension?: string;
+        extension: string;
         /** Don't use this format. */
-        ignore?: boolean;
+        ignore: boolean;
         /** Archive options. */
         options?: CoreOptions & TransformOptions & TarOptions;
       };
       /** Zip archive. */
-      zip?: {
+      zip: {
         /** File extension. */
-        extension?: string;
+        extension: string;
         /** Don't use this format. */
-        ignore?: boolean;
+        ignore: boolean;
         /** Archive options. */
         options?: CoreOptions & TransformOptions & ZipOptions;
       };
     };
-    /** Run checks on the following files?: (ignored if `runFileChecks` is false) */
-    checkFiles?: {
-      package?: boolean;
-      script?: boolean;
-      module?: boolean;
-      license?: boolean;
-      readme?: boolean;
+    /** Run checks on the following files: (ignored if `runFileChecks` is false) */
+    checkFiles: {
+      package: boolean;
+      script: boolean;
+      module: boolean;
+      license: boolean;
+      readme: boolean;
     };
     /** Do a dry run? */
-    dryrun?: boolean;
+    dryrun: boolean;
     /** For the release - ignore non critical errors along the way. */
-    force?: boolean;
+    force: boolean;
     /** Is the component project hosted on GitHub? */
-    hostedOnGitHub?: boolean;
+    hostedOnGitHub: boolean;
     /** The name of the git master branch. */
-    masterBranch?: string;
+    masterBranch: string;
     /** Regex for the prerelease branches. */
-    prereleaseBranchRegex?: RegExp;
+    prereleaseBranchRegex: RegExp;
     /** Check that the files are ready publishing? */
-    runFileChecks?: boolean;
+    runFileChecks: boolean;
     /** Check that git has everything in sync and ready for publishing? */
-    runGitChecks?: boolean;
+    runGitChecks: boolean;
   };
   /** Source settings. */
-  src?: {
+  src: {
     /** The path to the source folder relative to the component's project root. */
-    path?: string;
+    path: string;
     /** The path to the entrypoint file relative to `src.path` */
-    entrypoint?: string | null;
+    entrypoint?: string;
     /** The templates to be injected. */
     template?: {
       css?: string
       html?: string
-    } | null;
+    };
   };
   /** Temp settings. */
-  temp?: {
+  temp: {
     /** The path to the temp folder relative to the component's project root. */
-    path?: string;
+    path: string;
   };
   /** Test settings. */
-  tests?: {
+  tests: {
     /** The path to the test folder relative to the component's project root. */
-    path?: string;
+    path: string;
     /** The config for Web Component Tester. */
     wctConfig?: {
       plugins?: {
@@ -163,20 +167,12 @@ declare interface IConfig {
       npm?: boolean;
     };
   };
+  /** Contents of component project's package.json file. */
+  package?: any;
+  [key: string]: any;
 }
 
-type IConfigPrivate = IConfig & {
-  componenet?: {
-    /** The npm scope of the component */
-    scope?: string | null;
-    /** The path to the component when it is in node modules. */
-    nodeModulesPath?: string | null;
-  };
-  /** Contents of component project's package.json file. */
-  package?: string | null;
-};
-
-const defaultConfig: IConfigPrivate = {
+const defaultConfig: IConfig = {
   build: {
     module: {
       build: true,
@@ -244,11 +240,7 @@ const defaultConfig: IConfigPrivate = {
       }
     }
   },
-  componenet: {
-    name: null,
-    nodeModulesPath: null,
-    scope: null
-  },
+  componenet: {},
   demos: {
     importsFilename: 'imports.mjs',
     importsImporterFilename: 'imports-importer.mjs',
@@ -266,7 +258,6 @@ const defaultConfig: IConfigPrivate = {
     path: 'docs'
   },
   nodeModulesPath: 'node_modules',
-  package: null,
   publish: {
     archiveFormats: {
       tar: {
@@ -305,9 +296,7 @@ const defaultConfig: IConfigPrivate = {
     runGitChecks: true
   },
   src: {
-    entrypoint: null,
-    path: 'src',
-    template: null
+    path: 'src'
   },
   temp: {
     path: '.tmp'
@@ -329,4 +318,4 @@ const defaultConfig: IConfigPrivate = {
   }
 };
 
-export { defaultConfig, IConfigPrivate, IConfig };
+export { defaultConfig, IConfig };

@@ -108,7 +108,6 @@ export function waitForAllPromises(
 
 /**
  * Get a new WebpackClosureCompilerPlugin that has been configured.
- *
  */
 export function getWebpackPlugIns(): Plugin[] {
   return [

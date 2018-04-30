@@ -1,35 +1,43 @@
-// Load util.
-const tasksUtil = require('./util');
-
 // Libraries.
-const cheerio = require('cheerio');
-const escodegen = require('escodegen');
-const esprima = require('esprima');
-const flatmap = require('gulp-flatmap');
-const fs = require('fs');
-const git = require('gulp-git');
-const glob = require('glob');
-const gulpIf = require('gulp-if');
-const htmlmin = require('gulp-htmlmin');
-const mergeStream = require('merge-stream');
-const modifyFile = require('gulp-modify-file');
-const named = require('vinyl-named');
-const path = require('path');
-const PolymerBuild = require('polymer-build');
-const rename = require('gulp-rename');
-const util = require('util');
-const webpack = require('webpack');
-const webpackStream = require('webpack-stream');
+import cheerio from 'cheerio';
+import escodegen from 'escodegen';
+import esprima from 'esprima';
+import { constants, existsSync } from 'fs';
+import { access, readdir, readFile } from 'fs/promises';
+import glob from 'glob';
+import GulpClient from 'gulp';
+import flatmap from 'gulp-flatmap';
+import { checkout, clone } from 'gulp-git';
+import htmlmin from 'gulp-htmlmin';
+import gulpIf from 'gulp-if';
+import modifyFile from 'gulp-modify-file';
+import rename from 'gulp-rename';
+import mergeStream from 'merge-stream';
+import { basename, extname, normalize } from 'path';
+import { dirname } from 'path';
+import PolymerBuild from 'polymer-build';
+import { Stream } from 'stream';
+import { promisify } from 'util';
+import VinylFile from 'vinyl';
+import named from 'vinyl-named';
+import * as webpack from 'webpack';
+import webpackStream from 'webpack-stream';
+
+import { IConfig } from '../config';
+import {
+  cleanDocs,
+  getWebpackPlugIns,
+  tasksHelpers,
+  UnrecoverableError,
+  waitForAllPromises
+} from '../util';
 
 // Promisified functions.
-const fsAccess = util.promisify(fs.access);
-const fsReaddir = util.promisify(fs.readdir);
-const fsReadfile = util.promisify(fs.readFile);
-const gitClone = util.promisify(git.clone);
-const gitCheckout = util.promisify(git.checkout);
-const globPromise = util.promisify(glob);
+const gitClone = promisify(clone);
+const gitCheckout = promisify(checkout);
+const globPromise = promisify(glob);
 
-// The temp path.
+// The temp
 const tempSubpath = 'docs';
 
 // States if everything is ok. i.e. No important tasks have failed.
@@ -38,16 +46,15 @@ let allOK = true;
 /**
  * Test if a directory is ready for cloning.
  *
- * @param {string} dirPath - Path of the directory to check
- * @returns {Promise}
+ * @param dirPath - Path of the directory to check
  */
-function directoryReadyForCloning(dirPath) {
+function directoryReadyForCloning(dirPath: string): Promise<void> {
   return new Promise(async (resolve, reject) => {
     try {
-      if (fs.existsSync(dirPath)) {
-        await fsAccess(dirPath, fs.constants.R_OK | fs.constants.W_OK);
+      if (existsSync(dirPath)) {
+        await access(dirPath, constants.R_OK | constants.W_OK);
 
-        const files = await fsReaddir(dirPath, 'utf8');
+        const files = await readdir(dirPath, 'utf8');
 
         if (files.length === 0) {
           resolve();
@@ -66,26 +73,29 @@ function directoryReadyForCloning(dirPath) {
 /**
  * Clone the given repository; then if a branch is given, check it out.
  *
- * @param {string} repoPath - The path to the repo
- * @param {string} dirPath - The path to clone the repo into
- * @param {string} [labelPrefix] - A prefix to print before the label
- * @returns {Promise}
+ * @param repoPath - The path to the repo
+ * @param dirPath - The path to clone the repo into
+ * @param labelPrefix - A prefix to print before the label
  */
-function cloneRepository(repoPath, dirPath, labelPrefix) {
+function cloneRepository(
+  repoPath: string,
+  dirPath: string,
+  labelPrefix?: string
+): Promise<void> {
   const subTaskLabel = `clone of ${repoPath}`;
 
   return new Promise(async (resolve, reject) => {
     try {
-      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+      tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
       await gitClone(repoPath, { args: `${dirPath} --quiet` });
 
       resolve();
-      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
+      tasksHelpers.log.successful(subTaskLabel, labelPrefix);
     } catch (error) {
       allOK = false;
       reject(error);
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -93,22 +103,25 @@ function cloneRepository(repoPath, dirPath, labelPrefix) {
 /**
  * Clone all the repos specified by the given package.json files.
  *
- * @param {string[]} packageFilePaths
+ * @param packageFilePaths
  *   Array of file paths to the package.json files that contrain the infomation
  *   about the repos to clone
- * @param {Object} config - Config settings
- * @param {string} [labelPrefix] - A prefix to print before the label
- * @returns {Promise}
+ * @param config - Config settings
+ * @param labelPrefix - A prefix to print before the label
  */
-function cloneRepositories(packageFilePaths, config, labelPrefix) {
-  const repos = [];
+function cloneRepositories(
+  packageFilePaths: string[],
+  config: IConfig,
+  labelPrefix?: string
+): Promise<void[]> {
+  const repos: Array<Promise<void>> = [];
 
   for (const packageFilePath of packageFilePaths) {
     repos.push(
       // eslint-disable-next-line no-loop-func
       new Promise(async (resolve, reject) => {
         try {
-          const data = await fsReadfile(packageFilePath, 'utf8');
+          const data = await readFile(packageFilePath, 'utf8');
           const json = JSON.parse(data);
 
           const name = json.name;
@@ -134,7 +147,7 @@ function cloneRepositories(packageFilePaths, config, labelPrefix) {
             let p = '';
             if (typeof repository === 'object') {
               if (repository.type !== 'git') {
-                throw new Error(`"${repoPath}" is not a git repository.`);
+                throw new Error(`"${repository}" is not a git repository.`);
               }
               p = repository.url;
             } else {
@@ -160,7 +173,7 @@ function cloneRepositories(packageFilePaths, config, labelPrefix) {
           }
 
           if (skipClone) {
-            tasksUtil.tasks.log.info(
+            tasksHelpers.log.info(
               `skipping clone of "${repoPath}" - output dir not empty.`,
               labelPrefix
             );
@@ -184,22 +197,25 @@ function cloneRepositories(packageFilePaths, config, labelPrefix) {
 /**
  * Copy all the node modules.
  *
- * @param {GulpClient.Gulp} gulp - Gulp library
- * @param {Object} config - Config settings
- * @param {string} [labelPrefix] - A prefix to print before the label
- * @returns {Promise}
+ * @param  gulp - Gulp library
+ * @param config - Config settings
+ * @param labelPrefix - A prefix to print before the label
  */
-function copyNodeModules(gulp, config, labelPrefix) {
+function copyNodeModules(
+  gulp: GulpClient.Gulp,
+  config: IConfig,
+  labelPrefix?: string
+): Promise<void> {
   const subTaskLabel = 'node modules';
 
   return new Promise((resolve, reject) => {
     try {
       // No point starting this task if another important task has already failed.
       if (!allOK) {
-        throw new tasksUtil.NotOKError();
+        throw new UnrecoverableError();
       }
 
-      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+      tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
       gulp
         .src(`./${config.nodeModulesPath}/**`, { follow: true })
@@ -212,14 +228,14 @@ function copyNodeModules(gulp, config, labelPrefix) {
         )
         .on('finish', () => {
           resolve();
-          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
+          tasksHelpers.log.successful(subTaskLabel, labelPrefix);
         })
-        .on('error', error => {
+        .on('error', (error: Error) => {
           throw error;
         });
     } catch (error) {
       reject(error);
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -227,22 +243,25 @@ function copyNodeModules(gulp, config, labelPrefix) {
 /**
  * Copy the docs' index page.
  *
- * @param {GulpClient.Gulp} gulp - Gulp library
- * @param {Object} config - Config settings
- * @param {string} [labelPrefix] - A prefix to print before the label
- * @returns {Promise}
+ * @param  gulp - Gulp library
+ * @param config - Config settings
+ * @param labelPrefix - A prefix to print before the label
  */
-function copyDocsIndex(gulp, config, labelPrefix) {
+function copyDocsIndex(
+  gulp: GulpClient.Gulp,
+  config: IConfig,
+  labelPrefix?: string
+): Promise<void> {
   const subTaskLabel = 'index page';
 
   return new Promise((resolve, reject) => {
     try {
       // No point starting this task if another important task has already failed.
       if (!allOK) {
-        throw new tasksUtil.NotOKError();
+        throw new UnrecoverableError();
       }
 
-      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+      tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
       gulp
         .src(`./${config.docs.indexPage}`)
@@ -254,14 +273,14 @@ function copyDocsIndex(gulp, config, labelPrefix) {
         .pipe(gulp.dest(`./${config.temp.path}/${tempSubpath}`))
         .on('finish', () => {
           resolve();
-          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
+          tasksHelpers.log.successful(subTaskLabel, labelPrefix);
         })
-        .on('error', error => {
+        .on('error', (error: Error) => {
           throw error;
         });
     } catch (error) {
       reject(error);
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -269,22 +288,25 @@ function copyDocsIndex(gulp, config, labelPrefix) {
 /**
  * Copy the docs' extra dependencies.
  *
- * @param {GulpClient.Gulp} gulp - Gulp library
- * @param {Object} config - Config settings
- * @param {string} [labelPrefix] - A prefix to print before the label
- * @returns {Promise}
+ * @param  gulp - Gulp library
+ * @param config - Config settings
+ * @param labelPrefix - A prefix to print before the label
  */
-function copyExtraDocDependencies(gulp, config, labelPrefix) {
+function copyExtraDocDependencies(
+  gulp: GulpClient.Gulp,
+  config: IConfig,
+  labelPrefix?: string
+): Promise<void> {
   const subTaskLabel = 'extra dependencies';
 
   return new Promise((resolve, reject) => {
     try {
       // No point starting this task if another important task has already failed.
       if (!allOK) {
-        throw new tasksUtil.NotOKError();
+        throw new UnrecoverableError();
       }
 
-      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+      tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
       gulp
         .src([
@@ -295,14 +317,14 @@ function copyExtraDocDependencies(gulp, config, labelPrefix) {
         .pipe(gulp.dest(`./${config.temp.path}/${tempSubpath}`))
         .on('finish', () => {
           resolve();
-          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
+          tasksHelpers.log.successful(subTaskLabel, labelPrefix);
         })
-        .on('error', error => {
+        .on('error', (error: Error) => {
           throw error;
         });
     } catch (error) {
       reject(error);
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -310,22 +332,25 @@ function copyExtraDocDependencies(gulp, config, labelPrefix) {
 /**
  * Copy over all the distribution files.
  *
- * @param {GulpClient.Gulp} gulp - Gulp library
- * @param {Object} config - Config settings
- * @param {string} [labelPrefix] - A prefix to print before the label
- * @returns {Promise}
+ * @param  gulp - Gulp library
+ * @param config - Config settings
+ * @param labelPrefix - A prefix to print before the label
  */
-function copyDistributionFiles(gulp, config, labelPrefix) {
+function copyDistributionFiles(
+  gulp: GulpClient.Gulp,
+  config: IConfig,
+  labelPrefix?: string
+): Promise<void> {
   const subTaskLabel = 'distribution files';
 
   return new Promise((resolve, reject) => {
     try {
       // No point starting this task if another important task has already failed.
       if (!allOK) {
-        throw new tasksUtil.NotOKError();
+        throw new UnrecoverableError();
       }
 
-      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+      tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
       gulp
         .src(`./${config.dist.path}/**`)
@@ -338,14 +363,14 @@ function copyDistributionFiles(gulp, config, labelPrefix) {
         )
         .on('finish', () => {
           resolve();
-          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
+          tasksHelpers.log.successful(subTaskLabel, labelPrefix);
         })
-        .on('error', error => {
+        .on('error', (error: Error) => {
           throw error;
         });
     } catch (error) {
       reject(error);
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -353,22 +378,25 @@ function copyDistributionFiles(gulp, config, labelPrefix) {
 /**
  * Copy over the demos in the demos folder.
  *
- * @param {GulpClient.Gulp} gulp - Gulp library
- * @param {Object} config - Config settings
- * @param {string} [labelPrefix] - A prefix to print before the label
- * @returns {Promise}
+ * @param  gulp - Gulp library
+ * @param config - Config settings
+ * @param labelPrefix - A prefix to print before the label
  */
-function copyLocalDemos(gulp, config, labelPrefix) {
+function copyLocalDemos(
+  gulp: GulpClient.Gulp,
+  config: IConfig,
+  labelPrefix?: string
+): Promise<void> {
   const subTaskLabel = 'local demos';
 
   return new Promise((resolve, reject) => {
     try {
       // No point starting this task if another important task has already failed.
       if (!allOK) {
-        throw new tasksUtil.NotOKError();
+        throw new UnrecoverableError();
       }
 
-      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+      tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
       gulp
         .src(`./${config.demos.path}/**`, {
@@ -383,14 +411,14 @@ function copyLocalDemos(gulp, config, labelPrefix) {
         )
         .on('finish', () => {
           resolve();
-          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
+          tasksHelpers.log.successful(subTaskLabel, labelPrefix);
         })
-        .on('error', error => {
+        .on('error', (error: Error) => {
           throw error;
         });
     } catch (error) {
       reject(error);
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -398,22 +426,25 @@ function copyLocalDemos(gulp, config, labelPrefix) {
 /**
  * Copy all the dependencies so they can be editor with out affecting anything else.
  *
- * @param {GulpClient.Gulp} gulp - Gulp library
- * @param {Object} config - Config settings
- * @param {string} [labelPrefix] - A prefix to print before the label
- * @returns {Promise}
+ * @param  gulp - Gulp library
+ * @param config - Config settings
+ * @param labelPrefix - A prefix to print before the label
  */
-function copyDependencies(gulp, config, labelPrefix) {
+function copyDependencies(
+  gulp: GulpClient.Gulp,
+  config: IConfig,
+  labelPrefix?: string
+): Promise<void> {
   const subTaskLabel = 'copy dependencies';
 
   return new Promise(async (resolve, reject) => {
     try {
       // No point starting this task if another important task has already failed.
       if (!allOK) {
-        throw new tasksUtil.NotOKError();
+        throw new UnrecoverableError();
       }
 
-      const subTaskLabelPrefix = tasksUtil.tasks.log.starting(
+      const subTaskLabelPrefix = tasksHelpers.log.starting(
         subTaskLabel,
         labelPrefix
       );
@@ -427,11 +458,11 @@ function copyDependencies(gulp, config, labelPrefix) {
 
       // Only copy node modules if they aren't already in place.
       if (
-        fs.existsSync(
+        existsSync(
           `./${config.temp.path}/${tempSubpath}/${config.docs.nodeModulesPath}`
         )
       ) {
-        tasksUtil.tasks.log.info(
+        tasksHelpers.log.info(
           'skipping copying of node modules - already in place.',
           subTaskLabelPrefix
         );
@@ -439,14 +470,14 @@ function copyDependencies(gulp, config, labelPrefix) {
         subTasks.push(copyNodeModules(gulp, config, subTaskLabelPrefix));
       }
 
-      await tasksUtil.waitForAllPromises(subTasks);
+      await waitForAllPromises(subTasks);
 
-      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
+      tasksHelpers.log.successful(subTaskLabel, labelPrefix);
       resolve();
     } catch (error) {
       allOK = false;
       reject(error);
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -454,22 +485,25 @@ function copyDependencies(gulp, config, labelPrefix) {
 /**
  * Update the analysis.
  *
- * @param {GulpClient.Gulp} gulp - Gulp library
- * @param {Object} config - Config settings
- * @param {string} [labelPrefix] - A prefix to print before the label
- * @returns {Promise}
+ * @param  gulp - Gulp library
+ * @param config - Config settings
+ * @param labelPrefix - A prefix to print before the label
  */
-function updateAnalysis(gulp, config, labelPrefix) {
+function updateAnalysis(
+  gulp: GulpClient.Gulp,
+  config: IConfig,
+  labelPrefix?: string
+): Promise<void> {
   const subTaskLabel = 'update analysis';
 
   return new Promise((resolve, reject) => {
     try {
       // No point starting this task if another important task has already failed.
       if (!allOK) {
-        throw new tasksUtil.NotOKError();
+        throw new UnrecoverableError();
       }
 
-      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+      tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
       gulp
         .src(
@@ -481,7 +515,7 @@ function updateAnalysis(gulp, config, labelPrefix) {
           }
         )
         .pipe(
-          modifyFile(content => {
+          modifyFile((content: string) => {
             const analysis = JSON.parse(content);
             const typesToFix = ['elements', 'mixins'];
             for (const type of typesToFix) {
@@ -504,14 +538,14 @@ function updateAnalysis(gulp, config, labelPrefix) {
         .pipe(gulp.dest('./'))
         .on('finish', () => {
           resolve();
-          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
+          tasksHelpers.log.successful(subTaskLabel, labelPrefix);
         })
-        .on('error', error => {
+        .on('error', (error: Error) => {
           throw error;
         });
     } catch (error) {
       reject(error);
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -519,22 +553,25 @@ function updateAnalysis(gulp, config, labelPrefix) {
 /**
  * Get the demos.
  *
- * @param {GulpClient.Gulp} gulp - Gulp library
- * @param {Object} config - Config settings
- * @param {string} [labelPrefix] - A prefix to print before the label
- * @returns {Promise}
+ * @param  gulp - Gulp library
+ * @param config - Config settings
+ * @param labelPrefix - A prefix to print before the label
  */
-function getDemos(gulp, config, labelPrefix) {
+function getDemos(
+  gulp: GulpClient.Gulp,
+  config: IConfig,
+  labelPrefix?: string
+): Promise<void> {
   const subTaskLabel = 'get demos';
 
   return new Promise(async (resolve, reject) => {
     try {
       // No point starting this task if another important task has already failed.
       if (!allOK) {
-        throw new tasksUtil.NotOKError();
+        throw new UnrecoverableError();
       }
 
-      const subTaskLabelPrefix = tasksUtil.tasks.log.starting(
+      const subTaskLabelPrefix = tasksHelpers.log.starting(
         subTaskLabel,
         labelPrefix
       );
@@ -549,9 +586,9 @@ function getDemos(gulp, config, labelPrefix) {
         const promises = [];
 
         for (const file of files) {
-          const fileDirPath = path.dirname(file);
+          const fileDirPath = dirname(file);
           const name =
-            config.componenet.scope === null
+            config.componenet.scope == null
               ? fileDirPath.substring(fileDirPath.lastIndexOf('/') + 1)
               : fileDirPath.substring(
                   fileDirPath.lastIndexOf(config.componenet.scope)
@@ -560,14 +597,14 @@ function getDemos(gulp, config, labelPrefix) {
             config.temp.path
           }/${tempSubpath}/demo-clones/${name}`;
 
-          const base = path.normalize(
+          const base = normalize(
             config.componenet.scope === null ? `${dir}/..` : `${dir}/../..`
           );
 
           promises.push(
             new Promise((resolve, reject) => {
               gulp
-                .src(`${dir}/${config.demos.path}/**`, { base: base })
+                .src(`${dir}/${config.demos.path}/**`, { base })
                 .pipe(
                   gulp.dest(
                     `./${config.temp.path}/${tempSubpath}/${
@@ -578,22 +615,22 @@ function getDemos(gulp, config, labelPrefix) {
                 .on('finish', () => {
                   resolve();
                 })
-                .on('error', error => {
+                .on('error', (error: Error) => {
                   reject(error);
                 });
             })
           );
         }
 
-        await tasksUtil.waitForAllPromises(promises);
+        await waitForAllPromises(promises);
       }
 
       resolve();
-      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
+      tasksHelpers.log.successful(subTaskLabel, labelPrefix);
     } catch (error) {
       allOK = false;
       reject(error);
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -601,27 +638,30 @@ function getDemos(gulp, config, labelPrefix) {
 /**
  * Update the references in the index file.
  *
- * @param {GulpClient.Gulp} gulp - Gulp library
- * @param {Object} config - Config settings
- * @param {string} [labelPrefix] - A prefix to print before the label
- * @returns {Promise}
+ * @param  gulp - Gulp library
+ * @param config - Config settings
+ * @param labelPrefix - A prefix to print before the label
  */
-function indexPageUpdateReferences(gulp, config, labelPrefix) {
+function indexPageUpdateReferences(
+  gulp: GulpClient.Gulp,
+  config: IConfig,
+  labelPrefix?: string
+): Promise<void> {
   const subTaskLabel = 'index';
 
   return new Promise((resolve, reject) => {
     try {
       // No point starting this task if another important task has already failed.
       if (!allOK) {
-        throw new tasksUtil.NotOKError();
+        throw new UnrecoverableError();
       }
 
-      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+      tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
       gulp
         .src(`./${config.temp.path}/${tempSubpath}/index.html`, { base: './' })
         .pipe(
-          modifyFile(content => {
+          modifyFile((content: string) => {
             const $ = cheerio.load(content);
             $('script').each((index, element) => {
               if (element.attribs.type === 'module') {
@@ -638,14 +678,14 @@ function indexPageUpdateReferences(gulp, config, labelPrefix) {
         .pipe(gulp.dest('./'))
         .on('finish', () => {
           resolve();
-          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
+          tasksHelpers.log.successful(subTaskLabel, labelPrefix);
         })
-        .on('error', error => {
+        .on('error', (error: Error) => {
           throw error;
         });
     } catch (error) {
       reject(error);
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -653,22 +693,25 @@ function indexPageUpdateReferences(gulp, config, labelPrefix) {
 /**
  * Update the references in each of the demos' pages.
  *
- * @param {GulpClient.Gulp} gulp - Gulp library
- * @param {Object} config - Config settings
- * @param {string} [labelPrefix] - A prefix to print before the label
- * @returns {Promise}
+ * @param  gulp - Gulp library
+ * @param config - Config settings
+ * @param labelPrefix - A prefix to print before the label
  */
-function demosPagesUpdateReferences(gulp, config, labelPrefix) {
+function demosPagesUpdateReferences(
+  gulp: GulpClient.Gulp,
+  config: IConfig,
+  labelPrefix?: string
+): Promise<void> {
   const subTaskLabel = 'demo files';
 
   return new Promise((resolve, reject) => {
     try {
       // No point starting this task if another important task has already failed.
       if (!allOK) {
-        throw new tasksUtil.NotOKError();
+        throw new UnrecoverableError();
       }
 
-      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+      tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
       gulp
         .src(
@@ -678,7 +721,7 @@ function demosPagesUpdateReferences(gulp, config, labelPrefix) {
           { base: './' }
         )
         .pipe(
-          modifyFile(content => {
+          modifyFile((content: string) => {
             const $ = cheerio.load(content);
             $('script[type="module"]').each((index, element) => {
               delete element.attribs.type;
@@ -691,14 +734,14 @@ function demosPagesUpdateReferences(gulp, config, labelPrefix) {
         .pipe(gulp.dest('./'))
         .on('finish', () => {
           resolve();
-          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
+          tasksHelpers.log.successful(subTaskLabel, labelPrefix);
         })
-        .on('error', error => {
+        .on('error', (error: Error) => {
           throw error;
         });
     } catch (error) {
       reject(error);
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -706,22 +749,25 @@ function demosPagesUpdateReferences(gulp, config, labelPrefix) {
 /**
  * Update the references in the imported files.
  *
- * @param {GulpClient.Gulp} gulp - Gulp library
- * @param {Object} config - Config settings
- * @param {string} [labelPrefix] - A prefix to print before the label
- * @returns {Promise}
+ * @param  gulp - Gulp library
+ * @param config - Config settings
+ * @param labelPrefix - A prefix to print before the label
  */
-function indexImportsUpdateReferences(gulp, config, labelPrefix) {
+function indexImportsUpdateReferences(
+  gulp: GulpClient.Gulp,
+  config: IConfig,
+  labelPrefix?: string
+): Promise<void> {
   const subTaskLabel = 'imports';
 
   return new Promise((resolve, reject) => {
     try {
       // No point starting this task if another important task has already failed.
       if (!allOK) {
-        throw new tasksUtil.NotOKError();
+        throw new UnrecoverableError();
       }
 
-      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+      tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
       gulp
         .src(
@@ -731,7 +777,7 @@ function indexImportsUpdateReferences(gulp, config, labelPrefix) {
           }
         )
         .pipe(
-          modifyFile(content => {
+          modifyFile((content: string) => {
             const parsedCode = esprima.parseModule(content);
 
             // Static imports declaration must be defined in the body.
@@ -758,14 +804,14 @@ function indexImportsUpdateReferences(gulp, config, labelPrefix) {
         .pipe(gulp.dest('./'))
         .on('finish', () => {
           resolve();
-          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
+          tasksHelpers.log.successful(subTaskLabel, labelPrefix);
         })
-        .on('error', error => {
+        .on('error', (error: Error) => {
           throw error;
         });
     } catch (error) {
       reject(error);
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -773,37 +819,40 @@ function indexImportsUpdateReferences(gulp, config, labelPrefix) {
 /**
  * Update the references in the index file.
  *
- * @param {GulpClient.Gulp} gulp - Gulp library
- * @param {Object} config - Config settings
- * @param {string} [labelPrefix] - A prefix to print before the label
- * @returns {Promise}
+ * @param  gulp - Gulp library
+ * @param config - Config settings
+ * @param labelPrefix - A prefix to print before the label
  */
-function indexUpdateReferences(gulp, config, labelPrefix) {
+function indexUpdateReferences(
+  gulp: GulpClient.Gulp,
+  config: IConfig,
+  labelPrefix?: string
+): Promise<void> {
   const subTaskLabel = 'update references';
 
   return new Promise(async (resolve, reject) => {
     try {
       // No point starting this task if another important task has already failed.
       if (!allOK) {
-        throw new tasksUtil.NotOKError();
+        throw new UnrecoverableError();
       }
 
-      const subTaskLabelPrefix = tasksUtil.tasks.log.starting(
+      const subTaskLabelPrefix = tasksHelpers.log.starting(
         subTaskLabel,
         labelPrefix
       );
 
-      await tasksUtil.waitForAllPromises([
+      await waitForAllPromises([
         indexPageUpdateReferences(gulp, config, subTaskLabelPrefix),
         indexImportsUpdateReferences(gulp, config, subTaskLabelPrefix)
       ]);
 
       resolve();
-      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
+      tasksHelpers.log.successful(subTaskLabel, labelPrefix);
     } catch (error) {
       allOK = false;
       reject(error);
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -811,36 +860,39 @@ function indexUpdateReferences(gulp, config, labelPrefix) {
 /**
  * Update the references in each of the demo files.
  *
- * @param {GulpClient.Gulp} gulp - Gulp library
- * @param {Object} config - Config settings
- * @param {string} [labelPrefix] - A prefix to print before the label
- * @returns {Promise}
+ * @param  gulp - Gulp library
+ * @param config - Config settings
+ * @param labelPrefix - A prefix to print before the label
  */
-function demosUpdateReferences(gulp, config, labelPrefix) {
+function demosUpdateReferences(
+  gulp: GulpClient.Gulp,
+  config: IConfig,
+  labelPrefix?: string
+): Promise<void> {
   const subTaskLabel = 'update references';
 
   return new Promise(async (resolve, reject) => {
     try {
       // No point starting this task if another important task has already failed.
       if (!allOK) {
-        throw new tasksUtil.NotOKError();
+        throw new UnrecoverableError();
       }
 
-      const subTaskLabelPrefix = tasksUtil.tasks.log.starting(
+      const subTaskLabelPrefix = tasksHelpers.log.starting(
         subTaskLabel,
         labelPrefix
       );
 
-      await tasksUtil.waitForAllPromises([
+      await waitForAllPromises([
         demosPagesUpdateReferences(gulp, config, subTaskLabelPrefix)
       ]);
 
       resolve();
-      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
+      tasksHelpers.log.successful(subTaskLabel, labelPrefix);
     } catch (error) {
       allOK = false;
       reject(error);
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -848,31 +900,34 @@ function demosUpdateReferences(gulp, config, labelPrefix) {
 /**
  * Finalize the index page.
  *
- * @param {GulpClient.Gulp} gulp - Gulp library
- * @param {Object} config - Config settings
- * @param {string} [labelPrefix] - A prefix to print before the label
- * @returns {Promise}
+ * @param  gulp - Gulp library
+ * @param config - Config settings
+ * @param labelPrefix - A prefix to print before the label
  */
-function finalizeIndexPage(gulp, config, labelPrefix) {
+function finalizeIndexPage(
+  gulp: GulpClient.Gulp,
+  config: IConfig,
+  labelPrefix?: string
+): Promise<void> {
   const subTaskLabel = 'finalize';
 
   return new Promise((resolve, reject) => {
     try {
       // No point starting this task if another important task has already failed.
       if (!allOK) {
-        throw new tasksUtil.NotOKError();
+        throw new UnrecoverableError();
       }
 
-      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+      tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
-      const docsImportsBaseName = path.basename(
+      const docsImportsBaseName = basename(
         config.docs.importsFilename,
-        path.extname(config.docs.importsFilename)
+        extname(config.docs.importsFilename)
       );
 
-      const docsImportsImporterBaseName = path.basename(
+      const docsImportsImporterBaseName = basename(
         config.docs.importsImporterFilename,
-        path.extname(config.docs.importsImporterFilename)
+        extname(config.docs.importsImporterFilename)
       );
 
       gulp
@@ -888,28 +943,28 @@ function finalizeIndexPage(gulp, config, labelPrefix) {
         .pipe(
           webpackStream(
             {
-              target: 'web',
               mode: 'none',
               output: {
                 chunkFilename: `${docsImportsBaseName}.[id].js`,
                 filename: `${docsImportsImporterBaseName}.js`
               },
-              plugins: tasksUtil.getWebpackPlugIns()
+              plugins: getWebpackPlugIns(),
+              target: 'web'
             },
             webpack
           )
         )
         .pipe(
-          flatmap((stream, file) => {
+          flatmap((stream: Stream, file: VinylFile) => {
             return stream
               .pipe(
-                modifyFile(content => {
+                modifyFile((content: string) => {
                   return content.replace(/\\\\\$/g, '$');
                 })
               )
               .pipe(
                 rename({
-                  basename: path.basename(file.path, path.extname(file.path))
+                  basename: basename(file.path, extname(file.path))
                 })
               )
               .pipe(gulp.dest(`./${config.temp.path}/${tempSubpath}`));
@@ -917,14 +972,14 @@ function finalizeIndexPage(gulp, config, labelPrefix) {
         )
         .on('finish', () => {
           resolve();
-          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
+          tasksHelpers.log.successful(subTaskLabel, labelPrefix);
         })
-        .on('error', error => {
+        .on('error', (error: Error) => {
           throw error;
         });
     } catch (error) {
       reject(error);
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -932,31 +987,34 @@ function finalizeIndexPage(gulp, config, labelPrefix) {
 /**
  * Finalize the demos.
  *
- * @param {GulpClient.Gulp} gulp - Gulp library
- * @param {Object} config - Config settings
- * @param {string} [labelPrefix] - A prefix to print before the label
- * @returns {Promise}
+ * @param  gulp - Gulp library
+ * @param config - Config settings
+ * @param labelPrefix - A prefix to print before the label
  */
-function finalizeDemos(gulp, config, labelPrefix) {
+function finalizeDemos(
+  gulp: GulpClient.Gulp,
+  config: IConfig,
+  labelPrefix?: string
+): Promise<void> {
   const subTaskLabel = 'finalize';
 
   return new Promise((resolve, reject) => {
     try {
       // No point starting this task if another important task has already failed.
       if (!allOK) {
-        throw new tasksUtil.NotOKError();
+        throw new UnrecoverableError();
       }
 
-      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+      tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
-      const demoImportsBaseName = path.basename(
+      const demoImportsBaseName = basename(
         config.demos.importsFilename,
-        path.extname(config.demos.importsFilename)
+        extname(config.demos.importsFilename)
       );
 
-      const docsImportsImporterBaseName = path.basename(
+      const docsImportsImporterBaseName = basename(
         config.demos.importsImporterFilename,
-        path.extname(config.demos.importsImporterFilename)
+        extname(config.demos.importsImporterFilename)
       );
 
       gulp
@@ -966,34 +1024,34 @@ function finalizeDemos(gulp, config, labelPrefix) {
           }/*/${config.demos.path}/${config.demos.importsImporterFilename}`
         )
         .pipe(
-          flatmap((demoStream, demoFile) => {
-            const output = path.dirname(demoFile.path);
+          flatmap((demoStream: Stream, demoFile: VinylFile) => {
+            const output = dirname(demoFile.path);
             return demoStream
               .pipe(
                 webpackStream(
                   {
-                    target: 'web',
                     mode: 'none',
                     output: {
                       chunkFilename: `${demoImportsBaseName}.[id].js`,
                       filename: `${docsImportsImporterBaseName}.js`
                     },
-                    plugins: tasksUtil.getWebpackPlugIns()
+                    plugins: getWebpackPlugIns(),
+                    target: 'web'
                   },
                   webpack
                 )
               )
               .pipe(
-                flatmap((builtStream, builtFile) => {
+                flatmap((builtStream: Stream, builtFile: VinylFile) => {
                   return builtStream
                     .pipe(
-                      modifyFile(content => {
+                      modifyFile((content: string) => {
                         return content.replace(/\\\\\$/g, '$');
                       })
                     )
                     .pipe(
                       rename({
-                        basename: path.basename(builtFile.path, '.js')
+                        basename: basename(builtFile.path, '.js')
                       })
                     )
                     .pipe(gulp.dest(output));
@@ -1003,14 +1061,14 @@ function finalizeDemos(gulp, config, labelPrefix) {
         )
         .on('finish', () => {
           resolve();
-          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
+          tasksHelpers.log.successful(subTaskLabel, labelPrefix);
         })
-        .on('error', error => {
+        .on('error', (error: Error) => {
           throw error;
         });
     } catch (error) {
       reject(error);
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -1018,22 +1076,25 @@ function finalizeDemos(gulp, config, labelPrefix) {
 /**
  * Build the index page.
  *
- * @param {GulpClient.Gulp} gulp - Gulp library
- * @param {Object} config - Config settings
- * @param {string} [labelPrefix] - A prefix to print before the label
- * @returns {Promise}
+ * @param  gulp - Gulp library
+ * @param config - Config settings
+ * @param labelPrefix - A prefix to print before the label
  */
-function buildIndexPage(gulp, config, labelPrefix) {
+function buildIndexPage(
+  gulp: GulpClient.Gulp,
+  config: IConfig,
+  labelPrefix?: string
+): Promise<void> {
   const subTaskLabel = 'index page';
 
   return new Promise(async (resolve, reject) => {
     try {
       // No point starting this task if another important task has already failed.
       if (!allOK) {
-        throw new tasksUtil.NotOKError();
+        throw new UnrecoverableError();
       }
 
-      const subTaskLabelPrefix = tasksUtil.tasks.log.starting(
+      const subTaskLabelPrefix = tasksHelpers.log.starting(
         subTaskLabel,
         labelPrefix
       );
@@ -1042,11 +1103,11 @@ function buildIndexPage(gulp, config, labelPrefix) {
       await finalizeIndexPage(gulp, config, subTaskLabelPrefix);
 
       resolve();
-      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
+      tasksHelpers.log.successful(subTaskLabel, labelPrefix);
     } catch (error) {
       allOK = false;
       reject(error);
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -1054,22 +1115,25 @@ function buildIndexPage(gulp, config, labelPrefix) {
 /**
  * Build the index page.
  *
- * @param {GulpClient.Gulp} gulp - Gulp library
- * @param {Object} config - Config settings
- * @param {string} [labelPrefix] - A prefix to print before the label
- * @returns {Promise}
+ * @param  gulp - Gulp library
+ * @param config - Config settings
+ * @param labelPrefix - A prefix to print before the label
  */
-function buildDemos(gulp, config, labelPrefix) {
+function buildDemos(
+  gulp: GulpClient.Gulp,
+  config: IConfig,
+  labelPrefix?: string
+): Promise<void> {
   const subTaskLabel = 'demos';
 
   return new Promise(async (resolve, reject) => {
     try {
       // No point starting this task if another important task has already failed.
       if (!allOK) {
-        throw new tasksUtil.NotOKError();
+        throw new UnrecoverableError();
       }
 
-      const subTaskLabelPrefix = tasksUtil.tasks.log.starting(
+      const subTaskLabelPrefix = tasksHelpers.log.starting(
         subTaskLabel,
         labelPrefix
       );
@@ -1078,11 +1142,11 @@ function buildDemos(gulp, config, labelPrefix) {
       await finalizeDemos(gulp, config, subTaskLabelPrefix);
 
       resolve();
-      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
+      tasksHelpers.log.successful(subTaskLabel, labelPrefix);
     } catch (error) {
       allOK = false;
       reject(error);
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -1090,22 +1154,25 @@ function buildDemos(gulp, config, labelPrefix) {
 /**
  * Build the index page.
  *
- * @param {GulpClient.Gulp} gulp - Gulp library
- * @param {Object} config - Config settings
- * @param {string} [labelPrefix] - A prefix to print before the label
- * @returns {Promise}
+ * @param  gulp - Gulp library
+ * @param config - Config settings
+ * @param labelPrefix - A prefix to print before the label
  */
-function build(gulp, config, labelPrefix) {
+function build(
+  gulp: GulpClient.Gulp,
+  config: IConfig,
+  labelPrefix?: string
+): Promise<void> {
   const subTaskLabel = 'build';
 
   return new Promise(async (resolve, reject) => {
     try {
       // No point starting this task if another important task has already failed.
       if (!allOK) {
-        throw new tasksUtil.NotOKError();
+        throw new UnrecoverableError();
       }
 
-      const subTaskLabelPrefix = tasksUtil.tasks.log.starting(
+      const subTaskLabelPrefix = tasksHelpers.log.starting(
         subTaskLabel,
         labelPrefix
       );
@@ -1114,11 +1181,11 @@ function build(gulp, config, labelPrefix) {
       await buildDemos(gulp, config, subTaskLabelPrefix);
 
       resolve();
-      tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
+      tasksHelpers.log.successful(subTaskLabel, labelPrefix);
     } catch (error) {
       allOK = false;
       reject(error);
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -1126,36 +1193,39 @@ function build(gulp, config, labelPrefix) {
 /**
  * Generate the docs.
  *
- * @param {GulpClient.Gulp} gulp - Gulp library
- * @param {Object} config - Config settings
- * @param {string} [labelPrefix] - A prefix to print before the label
- * @returns {Promise}
+ * @param  gulp - Gulp library
+ * @param config - Config settings
+ * @param labelPrefix - A prefix to print before the label
  */
-function generate(gulp, config, labelPrefix) {
+function generate(
+  gulp: GulpClient.Gulp,
+  config: IConfig,
+  labelPrefix?: string
+): Promise<void> {
   const subTaskLabel = 'generate';
 
   return new Promise((resolve, reject) => {
     try {
       // No point starting this task if another important task has already failed.
       if (!allOK) {
-        throw new tasksUtil.NotOKError();
+        throw new UnrecoverableError();
       }
 
-      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+      tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
-      const docsImportsBaseName = path.basename(
+      const docsImportsBaseName = basename(
         config.docs.importsFilename,
-        path.extname(config.docs.importsFilename)
+        extname(config.docs.importsFilename)
       );
 
-      const docsImportsImporterBaseName = path.basename(
+      const docsImportsImporterBaseName = basename(
         config.docs.importsImporterFilename,
-        path.extname(config.docs.importsImporterFilename)
+        extname(config.docs.importsImporterFilename)
       );
 
       const buildConfig = {
         root: `${config.temp.path}/${tempSubpath}/`,
-        entrypoint: `index${path.extname(config.docs.indexPage)}`,
+        entrypoint: `index${extname(config.docs.indexPage)}`,
         fragments: [],
         sources: [
           `${config.docs.nodeModulesPath}/${
@@ -1195,13 +1265,13 @@ function generate(gulp, config, labelPrefix) {
       mergeStream(docBuilder.sources(), docBuilder.dependencies())
         .pipe(docBuilder.addCustomElementsEs5Adapter())
         .pipe(sourcesHtmlSplitter.split())
-        .pipe(gulpIf(/\.html$/, htmlmin(config.build.htmlMinifier)))
+        .pipe(gulpIf(/\.html$/, htmlmin(config.build.tools.htmlMinifier)))
         .pipe(sourcesHtmlSplitter.rejoin())
         .pipe(
           rename(filepath => {
-            const prefix = path.normalize(`${config.temp.path}/${tempSubpath}`);
-            if (filepath.dirname.indexOf(prefix) === 0) {
-              filepath.dirname = path.normalize(
+            const prefix = normalize(`${config.temp.path}/${tempSubpath}`);
+            if (filepath.dirname && filepath.dirname.indexOf(prefix) === 0) {
+              filepath.dirname = normalize(
                 filepath.dirname.substring(prefix.length)
               );
             }
@@ -1210,28 +1280,33 @@ function generate(gulp, config, labelPrefix) {
         .pipe(gulp.dest(`./${config.docs.path}`))
         .on('finish', () => {
           resolve();
-          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
+          tasksHelpers.log.successful(subTaskLabel, labelPrefix);
         })
-        .on('error', error => {
+        .on('error', (error: Error) => {
           throw error;
         });
     } catch (error) {
       allOK = false;
       reject(error);
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
 
-// Export the build docs function.
-module.exports = (gulp, config) => {
+/**
+ * Build the docs for the component.
+ *
+ * @param gulp
+ * @param config
+ */
+export function buildDocs(gulp: GulpClient.Gulp, config: IConfig) {
   return new Promise(async (resolve, reject) => {
     try {
       await copyDependencies(gulp, config);
       await updateAnalysis(gulp, config);
       await getDemos(gulp, config);
       await build(gulp, config);
-      await tasksUtil.cleanDocs(config);
+      await cleanDocs(config);
       await generate(gulp, config);
 
       resolve();
@@ -1239,4 +1314,4 @@ module.exports = (gulp, config) => {
       reject(error);
     }
   });
-};
+}

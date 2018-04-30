@@ -1,24 +1,20 @@
 // Libraries.
 import deepMerge from 'deepmerge';
-import { readFile } from 'fs';
+import { readFile } from 'fs/promises';
 import GulpClient from 'gulp';
-import { promisify } from 'util';
 
 // Config
-import { defaultConfig, IConfig } from './default-config';
+import { defaultConfig, IConfig } from './config';
 
 // Load the tasks.
 import { analyze } from './tasks/analyze';
-import build from './tasks/build';
-import docs from './tasks/docs';
-import fixDependencies from './tasks/fix-dependencies';
-import lint from './tasks/lint';
-import publish from './tasks/publish';
-import test from './tasks/test';
-import util from './tasks/util';
-
-// Promisified.
-const readFilePromise = promisify(readFile);
+import { build } from './tasks/build';
+import { buildDocs } from './tasks/docs';
+import { fixDependencies } from './tasks/fix-dependencies';
+import { lint } from './tasks/lint';
+import { publish } from './tasks/publish';
+import { test } from './tasks/test';
+import { cleanTemp } from './util';
 
 // Config.
 const userConfig: IConfig = deepMerge(defaultConfig, {});
@@ -31,7 +27,10 @@ const userConfig: IConfig = deepMerge(defaultConfig, {});
  * @throws {Error}
  * @returns {IConfig}
  */
-export async function setConfig(packagePath: string, config: Partial<IConfig>): Promise<IConfig> {
+export async function setConfig(
+  packagePath: string,
+  config: Partial<IConfig>
+): Promise<IConfig> {
   // Merge the config into the default config.
   const newConfig: IConfig = deepMerge(defaultConfig, config);
 
@@ -49,7 +48,7 @@ export async function setConfig(packagePath: string, config: Partial<IConfig>): 
 
   // Read and save the package.json file.
   userConfig.package = JSON.parse(
-    await readFilePromise(packagePath, { encoding: 'utf8' })
+    await readFile(packagePath, { encoding: 'utf8' })
   );
 
   // If the scope is not set.
@@ -92,7 +91,9 @@ export async function setConfig(packagePath: string, config: Partial<IConfig>): 
   return userConfig;
 }
 
-export const tasks = {
+export const tasks: {
+  [key: string]: (gulp: GulpClient.Gulp) => () => Promise<void>;
+} = {
   analyze: (gulp: GulpClient.Gulp) => async () => {
     await analyze(gulp, userConfig);
   },
@@ -100,10 +101,10 @@ export const tasks = {
     await build(gulp, userConfig);
   },
   'build-docs': (gulp: GulpClient.Gulp) => async () => {
-    await docs(gulp, userConfig);
+    await buildDocs(gulp, userConfig);
   },
   clean: () => async () => {
-    await util.cleanTemp(userConfig);
+    await cleanTemp(userConfig);
   },
   'fix-dependencies': () => async () => {
     await fixDependencies(userConfig);
@@ -114,7 +115,7 @@ export const tasks = {
   publish: (gulp: GulpClient.Gulp) => async () => {
     await publish(gulp, userConfig);
   },
-  test: (gulp: GulpClient.Gulp) => async () => {
-    await test(gulp, userConfig);
+  test: () => async () => {
+    await test(userConfig);
   }
 };

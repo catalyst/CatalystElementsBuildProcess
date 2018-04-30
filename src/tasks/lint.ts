@@ -1,25 +1,29 @@
-// Load util.
-const tasksUtil = require('./util');
-
 // Libraries.
-const eslint = require('gulp-eslint');
-const htmlExtract = require('gulp-html-extract');
-const sassLint = require('gulp-sass-lint');
+import GulpClient from 'gulp';
+import eslint from 'gulp-eslint';
+import htmlExtract from 'gulp-html-extract';
+import sassLint from 'gulp-sass-lint';
+
+import { IConfig } from '../config';
+import { tasksHelpers, waitForAllPromises } from '../util';
 
 /**
  * Lint JS.
  *
- * @param {GulpClient.Gulp} gulp - Gulp library
- * @param {Object} config - Config settings
- * @param {string} [labelPrefix] - A prefix to print before the label
- * @returns {Promise}
+ * @param gulp - Gulp library
+ * @param config - Config settings
+ * @param labelPrefix - A prefix to print before the label
  */
-function lintJS(gulp, config, labelPrefix) {
+function lintJS(
+  gulp: GulpClient.Gulp,
+  config: IConfig,
+  labelPrefix?: string
+): Promise<any> {
   const subTaskLabel = 'JS files';
 
   return new Promise((resolve, reject) => {
     try {
-      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+      tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
       gulp
         .src([
@@ -34,14 +38,14 @@ function lintJS(gulp, config, labelPrefix) {
         .pipe(eslint.failOnError())
         .on('finish', () => {
           resolve();
-          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
+          tasksHelpers.log.successful(subTaskLabel, labelPrefix);
         })
-        .on('error', error => {
+        .on('error', (error: Error) => {
           throw error;
         });
     } catch (error) {
       reject(error);
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -49,17 +53,20 @@ function lintJS(gulp, config, labelPrefix) {
 /**
  * Lint JS in HTML.
  *
- * @param {GulpClient.Gulp} gulp - Gulp library
- * @param {Object} config - Config settings
- * @param {string} [labelPrefix] - A prefix to print before the label
- * @returns {Promise}
+ * @param gulp - Gulp library
+ * @param config - Config settings
+ * @param labelPrefix - A prefix to print before the label
  */
-function lintJSinHTML(gulp, config, labelPrefix) {
+function lintJSinHTML(
+  gulp: GulpClient.Gulp,
+  config: IConfig,
+  labelPrefix?: string
+): Promise<any> {
   const subTaskLabel = 'JS in HTML files';
 
   return new Promise((resolve, reject) => {
     try {
-      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+      tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
       gulp
         .src([
@@ -79,14 +86,14 @@ function lintJSinHTML(gulp, config, labelPrefix) {
         .pipe(eslint.failOnError())
         .on('finish', () => {
           resolve();
-          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
+          tasksHelpers.log.successful(subTaskLabel, labelPrefix);
         })
-        .on('error', error => {
+        .on('error', (error: Error) => {
           throw error;
         });
     } catch (error) {
       reject(error);
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -94,17 +101,20 @@ function lintJSinHTML(gulp, config, labelPrefix) {
 /**
  * Lint SASS.
  *
- * @param {GulpClient.Gulp} gulp - Gulp library
- * @param {Object} config - Config settings
- * @param {string} [labelPrefix] - A prefix to print before the label
- * @returns {Promise}
+ * @param gulp - Gulp library
+ * @param config - Config settings
+ * @param labelPrefix - A prefix to print before the label
  */
-function lintSASS(gulp, config, labelPrefix) {
+function lintSASS(
+  gulp: GulpClient.Gulp,
+  config: IConfig,
+  labelPrefix?: string
+): Promise<any> {
   const subTaskLabel = 'SASS files';
 
   return new Promise((resolve, reject) => {
     try {
-      tasksUtil.tasks.log.starting(subTaskLabel, labelPrefix);
+      tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
       gulp
         .src(`./${config.src.path}/**/*.scss`)
@@ -113,31 +123,35 @@ function lintSASS(gulp, config, labelPrefix) {
         .pipe(sassLint.failOnError())
         .on('finish', () => {
           resolve();
-          tasksUtil.tasks.log.successful(subTaskLabel, labelPrefix);
+          tasksHelpers.log.successful(subTaskLabel, labelPrefix);
         })
-        .on('error', error => {
+        .on('error', (error: Error) => {
           throw error;
         });
     } catch (error) {
       reject(error);
-      tasksUtil.tasks.log.failed(subTaskLabel, labelPrefix);
+      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
 
-// Export the lint function.
-module.exports = (gulp, config) => {
+/**
+ * Lint the code.
+ *
+ * @param ulp - Gulp library
+ * @param config - Config settings
+ */
+export function lint(gulp: GulpClient.Gulp, config: IConfig): Promise<void> {
   return new Promise(async (resolve, reject) => {
     try {
-      await tasksUtil.waitForAllPromises([
+      await waitForAllPromises([
         lintJS(gulp, config),
         lintJSinHTML(gulp, config),
         lintSASS(gulp, config)
       ]);
-
       resolve();
     } catch (error) {
       reject(error);
     }
   });
-};
+}

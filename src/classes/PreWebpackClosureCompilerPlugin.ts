@@ -1,12 +1,16 @@
 // Libraries.
-const escodegen = require('escodegen');
-const esprima = require('esprima');
-const RawSource = require('webpack-sources').RawSource;
+import { generate } from 'escodegen';
+import { parseScript } from 'esprima';
+import { Node } from 'estree';
+import * as webpack from 'webpack';
+import { RawSource } from 'webpack-sources';
 
 /**
  * Process the webpack output before handing it off to the WebpackClosureCompilerPlugin.
  */
-module.exports = class PreWebpackClosureCompilerPlugin {
+export default class PreWebpackClosureCompilerPlugin {
+  private entries: Array<{ start: number, end: number, replacementCode: string }>;
+
   /**
    * Make this object.
    *
@@ -20,27 +24,24 @@ module.exports = class PreWebpackClosureCompilerPlugin {
    * Apply this plugin.
    *
    * @public
-   * @param {Object} compiler - The webpack compiler
+   * @param compiler - The webpack compiler
    */
-  apply(compiler) {
-    compiler.plugin('compilation', compilation => {
-      compilation.plugin('optimize-chunk-assets', (chunks, done) => {
+  public apply(compiler: webpack.Compiler) {
+    compiler.plugin('compilation', (compilation: webpack.compilation.Compilation) => {
+      compilation.plugin('optimize-chunk-assets', (chunks: webpack.compilation.Chunk[], done: () => void) => {
         for (const chunk of chunks) {
           for (const file of chunk.files) {
             let source = compilation.assets[file].source();
-            esprima.parseScript(source, {}, this.processNode.bind(this));
-
+            parseScript(source, {}, this.processNode.bind(this));
             const sortedEntries = this.entries.sort((a, b) => {
               return b.end - a.end;
             });
-
             for (const entry of sortedEntries) {
               source =
                 source.slice(0, entry.start) +
                 entry.replacementCode +
                 source.slice(entry.end);
             }
-
             compilation.assets[file] = new RawSource(source);
           }
         }
@@ -53,10 +54,10 @@ module.exports = class PreWebpackClosureCompilerPlugin {
    * Process a node.
    *
    * @private
-   * @param {Object} node - An esprima node object
-   * @param {Object} meta - Metadata about the node
+   * @param node - An esprima node object
+   * @param meta - Metadata about the node
    */
-  processNode(node, meta) {
+  public processNode(node: Node, meta: any) {
     if (node.type === 'ClassDeclaration') {
       if (
         node.id != null &&
@@ -71,7 +72,6 @@ module.exports = class PreWebpackClosureCompilerPlugin {
         if (node.superClass.computed === true) {
           if (node.superClass.object.type === 'Identifier') {
             const object = node.superClass.object.name;
-
             let property;
             if (node.superClass.property.type === 'Literal') {
               property = `"${node.superClass.property.value}"`;
@@ -80,13 +80,12 @@ module.exports = class PreWebpackClosureCompilerPlugin {
             } else {
               return;
             }
-
             this.entries.push({
               start: meta.start.offset,
               end: meta.end.offset,
               replacementCode:
                 `const ${superClassVar} = ${object}[${property}];\n` +
-                `class ${className} extends ${superClassVar} ${escodegen.generate(
+                `class ${className} extends ${superClassVar} ${generate(
                   classBody
                 )}`
             });
@@ -95,4 +94,4 @@ module.exports = class PreWebpackClosureCompilerPlugin {
       }
     }
   }
-};
+}

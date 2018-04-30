@@ -1,6 +1,6 @@
 // Libraries.
-import { writeFile } from 'fs';
-import glob from 'glob';
+import { writeFile } from 'fs/promises';
+import _glob from 'glob';
 import GulpClient from 'gulp';
 import rename from 'gulp-rename';
 import { basename, extname, normalize } from 'path';
@@ -12,14 +12,12 @@ import {
 } from 'polymer-analyzer';
 import { Analysis as ProcessedAnalysis } from 'polymer-analyzer/lib/analysis-format/analysis-format';
 import { promisify } from 'util';
-import { IConfig } from '../default-config';
 
-// Load util.
-import { tasks, waitForAllPromises } from './util';
+import { IConfig } from '../config';
+import { tasksHelpers, waitForAllPromises } from '../util';
 
 // Promisified functions.
-const globPromise = promisify(glob);
-const writeFilePromise = promisify(writeFile);
+const glob = promisify(_glob);
 
 // The temp path.
 const tempSubpath = 'analyze';
@@ -27,9 +25,8 @@ const tempSubpath = 'analyze';
 /**
  * Fix issues with the automatically generated analysis.
  *
- * @param {ProcessedAnalysis} analysis - The generated analysis.
- * @param {IConfig} config - Config settings
- * @returns {Object}
+ * @param analysis - The generated analysis.
+ * @param config - Config settings
  */
 function fixAnalysis(analysis: ProcessedAnalysis, config: IConfig): any {
   const typesToFix = ['elements', 'mixins'];
@@ -76,10 +73,9 @@ function fixAnalysis(analysis: ProcessedAnalysis, config: IConfig): any {
 /**
  * Copy all the elements over to the temp folder for analysis.
  *
- * @param {GulpClient.Gulp} gulp - Gulp library
- * @param {IConfig} config - Config settings
- * @param {string} [labelPrefix] - A prefix to print before the label
- * @returns {Promise<void>}
+ * @param gulp - Gulp library
+ * @param config - Config settings
+ * @param labelPrefix - A prefix to print before
  */
 function getElementsForAnalysis(
   gulp: GulpClient.Gulp,
@@ -90,7 +86,7 @@ function getElementsForAnalysis(
 
   return new Promise((resolve, reject) => {
     try {
-      tasks.log.starting(subTaskLabel, labelPrefix);
+      tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
       gulp
         .src([
@@ -108,14 +104,14 @@ function getElementsForAnalysis(
         .pipe(gulp.dest(`./${config.temp.path}/${tempSubpath}`))
         .on('finish', () => {
           resolve();
-          tasks.log.successful(subTaskLabel, labelPrefix);
+          tasksHelpers.log.successful(subTaskLabel, labelPrefix);
         })
         .on('error', (error: Error) => {
           throw error;
         });
     } catch (error) {
       reject(error);
-      tasks.log.failed(subTaskLabel, labelPrefix);
+      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -123,9 +119,8 @@ function getElementsForAnalysis(
 /**
  * Generate the analysis.
  *
- * @param {IConfig} config - Config settings
- * @param {string} [labelPrefix] - A prefix to print before the label
- * @returns {Promise<void>}
+ * @param config - Config settings
+ * @param labelPrefix - A prefix to print before
  */
 function generateAnalysis(
   config: IConfig,
@@ -135,9 +130,9 @@ function generateAnalysis(
 
   return new Promise(async (resolve, reject) => {
     try {
-      tasks.log.starting(subTaskLabel, labelPrefix);
+      tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
-      const files = await globPromise(
+      const files = await glob(
         `./${config.temp.path}/${tempSubpath}/**/*.js`
       );
       const analyzer = new Analyzer({
@@ -147,10 +142,7 @@ function generateAnalysis(
         })
       });
       const analysis = await analyzer.analyze(files);
-      const formattedAnalysis = processAnalysis(
-        analysis,
-        analyzer.urlResolver
-      );
+      const formattedAnalysis = processAnalysis(analysis, analyzer.urlResolver);
       const formattedfixedAnalysis = fixAnalysis(formattedAnalysis, config);
 
       const analysisFileContents = JSON.stringify(
@@ -163,8 +155,8 @@ function generateAnalysis(
       );
 
       await waitForAllPromises([
-        writeFilePromise(`./`, analysisFileContents, { encoding: 'utf8' }),
-        writeFilePromise(
+        writeFile(`./`, analysisFileContents, { encoding: 'utf8' }),
+        writeFile(
           `./${config.docs.path}/${config.docs.analysisFilename}`,
           minifiedAnalysisFileContents,
           { encoding: 'utf8' }
@@ -172,10 +164,10 @@ function generateAnalysis(
       ]);
 
       resolve();
-      tasks.log.successful(subTaskLabel, labelPrefix);
+      tasksHelpers.log.successful(subTaskLabel, labelPrefix);
     } catch (error) {
       reject(error);
-      tasks.log.failed(subTaskLabel, labelPrefix);
+      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
     }
   });
 }
@@ -183,9 +175,8 @@ function generateAnalysis(
 /**
  * Analyze the component.
  *
- * @param {GulpClient.Gulp} gulp - Gulp library
- * @param {IConfig} config - Config settings
- * @returns {Promise<void>}
+ * @param gulp - Gulp library
+ * @param config - Config settings
  */
 export function analyze(gulp: GulpClient.Gulp, config: IConfig): Promise<void> {
   return new Promise(async (resolve, reject) => {

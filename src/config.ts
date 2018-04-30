@@ -1,5 +1,11 @@
 // Libraries.
-import { CoreOptions, TarOptions, TransformOptions, ZipOptions } from 'archiver';
+import archiver, {
+  ArchiverOptions,
+  CoreOptions,
+  TarOptions,
+  TransformOptions,
+  ZipOptions
+} from 'archiver';
 import colorGuard from 'colorguard';
 import postcssCqProlyfill from 'cq-prolyfill/postcss-plugin';
 import cssMQPacker from 'css-mqpacker';
@@ -36,14 +42,14 @@ declare interface IConfig {
       exportAllStaticImports: boolean;
     };
     /** Config options for tools used in the build process. */
-    tools?: {
+    tools: {
       /** HTML Minifier settings */
       htmlMinifier?: htmlMinifierOptions;
       /** PostCSS settings */
       postcss?: {
         plugins?: any[];
         options?: object;
-      }
+      };
     };
   };
   /** Component settings. */
@@ -97,7 +103,7 @@ declare interface IConfig {
         /** Don't use this format. */
         ignore: boolean;
         /** Archive options. */
-        options?: CoreOptions & TransformOptions & TarOptions;
+        options: CoreOptions & TransformOptions & TarOptions;
       };
       /** Zip archive. */
       zip: {
@@ -106,7 +112,12 @@ declare interface IConfig {
         /** Don't use this format. */
         ignore: boolean;
         /** Archive options. */
-        options?: CoreOptions & TransformOptions & ZipOptions;
+        options: CoreOptions & TransformOptions & ZipOptions;
+      };
+      [key: string]: {
+        extension: string;
+        ignore: boolean;
+        options: ArchiverOptions;
       };
     };
     /** Run checks on the following files: (ignored if `runFileChecks` is false) */
@@ -140,8 +151,8 @@ declare interface IConfig {
     entrypoint?: string;
     /** The templates to be injected. */
     template?: {
-      css?: string
-      html?: string
+      css?: string;
+      html?: string;
     };
   };
   /** Temp settings. */

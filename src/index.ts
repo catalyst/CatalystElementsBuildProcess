@@ -8,7 +8,7 @@ import { promisify } from 'util';
 import { defaultConfig, IConfig } from './default-config';
 
 // Load the tasks.
-import analyze from './tasks/analyze';
+import { analyze } from './tasks/analyze';
 import build from './tasks/build';
 import docs from './tasks/docs';
 import fixDependencies from './tasks/fix-dependencies';

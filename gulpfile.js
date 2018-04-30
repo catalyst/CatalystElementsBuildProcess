@@ -1,19 +1,58 @@
 /* eslint-env node */
 
+const del = require('del');
 const gulp = require('gulp');
-const buildProcess = require('.');
+const modifyFile = require('gulp-modify-file');
+const ts = require('gulp-typescript');
 
-buildProcess.setConfig('./package.json', {
-  publish: {
-    checkFiles: {
-      package: true,
-      script: false,
-      module: false,
-      license: true,
-      readme: true
+gulp.task('build', () => {
+  return new Promise(async (resolve, reject) => {
+    try {
+      const tsProject = ts.createProject('tsconfig.json');
+      const tsResult = gulp.src('./src/**/*.ts').pipe(tsProject());
+
+      await del('./dist');
+
+      let waitingFor = 3;
+      const cb = () => {
+        waitingFor -= 1;
+        if (waitingFor === 0) {
+          resolve();
+        }
+      };
+
+      tsResult
+        .pipe(gulp.dest('./dist/lib'))
+        .on('finish', cb)
+        .on('error', error => {
+          throw error;
+        });
+
+      gulp
+        .src(['./LICENSE', './README.md'])
+        .pipe(gulp.dest('./dist'))
+        .on('finish', cb)
+        .on('error', error => {
+          throw error;
+        });
+
+      gulp
+        .src('./package.json')
+        .pipe(
+          modifyFile(content => {
+            const json = JSON.parse(content);
+            delete json.devDependencies;
+            delete json.devDependencies;
+            return JSON.stringify(json, null, 2);
+          })
+        )
+        .pipe(gulp.dest('./dist'))
+        .on('finish', cb)
+        .on('error', error => {
+          throw error;
+        });
+    } catch (error) {
+      reject(error);
     }
-  }
+  });
 });
-
-gulp.task('lint', buildProcess.tasks.lint(gulp));
-gulp.task('publish', buildProcess.tasks.publish(gulp));

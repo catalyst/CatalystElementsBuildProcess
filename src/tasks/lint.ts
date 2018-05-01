@@ -3,9 +3,53 @@ import GulpClient from 'gulp';
 import eslint from 'gulp-eslint';
 import htmlExtract from 'gulp-html-extract';
 import sassLint from 'gulp-sass-lint';
+import tslint from 'gulp-tslint';
 
 import { IConfig } from '../config';
 import { tasksHelpers, waitForAllPromises } from '../util';
+
+/**
+ * Lint TS.
+ *
+ * @param gulp - Gulp library
+ * @param config - Config settings
+ * @param labelPrefix - A prefix to print before the label
+ */
+function lintTS(
+  gulp: GulpClient.Gulp,
+  config: IConfig,
+  labelPrefix?: string
+): Promise<any> {
+  const subTaskLabel = 'TS files';
+
+  return new Promise((resolve, reject) => {
+    try {
+      tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+
+      gulp
+        .src([
+          './*.ts',
+          `./${config.src.path}/**/*.ts`,
+          `./${config.tests.path}/**/*.ts`,
+          `./${config.demos.path}/**/*.ts`
+        ])
+        .pipe(tslint({
+          formatter: "verbose"
+        }))
+        .pipe(tslint.report())
+        .on('finish', () => {
+          resolve();
+          tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+        })
+        .on('error', (error: Error) => {
+          throw error;
+        });
+    } catch (error) {
+      reject(error);
+      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    }
+  });
+}
 
 /**
  * Lint JS.
@@ -145,6 +189,7 @@ export function lint(gulp: GulpClient.Gulp, config: IConfig): Promise<void> {
   return new Promise(async (resolve, reject) => {
     try {
       await waitForAllPromises([
+        lintTS(gulp, config),
         lintJS(gulp, config),
         lintJSinHTML(gulp, config),
         lintSASS(gulp, config)

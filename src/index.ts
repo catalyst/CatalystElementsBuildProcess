@@ -12,7 +12,7 @@ import { build } from './tasks/build';
 import { buildDocs } from './tasks/docs';
 import { fixDependencies } from './tasks/fix-dependencies';
 import { lint } from './tasks/lint';
-import { publish } from './tasks/publish';
+import { publish, publishDry } from './tasks/publish';
 import { test } from './tasks/test';
 import { cleanTemp } from './util';
 
@@ -100,13 +100,13 @@ export const tasks: {
   build: (gulp: GulpClient.Gulp) => async () => {
     await build(gulp, userConfig);
   },
-  'build-docs': (gulp: GulpClient.Gulp) => async () => {
+  buildDocs: (gulp: GulpClient.Gulp) => async () => {
     await buildDocs(gulp, userConfig);
   },
   clean: () => async () => {
     await cleanTemp(userConfig);
   },
-  'fix-dependencies': () => async () => {
+  fixDependencies: () => async () => {
     await fixDependencies(userConfig);
   },
   lint: (gulp: GulpClient.Gulp) => async () => {
@@ -114,6 +114,9 @@ export const tasks: {
   },
   publish: (gulp: GulpClient.Gulp) => async () => {
     await publish(gulp, userConfig);
+  },
+  publishDry: (gulp: GulpClient.Gulp) => async () => {
+    await publishDry(gulp, userConfig);
   },
   test: () => async () => {
     await test(userConfig);

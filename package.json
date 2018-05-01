@@ -19,8 +19,11 @@
   "homepage": "https://github.com/catalyst/CatalystElementsBuildProcess#readme",
   "scripts": {
     "build": "./node_modules/.bin/gulp build; ./node_modules/.bin/prettier-eslint --write \"dist/**/*.{js,d.ts}\"",
-    "format": "./node_modules/.bin/prettier-eslint --write \"{{src,test,demo,tasks}/**/*.{js,css,scss},./*.{js,json,md}}\"",
-    "format:check": "./node_modules/.bin/prettier-eslint --list-different \"{{src,test,demo,tasks}/**/*.{js,css,scss},./*.{js,json,md}}\""
+    "do-publish": "npm run build && npm run lint && ./node_modules/.bin/gulp publish",
+    "dry-publish": "npm run build && npm run lint && ./node_modules/.bin/gulp publish-dry",
+    "format": "./node_modules/.bin/prettier-eslint --write \"{{src,test,demo,tasks}/**/*.{ts,js,jsm,css,scss},./*.{ts,js,jsm,json,md}}\"",
+    "format:check": "./node_modules/.bin/prettier-eslint --list-different \"{{src,test,demo,tasks}/**/*.{ts,js,jsm,css,scss},./*.{ts,js,jsm,json,md}}\"",
+    "lint": "./node_modules/.bin/gulp lint"
   },
   "dependencies": {
     "ansi-colors": "^1.1.0",

@@ -4,6 +4,11 @@ const del = require('del');
 const gulp = require('gulp');
 const modifyFile = require('gulp-modify-file');
 const ts = require('gulp-typescript');
+const lib = require('./dist');
+
+gulp.task('lint', lib.tasks.lint(gulp));
+gulp.task('publish', lib.tasks.publish(gulp));
+gulp.task('publish-dry', lib.tasks.publishDry(gulp));
 
 gulp.task('build', () => {
   return new Promise(async (resolve, reject) => {
@@ -42,7 +47,7 @@ gulp.task('build', () => {
           modifyFile(content => {
             const json = JSON.parse(content);
             delete json.devDependencies;
-            delete json.devDependencies;
+            delete json.scripts;
             return JSON.stringify(json, null, 2);
           })
         )

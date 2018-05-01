@@ -284,7 +284,7 @@ function gitCheckGoodBranch(
  * @param labelPrefix - A prefix to print before the label
  */
 function gitCheckSynced(labelPrefix?: string): Promise<void> {
-  const subTaskLabel = 'branch';
+  const subTaskLabel = 'in sync with upstream';
 
   return new Promise(async (resolve, reject) => {
     try {
@@ -370,7 +370,7 @@ function fileCheckModule(
 
   return new Promise((resolve, reject) => {
     try {
-      if (!config.publish.checkFiles.module) {
+      if (config.componenet.name == null || !config.publish.checkFiles.module) {
         resolve();
         tasksHelpers.log.info(`skipping ${subTaskLabel}`, labelPrefix);
         return;
@@ -413,7 +413,7 @@ function fileCheckScript(
 
   return new Promise((resolve, reject) => {
     try {
-      if (!config.publish.checkFiles.script) {
+      if (config.componenet.name == null || !config.publish.checkFiles.script) {
         resolve();
         tasksHelpers.log.info(`skipping ${subTaskLabel}`, labelPrefix);
         return;
@@ -1218,6 +1218,7 @@ export function publish(gulp: GulpClient.Gulp, config: IConfig) {
 
       // Input from the user.
       const input: any = {};
+      let failed: Error | undefined;
       try {
         // Get publishing settings from the user.
         input.publishing = await promptUserForPublishSettings();
@@ -1240,7 +1241,9 @@ export function publish(gulp: GulpClient.Gulp, config: IConfig) {
           );
         } catch (error) {
           // Ignore the error if force is true.
-          if (!config.publish.force) {
+          if (config.publish.force) {
+            console.warn(`Continuing despite error (force):\n  ${error}`);
+          } else {
             throw error;
           }
         }
@@ -1250,7 +1253,9 @@ export function publish(gulp: GulpClient.Gulp, config: IConfig) {
           await fileChecks(config);
         } catch (error) {
           // Ignore the error if force is true.
-          if (!config.publish.force) {
+          if (config.publish.force) {
+            console.warn(`Continuing despite error (force):\n  ${error}`);
+          } else {
             throw error;
           }
         }
@@ -1277,11 +1282,16 @@ export function publish(gulp: GulpClient.Gulp, config: IConfig) {
         info.releaseInfo.lastCommit = publishResults.lastCommit;
         info.releaseInfo.publisher = publishResults.publisher;
       } catch (error) {
-        reject(error);
-        return;
+        failed = error;
       } finally {
         // Clean up.
         await cleanUp(info.git.currentBranch);
+      }
+
+      // Failed?
+      if (failed) {
+        reject(failed);
+        return;
       }
 
       // Print out information about the npm release. Ignore any errors.
@@ -1325,4 +1335,16 @@ export function publish(gulp: GulpClient.Gulp, config: IConfig) {
       console.error(`Something when wrong: ${error.message}`);
     }
   });
+}
+
+/**
+ * Perform a dry run of the publish task.
+ *
+ * @param gulp
+ * @param config
+ */
+export function publishDry(gulp: GulpClient.Gulp, config: IConfig) {
+  config.publish.dryrun = true;
+  config.publish.force = true;
+  return publish(gulp, config);
 }

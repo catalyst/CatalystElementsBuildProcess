@@ -4,18 +4,17 @@ import escodegen from 'escodegen';
 import esprima from 'esprima';
 import { constants, existsSync } from 'fs';
 import { access, readdir, readFile } from 'fs/promises';
-import glob from 'glob';
+import _glob from 'glob';
 import GulpClient from 'gulp';
 import flatmap from 'gulp-flatmap';
-import { checkout, clone } from 'gulp-git';
+import { checkout as _checkout, clone as _clone } from 'gulp-git';
 import htmlmin from 'gulp-htmlmin';
 import gulpIf from 'gulp-if';
 import modifyFile from 'gulp-modify-file';
 import rename from 'gulp-rename';
 import mergeStream from 'merge-stream';
-import { basename, extname, normalize } from 'path';
-import { dirname } from 'path';
-import PolymerBuild from 'polymer-build';
+import { basename, dirname, extname, normalize } from 'path';
+import { HtmlSplitter, PolymerProject } from 'polymer-build';
 import { Stream } from 'stream';
 import { promisify } from 'util';
 import VinylFile from 'vinyl';
@@ -33,9 +32,9 @@ import {
 } from '../util';
 
 // Promisified functions.
-const gitClone = promisify(clone);
-const gitCheckout = promisify(checkout);
-const globPromise = promisify(glob);
+const gitClone = promisify(_clone);
+const gitCheckout = promisify(_checkout);
+const glob = promisify(_glob);
 
 // The temp
 const tempSubpath = 'docs';
@@ -49,7 +48,7 @@ let allOK = true;
  * @param dirPath - Path of the directory to check
  */
 function directoryReadyForCloning(dirPath: string): Promise<void> {
-  return new Promise(async (resolve, reject) => {
+  return new Promise(async (resolve: () => void, reject: (reason: Error) => void) => {
     try {
       if (existsSync(dirPath)) {
         await access(dirPath, constants.R_OK | constants.W_OK);
@@ -84,7 +83,7 @@ function cloneRepository(
 ): Promise<void> {
   const subTaskLabel = `clone of ${repoPath}`;
 
-  return new Promise(async (resolve, reject) => {
+  return new Promise(async (resolve: () => void, reject: (reason: Error) => void) => {
     try {
       tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
@@ -114,12 +113,12 @@ function cloneRepositories(
   config: IConfig,
   labelPrefix?: string
 ): Promise<void[]> {
-  const repos: Array<Promise<void>> = [];
+  const repos: Promise<void>[] = [];
 
   for (const packageFilePath of packageFilePaths) {
     repos.push(
       // eslint-disable-next-line no-loop-func
-      new Promise(async (resolve, reject) => {
+      new Promise(async (resolve: () => void, reject: (reason: Error) => void) => {
         try {
           const data = await readFile(packageFilePath, 'utf8');
           const json = JSON.parse(data);
@@ -208,7 +207,7 @@ function copyNodeModules(
 ): Promise<void> {
   const subTaskLabel = 'node modules';
 
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve: () => void, reject: (reason: Error) => void) => {
     try {
       // No point starting this task if another important task has already failed.
       if (!allOK) {
@@ -254,7 +253,7 @@ function copyDocsIndex(
 ): Promise<void> {
   const subTaskLabel = 'index page';
 
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve: () => void, reject: (reason: Error) => void) => {
     try {
       // No point starting this task if another important task has already failed.
       if (!allOK) {
@@ -299,7 +298,7 @@ function copyExtraDocDependencies(
 ): Promise<void> {
   const subTaskLabel = 'extra dependencies';
 
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve: () => void, reject: (reason: Error) => void) => {
     try {
       // No point starting this task if another important task has already failed.
       if (!allOK) {
@@ -343,7 +342,7 @@ function copyDistributionFiles(
 ): Promise<void> {
   const subTaskLabel = 'distribution files';
 
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve: () => void, reject: (reason: Error) => void) => {
     try {
       // No point starting this task if another important task has already failed.
       if (!allOK) {
@@ -351,6 +350,10 @@ function copyDistributionFiles(
       }
 
       tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+
+      if (config.package == null) {
+        throw new Error('No package data.');
+      }
 
       gulp
         .src(`./${config.dist.path}/**`)
@@ -389,7 +392,7 @@ function copyLocalDemos(
 ): Promise<void> {
   const subTaskLabel = 'local demos';
 
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve: () => void, reject: (reason: Error) => void) => {
     try {
       // No point starting this task if another important task has already failed.
       if (!allOK) {
@@ -397,6 +400,10 @@ function copyLocalDemos(
       }
 
       tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+
+      if (config.package == null) {
+        throw new Error('No package data.');
+      }
 
       gulp
         .src(`./${config.demos.path}/**`, {
@@ -437,7 +444,7 @@ function copyDependencies(
 ): Promise<void> {
   const subTaskLabel = 'copy dependencies';
 
-  return new Promise(async (resolve, reject) => {
+  return new Promise(async (resolve: () => void, reject: (reason: Error) => void) => {
     try {
       // No point starting this task if another important task has already failed.
       if (!allOK) {
@@ -496,7 +503,7 @@ function updateAnalysis(
 ): Promise<void> {
   const subTaskLabel = 'update analysis';
 
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve: () => void, reject: (reason: Error) => void) => {
     try {
       // No point starting this task if another important task has already failed.
       if (!allOK) {
@@ -516,11 +523,15 @@ function updateAnalysis(
         )
         .pipe(
           modifyFile((content: string) => {
+            if (config.package == null) {
+              throw new Error('Package not set.');
+            }
+
             const analysis = JSON.parse(content);
             const typesToFix = ['elements', 'mixins'];
-            for (const type of typesToFix) {
-              if (analysis[type]) {
-                for (const component of analysis[type]) {
+            for (const typeToFix of typesToFix) {
+              if (analysis[typeToFix]) {
+                for (const component of analysis[typeToFix]) {
                   if (component.demos) {
                     for (const demo of component.demos) {
                       // Fix demo paths.
@@ -532,6 +543,7 @@ function updateAnalysis(
                 }
               }
             }
+
             return JSON.stringify(analysis);
           })
         )
@@ -564,7 +576,7 @@ function getDemos(
 ): Promise<void> {
   const subTaskLabel = 'get demos';
 
-  return new Promise(async (resolve, reject) => {
+  return new Promise(async (resolve: () => void, reject: (reason: Error) => void) => {
     try {
       // No point starting this task if another important task has already failed.
       if (!allOK) {
@@ -576,7 +588,7 @@ function getDemos(
         labelPrefix
       );
 
-      const files = await globPromise(
+      const files = await glob(
         `./${config.componenet.nodeModulesPath}/catalyst-*/package.json`
       );
 
@@ -602,7 +614,8 @@ function getDemos(
           );
 
           promises.push(
-            new Promise((resolve, reject) => {
+            // tslint:disable-next-line:no-shadowed-variable
+            new Promise((resolve: () => void, reject: (reason: Error) => void) => {
               gulp
                 .src(`${dir}/${config.demos.path}/**`, { base })
                 .pipe(
@@ -649,7 +662,7 @@ function indexPageUpdateReferences(
 ): Promise<void> {
   const subTaskLabel = 'index';
 
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve: () => void, reject: (reason: Error) => void) => {
     try {
       // No point starting this task if another important task has already failed.
       if (!allOK) {
@@ -663,7 +676,7 @@ function indexPageUpdateReferences(
         .pipe(
           modifyFile((content: string) => {
             const $ = cheerio.load(content);
-            $('script').each((index, element) => {
+            $('script').each((index: number, element: CheerioElement) => {
               if (element.attribs.type === 'module') {
                 delete element.attribs.type;
               }
@@ -704,7 +717,7 @@ function demosPagesUpdateReferences(
 ): Promise<void> {
   const subTaskLabel = 'demo files';
 
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve: () => void, reject: (reason: Error) => void) => {
     try {
       // No point starting this task if another important task has already failed.
       if (!allOK) {
@@ -723,7 +736,7 @@ function demosPagesUpdateReferences(
         .pipe(
           modifyFile((content: string) => {
             const $ = cheerio.load(content);
-            $('script[type="module"]').each((index, element) => {
+            $('script[type="module"]').each((index: number, element: CheerioElement) => {
               delete element.attribs.type;
               element.attribs.src = element.attribs.src.replace(/.mjs$/, '.js');
             });
@@ -760,7 +773,7 @@ function indexImportsUpdateReferences(
 ): Promise<void> {
   const subTaskLabel = 'imports';
 
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve: () => void, reject: (reason: Error) => void) => {
     try {
       // No point starting this task if another important task has already failed.
       if (!allOK) {
@@ -830,7 +843,7 @@ function indexUpdateReferences(
 ): Promise<void> {
   const subTaskLabel = 'update references';
 
-  return new Promise(async (resolve, reject) => {
+  return new Promise(async (resolve: () => void, reject: (reason: Error) => void) => {
     try {
       // No point starting this task if another important task has already failed.
       if (!allOK) {
@@ -871,7 +884,7 @@ function demosUpdateReferences(
 ): Promise<void> {
   const subTaskLabel = 'update references';
 
-  return new Promise(async (resolve, reject) => {
+  return new Promise(async (resolve: () => void, reject: (reason: Error) => void) => {
     try {
       // No point starting this task if another important task has already failed.
       if (!allOK) {
@@ -911,7 +924,7 @@ function finalizeIndexPage(
 ): Promise<void> {
   const subTaskLabel = 'finalize';
 
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve: () => void, reject: (reason: Error) => void) => {
     try {
       // No point starting this task if another important task has already failed.
       if (!allOK) {
@@ -998,7 +1011,7 @@ function finalizeDemos(
 ): Promise<void> {
   const subTaskLabel = 'finalize';
 
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve: () => void, reject: (reason: Error) => void) => {
     try {
       // No point starting this task if another important task has already failed.
       if (!allOK) {
@@ -1026,6 +1039,7 @@ function finalizeDemos(
         .pipe(
           flatmap((demoStream: Stream, demoFile: VinylFile) => {
             const output = dirname(demoFile.path);
+
             return demoStream
               .pipe(
                 webpackStream(
@@ -1087,7 +1101,7 @@ function buildIndexPage(
 ): Promise<void> {
   const subTaskLabel = 'index page';
 
-  return new Promise(async (resolve, reject) => {
+  return new Promise(async (resolve: () => void, reject: (reason: Error) => void) => {
     try {
       // No point starting this task if another important task has already failed.
       if (!allOK) {
@@ -1126,7 +1140,7 @@ function buildDemos(
 ): Promise<void> {
   const subTaskLabel = 'demos';
 
-  return new Promise(async (resolve, reject) => {
+  return new Promise(async (resolve: () => void, reject: (reason: Error) => void) => {
     try {
       // No point starting this task if another important task has already failed.
       if (!allOK) {
@@ -1165,7 +1179,7 @@ function build(
 ): Promise<void> {
   const subTaskLabel = 'build';
 
-  return new Promise(async (resolve, reject) => {
+  return new Promise(async (resolve: () => void, reject: (reason: Error) => void) => {
     try {
       // No point starting this task if another important task has already failed.
       if (!allOK) {
@@ -1204,7 +1218,7 @@ function generate(
 ): Promise<void> {
   const subTaskLabel = 'generate';
 
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve: () => void, reject: (reason: Error) => void) => {
     try {
       // No point starting this task if another important task has already failed.
       if (!allOK) {
@@ -1259,8 +1273,8 @@ function generate(
         ]
       };
 
-      const docBuilder = new PolymerBuild.PolymerProject(buildConfig);
-      const sourcesHtmlSplitter = new PolymerBuild.HtmlSplitter();
+      const docBuilder = new PolymerProject(buildConfig);
+      const sourcesHtmlSplitter = new HtmlSplitter();
 
       mergeStream(docBuilder.sources(), docBuilder.dependencies())
         .pipe(docBuilder.addCustomElementsEs5Adapter())
@@ -1268,9 +1282,9 @@ function generate(
         .pipe(gulpIf(/\.html$/, htmlmin(config.build.tools.htmlMinifier)))
         .pipe(sourcesHtmlSplitter.rejoin())
         .pipe(
-          rename(filepath => {
+          rename((filepath: rename.ParsedPath) => {
             const prefix = normalize(`${config.temp.path}/${tempSubpath}`);
-            if (filepath.dirname && filepath.dirname.indexOf(prefix) === 0) {
+            if (filepath.dirname != null && filepath.dirname.indexOf(prefix) === 0) {
               filepath.dirname = normalize(
                 filepath.dirname.substring(prefix.length)
               );
@@ -1299,8 +1313,8 @@ function generate(
  * @param gulp
  * @param config
  */
-export function buildDocs(gulp: GulpClient.Gulp, config: IConfig) {
-  return new Promise(async (resolve, reject) => {
+export function buildDocs(gulp: GulpClient.Gulp, config: IConfig): Promise<void> {
+  return new Promise(async (resolve: () => void, reject: (reason: Error) => void) => {
     try {
       await copyDependencies(gulp, config);
       await updateAnalysis(gulp, config);

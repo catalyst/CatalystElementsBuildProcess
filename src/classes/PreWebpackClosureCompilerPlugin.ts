@@ -1,63 +1,65 @@
 // Libraries.
 import { generate } from 'escodegen';
 import { parseScript } from 'esprima';
-import { Node } from 'estree';
+import { Node } from 'estree'; // tslint:disable-line:no-implicit-dependencies
 import * as webpack from 'webpack';
 import { RawSource } from 'webpack-sources';
 
 /**
  * Process the webpack output before handing it off to the WebpackClosureCompilerPlugin.
  */
-export default class PreWebpackClosureCompilerPlugin {
-  private entries: Array<{ start: number, end: number, replacementCode: string }>;
+export class PreWebpackClosureCompilerPlugin {
+  private entries: { start: number; end: number; replacementCode: string }[];
 
   /**
    * Make this object.
-   *
-   * @public
    */
-  constructor() {
+  public constructor() {
     this.entries = [];
   }
 
   /**
    * Apply this plugin.
    *
-   * @public
    * @param compiler - The webpack compiler
    */
-  public apply(compiler: webpack.Compiler) {
-    compiler.plugin('compilation', (compilation: webpack.compilation.Compilation) => {
-      compilation.plugin('optimize-chunk-assets', (chunks: webpack.compilation.Chunk[], done: () => void) => {
-        for (const chunk of chunks) {
-          for (const file of chunk.files) {
-            let source = compilation.assets[file].source();
-            parseScript(source, {}, this.processNode.bind(this));
-            const sortedEntries = this.entries.sort((a, b) => {
-              return b.end - a.end;
-            });
-            for (const entry of sortedEntries) {
-              source =
-                source.slice(0, entry.start) +
-                entry.replacementCode +
-                source.slice(entry.end);
+  public apply(compiler: webpack.Compiler): void {
+    compiler.plugin(
+      'compilation',
+      (compilation: webpack.compilation.Compilation) => {
+        compilation.plugin(
+          'optimize-chunk-assets',
+          (chunks: webpack.compilation.Chunk[], done: () => void) => {
+            for (const chunk of chunks) {
+              for (const file of chunk.files) {
+                let source: string = compilation.assets[file].source();
+                parseScript(source, {}, this.processNode.bind(this));
+                const sortedEntries = this.entries.sort((a, b) => {
+                  return b.end - a.end;
+                });
+                for (const entry of sortedEntries) {
+                  source =
+                    source.slice(0, entry.start) +
+                    entry.replacementCode +
+                    source.slice(entry.end);
+                }
+                compilation.assets[file] = new RawSource(source);
+              }
             }
-            compilation.assets[file] = new RawSource(source);
+            done();
           }
-        }
-        done();
-      });
-    });
+        );
+      }
+    );
   }
 
   /**
    * Process a node.
    *
-   * @private
    * @param node - An esprima node object
    * @param meta - Metadata about the node
    */
-  public processNode(node: Node, meta: any) {
+  private processNode(node: Node, meta: any): void {
     if (node.type === 'ClassDeclaration') {
       if (
         node.id != null &&

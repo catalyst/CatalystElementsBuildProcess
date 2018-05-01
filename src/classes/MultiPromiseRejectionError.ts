@@ -1,4 +1,7 @@
-export default class MultiPromiseRejectionError extends Error {
+/**
+ * An error that occurs when one of multiple Promises rejects.
+ */
+export class MultiPromiseRejectionError extends Error {
   private errors: Error[];
   private telly: number;
 

@@ -7,8 +7,8 @@ import VinylFile from 'vinyl';
 import { Plugin } from 'webpack';
 import WebpackClosureCompilerPlugin from 'webpack-closure-compiler';
 
-import MultiPromiseRejectionError from './classes/MultiPromiseRejectionError';
-import PreWebpackClosureCompilerPlugin from './classes/PreWebpackClosureCompilerPlugin';
+import { MultiPromiseRejectionError } from './classes/MultiPromiseRejectionError';
+import { PreWebpackClosureCompilerPlugin } from './classes/PreWebpackClosureCompilerPlugin';
 import { IConfig } from './config';
 
 // Helper functions for tasks.
@@ -18,32 +18,32 @@ export const tasksHelpers = {
       const fullLabel = `${grey(stripColor(prefix))} ${blue('→')} ${cyan(
         label
       )}`;
-
       log(`Failed     ${fullLabel} ${red('✗')}`);
+
       return fullLabel;
     },
     info: (label: string, prefix: string = '') => {
       const fullLabel = `${grey(stripColor(prefix))} ${blue('→')} ${white(
         label
       )}`;
-
       log(`Info       ${fullLabel}`);
+
       return label;
     },
     starting: (label: string, prefix: string = '') => {
       const fullLabel = `${grey(stripColor(prefix))} ${blue('→')} ${cyan(
         label
       )}`;
-
       log(`Starting   ${fullLabel}...`);
+
       return fullLabel;
     },
     successful: (label: string, prefix: string = '') => {
       const fullLabel = `${grey(stripColor(prefix))} ${blue('→')} ${cyan(
         label
       )}`;
-
       log(`Finished   ${fullLabel} ${green('✓')}`);
+
       return fullLabel;
     }
   }
@@ -63,18 +63,20 @@ export function clean(
 ): Promise<void> {
   const subTaskLabel = `clean: ${label == null ? path : label}`;
 
-  return new Promise(async (resolve, reject) => {
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+  return new Promise(
+    async (resolve: () => void, reject: (reason: Error) => void) => {
+      tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
-    try {
-      await del(path);
-      tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-      resolve();
-    } catch (error) {
-      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
-      reject(error);
+      try {
+        await del(path);
+        tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+        resolve();
+      } catch (error) {
+        tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+        reject(error);
+      }
     }
-  });
+  );
 }
 
 /**
@@ -83,27 +85,45 @@ export function clean(
  *
  * @param promises - The promises to wait for
  */
-export function waitForAllPromises(
-  promises: Array<Promise<any>>
-): Promise<any[]> {
-  return new Promise(async (resolve, reject) => {
-    const results = await Promise.all(
-      promises.map(async promise => {
-        try {
-          const value = await promise;
-          return { value, status: 0 };
-        } catch (error) {
-          return { error, status: 1 };
-        }
-      })
-    );
+export function waitForAllPromises(promises: Promise<any>[]): Promise<any[]> {
+  return new Promise(
+    async (
+      resolve: (results: ({ value: any } | { error: Error })[]) => void,
+      reject: (reason: Error) => void
+    ) => {
+      try {
+        const results: (
+          | { value: any }
+          | { error: Error })[] = await Promise.all(
+          promises.map(async (promise: Promise<any>) => {
+            try {
+              const value = await promise;
 
-    if (results.filter(result => result.status === 1).length === 0) {
-      resolve(results);
-    } else {
-      reject(new MultiPromiseRejectionError(results));
+              return { value };
+            } catch (error) {
+              return { error };
+            }
+          })
+        );
+
+        if (
+          results.filter(
+            (result: { value: any } | { error: Error }) =>
+              (result as any).error != null
+          ).length === 0
+        ) {
+          resolve(results);
+          return;
+        }
+
+        reject(new MultiPromiseRejectionError(results));
+        return;
+      } catch (error) {
+        reject(error);
+        return ;
+      }
     }
-  });
+  );
 }
 
 /**
@@ -134,7 +154,7 @@ export function transformGetFileContents(
   filepath: string,
   file?: VinylFile
 ): string {
-  if (file && file.isBuffer()) {
+  if (file != null && file.isBuffer()) {
     return file.contents.toString('utf8');
   }
   throw new Error();
@@ -146,7 +166,10 @@ export function transformGetFileContents(
  * @param config
  * @param labelPrefix
  */
-export function cleanDist(config: IConfig, labelPrefix?: string) {
+export function cleanDist(
+  config: IConfig,
+  labelPrefix?: string
+): Promise<void> {
   return clean(`./${config.dist.path}`, 'dist', labelPrefix);
 }
 
@@ -156,7 +179,10 @@ export function cleanDist(config: IConfig, labelPrefix?: string) {
  * @param config
  * @param labelPrefix
  */
-export function cleanTemp(config: IConfig, labelPrefix?: string) {
+export function cleanTemp(
+  config: IConfig,
+  labelPrefix?: string
+): Promise<void> {
   return clean(`./${config.temp.path}`, 'temp', labelPrefix);
 }
 
@@ -166,7 +192,10 @@ export function cleanTemp(config: IConfig, labelPrefix?: string) {
  * @param config
  * @param labelPrefix
  */
-export function cleanDocs(config: IConfig, labelPrefix?: string) {
+export function cleanDocs(
+  config: IConfig,
+  labelPrefix?: string
+): Promise<void> {
   return clean(`./${config.docs.path}`, 'docs', labelPrefix);
 }
 

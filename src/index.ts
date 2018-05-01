@@ -9,8 +9,8 @@ import { defaultConfig, IConfig } from './config';
 // Load the tasks.
 import { analyze } from './tasks/analyze';
 import { build } from './tasks/build';
-import { buildDocs } from './tasks/docs';
-import { fixDependencies } from './tasks/fix-dependencies';
+import { buildDocs } from './tasks/buildDocs';
+import { fixDependencies } from './tasks/fixDependencies';
 import { lint } from './tasks/lint';
 import { publish, publishDry } from './tasks/publish';
 import { test } from './tasks/test';
@@ -22,34 +22,37 @@ const userConfig: IConfig = deepMerge(defaultConfig, {});
 /**
  * Set the config for the build process.
  *
- * @param {string} packagePath - Path to user's package.json
- * @param {Object} config - The config object.
+ * @param config - The config object.
  * @throws {Error}
- * @returns {IConfig}
  */
 export async function setConfig(
-  packagePath: string,
-  config: Partial<IConfig>
+  config?: Partial<IConfig>
 ): Promise<IConfig> {
-  // Merge the config into the default config.
-  const newConfig: IConfig = deepMerge(defaultConfig, config);
+  if (config != null) {
+    // Merge the config into the default config.
+    const newConfig: IConfig = deepMerge(defaultConfig, config);
 
-  // Copy over the new config settings into the user config object.
-  for (const [key, value] of Object.entries(newConfig)) {
-    userConfig[key] = value;
-  }
+    // Copy over the new config settings into the user config object.
+    for (const [key, value] of Object.entries(newConfig)) {
+      userConfig[key] = value;
+    }
 
-  // Delete anything in user config that shouldn't be there anymore.
-  for (const key of Object.keys(userConfig)) {
-    if (newConfig[key] == null) {
-      delete userConfig[key];
+    // Delete anything in user config that shouldn't be there anymore.
+    for (const key of Object.keys(userConfig)) {
+      if (newConfig[key] == null) {
+        delete userConfig[key];
+      }
     }
   }
 
   // Read and save the package.json file.
   userConfig.package = JSON.parse(
-    await readFile(packagePath, { encoding: 'utf8' })
+    await readFile('./package.json', { encoding: 'utf8' })
   );
+
+  if (userConfig.package == null) {
+    throw new Error('Failed to load package.json');
+  }
 
   // If the scope is not set.
   if (userConfig.componenet.scope == null) {
@@ -91,9 +94,7 @@ export async function setConfig(
   return userConfig;
 }
 
-export const tasks: {
-  [key: string]: (gulp: GulpClient.Gulp) => () => Promise<void>;
-} = {
+export const tasks = {
   analyze: (gulp: GulpClient.Gulp) => async () => {
     await analyze(gulp, userConfig);
   },
@@ -122,3 +123,6 @@ export const tasks: {
     await test(userConfig);
   }
 };
+
+// Set the default config.
+setConfig();

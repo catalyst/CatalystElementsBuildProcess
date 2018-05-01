@@ -28,11 +28,14 @@ const tempSubpath = 'analyze';
  * @param analysis - The generated analysis.
  * @param config - Config settings
  */
-function fixAnalysis(analysis: ProcessedAnalysis, config: IConfig): any {
+function fixAnalysis(
+  analysis: ProcessedAnalysis,
+  config: IConfig
+): ProcessedAnalysis {
   const typesToFix = ['elements', 'mixins'];
 
-  for (const type of typesToFix) {
-    const typeData = (analysis as any)[type];
+  for (const typeToFix of typesToFix) {
+    const typeData = (analysis as any)[typeToFix];
 
     // If the type is defined.
     if (typeData != null) {
@@ -84,7 +87,7 @@ function getElementsForAnalysis(
 ): Promise<void> {
   const subTaskLabel = 'get files';
 
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve: () => void, reject: (reason: Error) => void) => {
     try {
       tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
@@ -96,9 +99,10 @@ function getElementsForAnalysis(
           }`
         ])
         .pipe(
+          // FIXME: Polymer analyser does not yet support .mjs files so rename to .js
           rename({
             dirname: '/',
-            extname: '.js' // Polymer analyser does not yet support .mjs files so rename to .js
+            extname: '.js'
           })
         )
         .pipe(gulp.dest(`./${config.temp.path}/${tempSubpath}`))
@@ -128,48 +132,53 @@ function generateAnalysis(
 ): Promise<void> {
   const subTaskLabel = 'generate';
 
-  return new Promise(async (resolve, reject) => {
-    try {
-      tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+  return new Promise(
+    async (resolve: () => void, reject: (reason: Error) => void) => {
+      try {
+        tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
-      const files = await glob(
-        `./${config.temp.path}/${tempSubpath}/**/*.js`
-      );
-      const analyzer = new Analyzer({
-        urlLoader: new FsUrlLoader('./'),
-        urlResolver: new PackageUrlResolver({
-          packageDir: './'
-        })
-      });
-      const analysis = await analyzer.analyze(files);
-      const formattedAnalysis = processAnalysis(analysis, analyzer.urlResolver);
-      const formattedfixedAnalysis = fixAnalysis(formattedAnalysis, config);
+        const files = await glob(
+          `./${config.temp.path}/${tempSubpath}/**/*.js`
+        );
+        const analyzer = new Analyzer({
+          urlLoader: new FsUrlLoader('./'),
+          urlResolver: new PackageUrlResolver({
+            packageDir: './'
+          })
+        });
+        const analysis = await analyzer.analyze(files);
+        const formattedAnalysis = processAnalysis(
+          analysis,
+          analyzer.urlResolver
+        );
+        const formattedfixedAnalysis = fixAnalysis(formattedAnalysis, config);
 
-      const analysisFileContents = JSON.stringify(
-        formattedfixedAnalysis,
-        null,
-        2
-      );
-      const minifiedAnalysisFileContents = JSON.stringify(
-        formattedfixedAnalysis
-      );
+        const analysisFileContents = JSON.stringify(
+          formattedfixedAnalysis,
+          null,
+          2
+        );
+        const minifiedAnalysisFileContents = JSON.stringify(
+          formattedfixedAnalysis
+        );
 
-      await waitForAllPromises([
-        writeFile(`./`, analysisFileContents, { encoding: 'utf8' }),
-        writeFile(
-          `./${config.docs.path}/${config.docs.analysisFilename}`,
-          minifiedAnalysisFileContents,
-          { encoding: 'utf8' }
-        )
-      ]);
+        await waitForAllPromises([
+          writeFile(`./`, analysisFileContents, { encoding: 'utf8' }),
+          writeFile(
+            `./${config.docs.path}/${config.docs.analysisFilename}`,
+            minifiedAnalysisFileContents,
+            { encoding: 'utf8' }
+          )
+        ]);
 
-      resolve();
-      tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-    } catch (error) {
-      reject(error);
-      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+        resolve();
+        tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+      } catch (error) {
+        reject(error);
+        tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+      }
     }
-  });
+  );
 }
 
 /**
@@ -179,13 +188,15 @@ function generateAnalysis(
  * @param config - Config settings
  */
 export function analyze(gulp: GulpClient.Gulp, config: IConfig): Promise<void> {
-  return new Promise(async (resolve, reject) => {
-    try {
-      await getElementsForAnalysis(gulp, config);
-      await generateAnalysis(config);
-      resolve();
-    } catch (error) {
-      reject(error);
+  return new Promise(
+    async (resolve: () => void, reject: (reason: Error) => void) => {
+      try {
+        await getElementsForAnalysis(gulp, config);
+        await generateAnalysis(config);
+        resolve();
+      } catch (error) {
+        reject(error);
+      }
     }
-  });
+  );
 }

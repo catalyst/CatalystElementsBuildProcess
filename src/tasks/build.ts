@@ -10,6 +10,7 @@ import {
   ImportDeclaration,
   ImportSpecifier,
   VariableDeclarator
+  // tslint:disable-next-line:no-implicit-dependencies
 } from 'estree';
 import { readFile } from 'fs/promises';
 import GulpClient from 'gulp';
@@ -77,33 +78,31 @@ function checkSourceFiles(
 ): Promise<void> {
   const subTaskLabel = 'check source files';
 
-  return new Promise(async (resolve, reject) => {
-    try {
-      tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+  return new Promise(
+    async (resolve: () => void, reject: (reason: Error) => void) => {
+      try {
+        tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
-      const entrypoint = await readFile(
-        `./${config.src.path}/${config.src.entrypoint}`,
-        'utf8'
-      );
-      const parsedCode = esprima.parseModule(entrypoint);
+        const entrypoint = await readFile(
+          `./${config.src.path}/${config.src.entrypoint}`,
+          'utf8'
+        );
+        const parsedCode = esprima.parseModule(entrypoint);
 
-      for (const node of parsedCode.body) {
-        switch (node.type) {
-          case 'ExportDefaultDeclaration':
+        for (const node of parsedCode.body) {
+          if (node.type === 'ExportDefaultDeclaration') {
             throw new Error('Do not use default exports.');
-
-          // Different type? Do nothing.
-          default:
+          }
         }
-      }
 
-      resolve();
-      tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-    } catch (error) {
-      reject(error);
-      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+        resolve();
+        tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+      } catch (error) {
+        reject(error);
+        tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+      }
     }
-  });
+  );
 }
 
 /**
@@ -120,7 +119,7 @@ function prepareEntrypoint(
 ): Promise<void> {
   const subTaskLabel = 'prepare entrypoint';
 
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve: () => void, reject: (reason: Error) => void) => {
     try {
       tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
@@ -154,7 +153,7 @@ function prepareEntrypoint(
           })
         )
         .pipe(
-          rename(filepath => {
+          rename((filepath: rename.ParsedPath) => {
             filepath.basename = tempEntrypointFileBaseName;
           })
         )
@@ -187,7 +186,7 @@ function exportStaticImports(
 ): Promise<void> {
   const subTaskLabel = 'export static imports';
 
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve: () => void, reject: (reason: Error) => void) => {
     try {
       if (!config.build.script.exportAllStaticImports) {
         resolve();
@@ -195,6 +194,7 @@ function exportStaticImports(
           `skipping ${subTaskLabel} - turned off in config.`,
           labelPrefix
         );
+
         return;
       }
 
@@ -249,23 +249,25 @@ function preprocessSourceFiles(
 ): Promise<void> {
   const subTaskLabel = 'preprocess source files';
 
-  return new Promise(async (resolve, reject) => {
-    try {
-      const subTaskLabelPrefix = tasksHelpers.log.starting(
-        subTaskLabel,
-        labelPrefix
-      );
+  return new Promise(
+    async (resolve: () => void, reject: (reason: Error) => void) => {
+      try {
+        const subTaskLabelPrefix = tasksHelpers.log.starting(
+          subTaskLabel,
+          labelPrefix
+        );
 
-      await prepareEntrypoint(gulp, config, subTaskLabelPrefix);
-      await exportStaticImports(gulp, config, subTaskLabelPrefix);
+        await prepareEntrypoint(gulp, config, subTaskLabelPrefix);
+        await exportStaticImports(gulp, config, subTaskLabelPrefix);
 
-      resolve();
-      tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-    } catch (error) {
-      reject(error);
-      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+        resolve();
+        tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+      } catch (error) {
+        reject(error);
+        tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+      }
     }
-  });
+  );
 }
 
 /**
@@ -282,7 +284,7 @@ function minifyHTML(
 ): Promise<void> {
   const subTaskLabel = 'minify HTML';
 
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve: () => void, reject: (reason: Error) => void) => {
     try {
       tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
@@ -319,13 +321,13 @@ function compileSASS(
 ): Promise<void> {
   const subTaskLabel = 'compile SASS';
 
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve: () => void, reject: (reason: Error) => void) => {
     try {
       tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
       let plugins;
       let options;
-      if (config.build.tools.postcss) {
+      if (config.build.tools.postcss != null) {
         plugins = config.build.tools.postcss.plugins;
         options = config.build.tools.postcss.options;
       }
@@ -365,7 +367,7 @@ function initializeModuleFile(
 ): Promise<void> {
   const subTaskLabel = 'initialize file';
 
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve: () => void, reject: (reason: Error) => void) => {
     try {
       tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
@@ -408,7 +410,7 @@ function initializeModuleFile(
           })
         )
         .pipe(
-          rename(filepath => {
+          rename((filepath: rename.ParsedPath) => {
             filepath.basename = config.componenet.name;
             filepath.extname = config.build.module.extension;
           })
@@ -442,7 +444,7 @@ function initializeScriptFile(
 ): Promise<void> {
   const subTaskLabel = 'initialize file';
 
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve: () => void, reject: (reason: Error) => void) => {
     try {
       tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
@@ -499,7 +501,9 @@ function initializeScriptFile(
 
                   case 'ExportNamedDeclaration':
                     // Strip all exports.
-                    esExports.set(nodeIndex, parsedCode.body[nodeIndex] as ExportNamedDeclaration);
+                    esExports.set(nodeIndex, parsedCode.body[
+                      nodeIndex
+                    ] as ExportNamedDeclaration);
                     codeIndexesToRemove.push(nodeIndex);
                     break;
 
@@ -510,14 +514,14 @@ function initializeScriptFile(
 
               // Remove imports and exports.
               parsedCode.body = parsedCode.body.filter(
-                (_, i) => !codeIndexesToRemove.includes(i)
+                (_: any, i: number) => !codeIndexesToRemove.includes(i)
               );
 
               return {
-                esExports,
-                esImports
+                esImports,
+                esExports
               };
-            };
+            }
 
             /**
              * Replace catalyst element's imports with globally accessible object import.
@@ -553,7 +557,7 @@ function initializeScriptFile(
                   }
                 }
               }
-            };
+            }
 
             /**
              * Replace exports with globally accessible object exports.
@@ -590,9 +594,10 @@ function initializeScriptFile(
                     parsedCode.body.splice(exportDefIndex, 0, ...inserts);
                   }
                 } else {
-                  const declarations: Array<
-                    FunctionDeclaration | ClassDeclaration | VariableDeclarator
-                  > = [];
+                  const declarations: (
+                    | FunctionDeclaration
+                    | ClassDeclaration
+                    | VariableDeclarator)[] = [];
                   if (exportDef.declaration.type === 'VariableDeclaration') {
                     for (const declaration of exportDef.declaration
                       .declarations) {
@@ -633,7 +638,7 @@ function initializeScriptFile(
                   }
                 }
               }
-            };
+            }
 
             // Parse the code.
             const parsedCode = esprima.parseModule(content);
@@ -651,7 +656,7 @@ function initializeScriptFile(
           })
         )
         .pipe(
-          rename(filepath => {
+          rename((filepath: rename.ParsedPath) => {
             filepath.basename = config.componenet.name;
             filepath.extname = config.build.script.extension;
           })
@@ -684,7 +689,7 @@ function injectTemplateHTML(
   config: IConfig,
   stream: NodeJS.ReadWriteStream,
   labelPrefix?: string
-) {
+): void {
   const subTaskLabel = 'html';
 
   if (config.src.template == null || config.src.template.html == null) {
@@ -731,7 +736,7 @@ function injectTemplateCSS(
   config: IConfig,
   stream: NodeJS.ReadWriteStream,
   labelPrefix?: string
-) {
+): void {
   const subTaskLabel = 'css';
 
   if (config.src.template == null || config.src.template.css == null) {
@@ -776,12 +781,12 @@ function injectTemplateCSS(
 function injectTemplate(
   gulp: GulpClient.Gulp,
   config: IConfig,
-  options: { type: 'module' | 'script' },
+  options: { buildType: 'module' | 'script' },
   labelPrefix?: string
 ): Promise<void> {
   const subTaskLabel = 'inject template';
 
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve: () => void, reject: (reason: Error) => void) => {
     try {
       const subTaskLabelPrefix = tasksHelpers.log.starting(
         subTaskLabel,
@@ -789,7 +794,7 @@ function injectTemplate(
       );
 
       const stream = (() => {
-        switch (options.type) {
+        switch (options.buildType) {
           case 'module':
             return gulp.src(
               `./${config.temp.path}/${tempSubpath}/${config.componenet.name}${
@@ -840,7 +845,7 @@ function finalizeModule(
 ): Promise<void> {
   const subTaskLabel = 'finalize';
 
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve: () => void, reject: (reason: Error) => void) => {
     try {
       tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
@@ -851,7 +856,7 @@ function finalizeModule(
           }`
         )
         .pipe(
-          rename(filepath => {
+          rename((filepath: rename.ParsedPath) => {
             filepath.basename = config.componenet.name;
           })
         )
@@ -884,7 +889,7 @@ function finalizeScript(
 ): Promise<void> {
   const subTaskLabel = 'finalize';
 
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve: () => void, reject: (reason: Error) => void) => {
     try {
       tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
@@ -941,38 +946,41 @@ function buildModule(
 ): Promise<void> {
   const subTaskLabel = 'module';
 
-  return new Promise(async (resolve, reject) => {
-    try {
-      if (!config.build.module.build) {
-        resolve();
-        tasksHelpers.log.info(
-          `skipping ${subTaskLabel} - turned off in config.`,
+  return new Promise(
+    async (resolve: () => void, reject: (reason: Error) => void) => {
+      try {
+        if (!config.build.module.build) {
+          resolve();
+          tasksHelpers.log.info(
+            `skipping ${subTaskLabel} - turned off in config.`,
+            labelPrefix
+          );
+
+          return;
+        }
+
+        const subTaskLabelPrefix = tasksHelpers.log.starting(
+          subTaskLabel,
           labelPrefix
         );
-        return;
+
+        await initializeModuleFile(gulp, config, subTaskLabelPrefix);
+        await injectTemplate(
+          gulp,
+          config,
+          { buildType: 'module' },
+          subTaskLabelPrefix
+        );
+        await finalizeModule(gulp, config, subTaskLabelPrefix);
+
+        resolve();
+        tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+      } catch (error) {
+        reject(error);
+        tasksHelpers.log.failed(subTaskLabel, labelPrefix);
       }
-
-      const subTaskLabelPrefix = tasksHelpers.log.starting(
-        subTaskLabel,
-        labelPrefix
-      );
-
-      await initializeModuleFile(gulp, config, subTaskLabelPrefix);
-      await injectTemplate(
-        gulp,
-        config,
-        { type: 'module' },
-        subTaskLabelPrefix
-      );
-      await finalizeModule(gulp, config, subTaskLabelPrefix);
-
-      resolve();
-      tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-    } catch (error) {
-      reject(error);
-      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
     }
-  });
+  );
 }
 
 /**
@@ -989,38 +997,41 @@ function buildScript(
 ): Promise<void> {
   const subTaskLabel = 'script';
 
-  return new Promise(async (resolve, reject) => {
-    try {
-      if (!config.build.script.build) {
-        resolve();
-        tasksHelpers.log.info(
-          `skipping ${subTaskLabel} - turned off in config.`,
+  return new Promise(
+    async (resolve: () => void, reject: (reason: Error) => void) => {
+      try {
+        if (!config.build.script.build) {
+          resolve();
+          tasksHelpers.log.info(
+            `skipping ${subTaskLabel} - turned off in config.`,
+            labelPrefix
+          );
+
+          return;
+        }
+
+        const subTaskLabelPrefix = tasksHelpers.log.starting(
+          subTaskLabel,
           labelPrefix
         );
-        return;
+
+        await initializeScriptFile(gulp, config, subTaskLabelPrefix);
+        await injectTemplate(
+          gulp,
+          config,
+          { buildType: 'script' },
+          subTaskLabelPrefix
+        );
+        await finalizeScript(gulp, config, subTaskLabelPrefix);
+
+        resolve();
+        tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+      } catch (error) {
+        reject(error);
+        tasksHelpers.log.failed(subTaskLabel, labelPrefix);
       }
-
-      const subTaskLabelPrefix = tasksHelpers.log.starting(
-        subTaskLabel,
-        labelPrefix
-      );
-
-      await initializeScriptFile(gulp, config, subTaskLabelPrefix);
-      await injectTemplate(
-        gulp,
-        config,
-        { type: 'script' },
-        subTaskLabelPrefix
-      );
-      await finalizeScript(gulp, config, subTaskLabelPrefix);
-
-      resolve();
-      tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-    } catch (error) {
-      reject(error);
-      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
     }
-  });
+  );
 }
 
 /**
@@ -1037,7 +1048,7 @@ function finalizeCopyFiles(
 ): Promise<void> {
   const subTaskLabel = 'copy files';
 
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve: () => void, reject: (reason: Error) => void) => {
     try {
       tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
@@ -1072,7 +1083,7 @@ function finalizePackageJson(
 ): Promise<void> {
   const subTaskLabel = 'package.json';
 
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve: () => void, reject: (reason: Error) => void) => {
     try {
       tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
@@ -1089,6 +1100,7 @@ function finalizePackageJson(
             delete json.directories;
             delete json.engines;
             delete json.devDependencies;
+
             return JSON.stringify(json, null, 2);
           })
         )
@@ -1121,25 +1133,27 @@ function finalize(
 ): Promise<void> {
   const subTaskLabel = 'finalize';
 
-  return new Promise(async (resolve, reject) => {
-    try {
-      const subTaskLabelPrefix = tasksHelpers.log.starting(
-        subTaskLabel,
-        labelPrefix
-      );
+  return new Promise(
+    async (resolve: () => void, reject: (reason: Error) => void) => {
+      try {
+        const subTaskLabelPrefix = tasksHelpers.log.starting(
+          subTaskLabel,
+          labelPrefix
+        );
 
-      await waitForAllPromises([
-        finalizeCopyFiles(gulp, config, subTaskLabelPrefix),
-        finalizePackageJson(gulp, config, subTaskLabelPrefix)
-      ]);
+        await waitForAllPromises([
+          finalizeCopyFiles(gulp, config, subTaskLabelPrefix),
+          finalizePackageJson(gulp, config, subTaskLabelPrefix)
+        ]);
 
-      resolve();
-      tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-    } catch (error) {
-      reject(error);
-      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+        resolve();
+        tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+      } catch (error) {
+        reject(error);
+        tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+      }
     }
-  });
+  );
 }
 
 /**
@@ -1156,7 +1170,7 @@ function buildSymlinks(
 ): Promise<void> {
   const subTaskLabel = 'symlinks';
 
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve: () => void, reject: (reason: Error) => void) => {
     try {
       tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
@@ -1180,32 +1194,34 @@ function buildSymlinks(
 /**
  * Build the component.
  */
-export function build(gulp: GulpClient.Gulp, config: IConfig) {
-  return new Promise(async (resolve, reject) => {
-    try {
-      if (config.componenet.name == null) {
-        throw new Error('Cannot build: `config.componenet.name` is not set.');
-      }
-      if (config.src.entrypoint == null) {
-        throw new Error('Cannot build: `config.src.entrypoint` is not set.');
-      }
-      await cleanDist(config);
-      await checkSourceFiles(config);
-      await preprocessSourceFiles(gulp, config);
-      await waitForAllPromises([
-        minifyHTML(gulp, config),
-        compileSASS(gulp, config)
-      ]);
-      await waitForAllPromises([
-        buildModule(gulp, config),
-        buildScript(gulp, config)
-      ]);
-      await finalize(gulp, config);
-      await buildSymlinks(gulp, config);
+export function build(gulp: GulpClient.Gulp, config: IConfig): Promise<void> {
+  return new Promise(
+    async (resolve: () => void, reject: (reason: Error) => void) => {
+      try {
+        if (config.componenet.name == null) {
+          throw new Error('Cannot build: `config.componenet.name` is not set.');
+        }
+        if (config.src.entrypoint == null) {
+          throw new Error('Cannot build: `config.src.entrypoint` is not set.');
+        }
+        await cleanDist(config);
+        await checkSourceFiles(config);
+        await preprocessSourceFiles(gulp, config);
+        await waitForAllPromises([
+          minifyHTML(gulp, config),
+          compileSASS(gulp, config)
+        ]);
+        await waitForAllPromises([
+          buildModule(gulp, config),
+          buildScript(gulp, config)
+        ]);
+        await finalize(gulp, config);
+        await buildSymlinks(gulp, config);
 
-      resolve();
-    } catch (error) {
-      reject(error);
+        resolve();
+      } catch (error) {
+        reject(error);
+      }
     }
-  });
+  );
 }

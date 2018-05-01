@@ -1,3 +1,7 @@
+/**
+ * Config Settings.
+ */
+
 // Libraries.
 import archiver, {
   ArchiverOptions,
@@ -20,98 +24,179 @@ import postcssInitial from 'postcss-initial';
 import postcssPresetEnv from 'postcss-preset-env';
 import postcssReporter from 'postcss-reporter';
 
+// tslint:disable:no-reserved-keywords
 declare interface IConfig {
-  /** Build settings. */
+  /**
+   * Build settings.
+   */
   build: {
-    /** Module settings */
+    /**
+     * Module settings
+     */
     module: {
-      /** Build the module? */
+      /**
+       * Build the module?
+       */
       build: boolean;
-      /** Module extension */
+      /**
+       * Module extension
+       */
       extension: string;
     };
-    /** Script settings */
+    /**
+     * Script settings
+     */
     script: {
-      /** Build the script? */
+      /**
+       * Build the script?
+       */
       build: boolean;
-      /** Script extension */
+      /**
+       * Script extension
+       */
       extension: string;
-      /** Bundle in all the imports? */
+      /**
+       * Bundle in all the imports?
+       */
       bundleImports: boolean;
-      /** Export all the static imports? */
+      /**
+       * Export all the static imports?
+       */
       exportAllStaticImports: boolean;
     };
-    /** Config options for tools used in the build process. */
+    /**
+     * Config options for tools used in the build process.
+     */
     tools: {
-      /** HTML Minifier settings */
+      /**
+       * HTML Minifier settings
+       */
       htmlMinifier?: htmlMinifierOptions;
-      /** PostCSS settings */
+      /**
+       * PostCSS settings
+       */
       postcss?: {
         plugins?: any[];
         options?: object;
       };
     };
   };
-  /** Component settings. */
+  /**
+   * Component settings.
+   */
   componenet: {
-    /** The name of the component. */
+    /**
+     * The name of the component.
+     */
     name?: string;
-    /** @private The npm scope of the component */
+    /**
+     * The npm scope of the component
+     */
     scope?: string | null;
-    /** @private The path to the component when it is in node modules. */
+    /**
+     * The path to the component when it is in node modules.
+     */
     nodeModulesPath?: string;
   };
-  /** Demo settings. */
+  /**
+   * Demo settings.
+   */
   demos: {
-    /** The file that imports the demo dependencies relative to `demos.path`. */
+    /**
+     * The file that imports the demo dependencies relative to `demos.path`.
+     */
     importsFilename: string;
-    /** The file that imports `demos.importsFilename` relative to `demos.path`. */
+    /**
+     * The file that imports `demos.importsFilename` relative to `demos.path`.
+     */
     importsImporterFilename: string;
-    /** The path to the demos folder relative to the component's project root. */
+    /**
+     * The path to the demos folder relative to the component's project root.
+     */
     path: string;
   };
-  /** Distribution settings. */
+  /**
+   * Distribution settings.
+   */
   dist: {
-    /** The path to the distribution folder relative to the component's project root. */
+    /**
+     * The path to the distribution folder relative to the component's project root.
+     */
     path: string;
   };
-  /** Documentation settings. */
+  /**
+   * Documentation settings.
+   */
   docs: {
-    /** The file that contains the analysis data relative to the component's project root. */
+    /**
+     * The file that contains the analysis data relative to the component's project root.
+     */
     analysisFilename: string;
-    /** The file that imports the docs dependencies relative to the component's project root. */
+    /**
+     * The file that imports the docs dependencies relative to the component's project root.
+     */
     importsFilename: string;
-    /** The file that imports `docs.importsFilename` relative to the component's project root. */
+    /**
+     * The file that imports `docs.importsFilename` relative to the component's project root.
+     */
     importsImporterFilename: string;
-    /** The index page of the documentation relative to the component's project root. */
+    /**
+     * The index page of the documentation relative to the component's project root.
+     */
     indexPage: string;
-    /** The folder name for the node modules inside docs. */
+    /**
+     * The folder name for the node modules inside docs.
+     */
     nodeModulesPath: string;
-    /** The path to the documentation folder relative to the component's project root. */
+    /**
+     * The path to the documentation folder relative to the component's project root.
+     */
     path: string;
   };
-  /** Where the node module files are relative to the component's project root. */
+  /**
+   * Where the node module files are relative to the component's project root.
+   */
   nodeModulesPath?: string;
-  /** Publish settings. */
+  /**
+   * Publish settings.
+   */
   publish: {
-    /** Archives formats to upload to GitHub Release. */
+    /**
+     * Archives formats to upload to GitHub Release.
+     */
     archiveFormats: {
-      /** Tar archive. */
+      /**
+       * Tar archive.
+       */
       tar: {
-        /** File extension. */
+        /**
+         * File extension.
+         */
         extension: string;
-        /** Don't use this format. */
+        /**
+         * Don't use this format.
+         */
         ignore: boolean;
-        /** Archive options. */
+        /**
+         * Archive options.
+         */
         options: CoreOptions & TransformOptions & TarOptions;
       };
-      /** Zip archive. */
+      /**
+       * Zip archive.
+       */
       zip: {
-        /** File extension. */
+        /**
+         * File extension.
+         */
         extension: string;
-        /** Don't use this format. */
+        /**
+         * Don't use this format.
+         */
         ignore: boolean;
-        /** Archive options. */
+        /**
+         * Archive options.
+         */
         options: CoreOptions & TransformOptions & ZipOptions;
       };
       [key: string]: {
@@ -120,7 +205,9 @@ declare interface IConfig {
         options: ArchiverOptions;
       };
     };
-    /** Run checks on the following files: (ignored if `runFileChecks` is false) */
+    /**
+     * Run checks on the following files: (ignored if `runFileChecks` is false)
+     */
     checkFiles: {
       package: boolean;
       script: boolean;
@@ -128,43 +215,75 @@ declare interface IConfig {
       license: boolean;
       readme: boolean;
     };
-    /** Do a dry run? */
+    /**
+     * Do a dry run?
+     */
     dryrun: boolean;
-    /** For the release - ignore non critical errors along the way. */
+    /**
+     * For the release - ignore non critical errors along the way.
+     */
     force: boolean;
-    /** Is the component project hosted on GitHub? */
+    /**
+     * Is the component project hosted on GitHub?
+     */
     hostedOnGitHub: boolean;
-    /** The name of the git master branch. */
+    /**
+     * The name of the git master branch.
+     */
     masterBranch: string;
-    /** Regex for the prerelease branches. */
+    /**
+     * Regex for the prerelease branches.
+     */
     prereleaseBranchRegex: RegExp;
-    /** Check that the files are ready publishing? */
+    /**
+     * Check that the files are ready publishing?
+     */
     runFileChecks: boolean;
-    /** Check that git has everything in sync and ready for publishing? */
+    /**
+     * Check that git has everything in sync and ready for publishing?
+     */
     runGitChecks: boolean;
   };
-  /** Source settings. */
+  /**
+   * Source settings.
+   */
   src: {
-    /** The path to the source folder relative to the component's project root. */
+    /**
+     * The path to the source folder relative to the component's project root.
+     */
     path: string;
-    /** The path to the entrypoint file relative to `src.path` */
+    /**
+     * The path to the entrypoint file relative to `src.path`
+     */
     entrypoint?: string;
-    /** The templates to be injected. */
+    /**
+     * The templates to be injected.
+     */
     template?: {
       css?: string;
       html?: string;
     };
   };
-  /** Temp settings. */
+  /**
+   * Temp settings.
+   */
   temp: {
-    /** The path to the temp folder relative to the component's project root. */
+    /**
+     * The path to the temp folder relative to the component's project root.
+     */
     path: string;
   };
-  /** Test settings. */
+  /**
+   * Test settings.
+   */
   tests: {
-    /** The path to the test folder relative to the component's project root. */
+    /**
+     * The path to the test folder relative to the component's project root.
+     */
     path: string;
-    /** The config for Web Component Tester. */
+    /**
+     * The config for Web Component Tester.
+     */
     wctConfig?: {
       plugins?: {
         local?: {
@@ -178,10 +297,15 @@ declare interface IConfig {
       npm?: boolean;
     };
   };
-  /** Contents of component project's package.json file. */
-  package?: any;
+  /**
+   * Contents of component project's package.json file.
+   */
+  package?: {
+    [key: string]: any;
+  };
   [key: string]: any;
 }
+// tslint:enable:no-reserved-keywords
 
 const defaultConfig: IConfig = {
   build: {
@@ -191,9 +315,9 @@ const defaultConfig: IConfig = {
     },
     script: {
       build: true,
+      extension: '.min.js',
       bundleImports: false,
-      exportAllStaticImports: false,
-      extension: '.min.js'
+      exportAllStaticImports: false
     },
     tools: {
       htmlMinifier: {
@@ -292,11 +416,11 @@ const defaultConfig: IConfig = {
       }
     },
     checkFiles: {
-      license: true,
-      module: true,
       package: true,
+      script: true,
+      module: true,
+      license: true,
       readme: true,
-      script: true
     },
     dryrun: false,
     force: false,

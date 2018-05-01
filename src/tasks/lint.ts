@@ -4,6 +4,7 @@ import eslint from 'gulp-eslint';
 import htmlExtract from 'gulp-html-extract';
 import sassLint from 'gulp-sass-lint';
 import tslint from 'gulp-tslint';
+import { Linter } from 'tslint';
 
 import { IConfig } from '../config';
 import { tasksHelpers, waitForAllPromises } from '../util';
@@ -19,12 +20,13 @@ function lintTS(
   gulp: GulpClient.Gulp,
   config: IConfig,
   labelPrefix?: string
-): Promise<any> {
+): Promise<void> {
   const subTaskLabel = 'TS files';
 
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve: () => void, reject: (reason: Error) => void) => {
     try {
       tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+      const tsLintProgram = Linter.createProgram('./tsconfig.json');
 
       gulp
         .src([
@@ -33,15 +35,24 @@ function lintTS(
           `./${config.tests.path}/**/*.ts`,
           `./${config.demos.path}/**/*.ts`
         ])
-        .pipe(tslint({
-          formatter: "verbose"
-        }))
-        .pipe(tslint.report())
+        .pipe(
+          tslint({
+            program: tsLintProgram
+          })
+        )
+        .pipe(
+          tslint.report({
+            allowWarnings: true
+          })
+        )
         .on('finish', () => {
           resolve();
           tasksHelpers.log.successful(subTaskLabel, labelPrefix);
         })
         .on('error', (error: Error) => {
+          if (error.message.startsWith('Failed to lint:')) {
+            error.message = 'TS lint failed.';
+          }
           throw error;
         });
     } catch (error) {
@@ -62,10 +73,10 @@ function lintJS(
   gulp: GulpClient.Gulp,
   config: IConfig,
   labelPrefix?: string
-): Promise<any> {
-  const subTaskLabel = 'JS files';
+): Promise<void> {
+  const subTaskLabel: string = 'JS files';
 
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve: () => void, reject: (reason: Error) => void) => {
     try {
       tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
@@ -105,10 +116,10 @@ function lintJSinHTML(
   gulp: GulpClient.Gulp,
   config: IConfig,
   labelPrefix?: string
-): Promise<any> {
+): Promise<void> {
   const subTaskLabel = 'JS in HTML files';
 
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve: () => void, reject: (reason: Error) => void) => {
     try {
       tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
@@ -153,10 +164,10 @@ function lintSASS(
   gulp: GulpClient.Gulp,
   config: IConfig,
   labelPrefix?: string
-): Promise<any> {
+): Promise<void> {
   const subTaskLabel = 'SASS files';
 
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve: () => void, reject: (reason: Error) => void) => {
     try {
       tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
@@ -186,17 +197,19 @@ function lintSASS(
  * @param config - Config settings
  */
 export function lint(gulp: GulpClient.Gulp, config: IConfig): Promise<void> {
-  return new Promise(async (resolve, reject) => {
-    try {
-      await waitForAllPromises([
-        lintTS(gulp, config),
-        lintJS(gulp, config),
-        lintJSinHTML(gulp, config),
-        lintSASS(gulp, config)
-      ]);
-      resolve();
-    } catch (error) {
-      reject(error);
+  return new Promise(
+    async (resolve: () => void, reject: (reason: Error) => void) => {
+      try {
+        await waitForAllPromises([
+          lintTS(gulp, config),
+          lintJS(gulp, config),
+          lintJSinHTML(gulp, config),
+          lintSASS(gulp, config)
+        ]);
+        resolve();
+      } catch (error) {
+        reject(error);
+      }
     }
-  });
+  );
 }

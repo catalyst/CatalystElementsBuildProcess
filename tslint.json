@@ -1,10 +1,58 @@
 {
-  "defaultSeverity": "warn",
+  "defaultSeverity": "error",
   "extends": [
     "tslint:recommended",
+    "tslint-microsoft-contrib",
+    "tslint-consistent-codestyle",
     "tslint-config-prettier"
   ],
   "jsRules": {},
-  "rules": {},
+  "rules": {
+    "object-literal-sort-keys": {
+      "options": [
+        "match-declaration-order"
+      ],
+      "severity": "warn"
+    },
+    "no-console": {
+      "options": [
+        "log"
+      ],
+      "severity": "error"
+    },
+    "no-empty": {
+      "options": [
+        "allow-empty-catch"
+      ],
+      "severity": "error"
+    },
+    "no-shadowed-variable": {
+      "options": [{
+        "temporalDeadZone": false
+      }],
+      "severity": "error"
+    },
+    "no-submodule-imports": {
+      "options": [
+        "cq-prolyfill/postcss-plugin",
+        "fs/promises",
+        "polymer-analyzer/lib/analysis-format/analysis-format"
+      ]
+    },
+    "typedef": [true, "call-signature", "parameter", "property-declaration", "member-variable-declaration"],
+    "import-name": false,
+    "insecure-random": false,
+    "newline-before-return": false,
+    "no-angle-bracket-type-assertion": true,
+    "no-any": false,
+    "no-bitwise": false,
+    "no-multiline-string": false,
+    "no-relative-imports": false,
+    "no-unsafe-any": false,
+    "match-default-export-name": false,
+    "prefer-template": false,
+    "prefer-type-cast": false,
+    "promise-function-async": false
+  },
   "rulesDirectory": []
 }

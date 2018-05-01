@@ -14,7 +14,7 @@ import { tasksHelpers } from '../util';
 function wctTests(config: IConfig, labelPrefix?: string): Promise<void> {
   const subTaskLabel = 'wct';
 
-  return new Promise(async (resolve, reject) => {
+  return new Promise(async (resolve: () => void, reject: (reason: Error) => void) => {
     try {
       tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
@@ -41,8 +41,8 @@ function wctTests(config: IConfig, labelPrefix?: string): Promise<void> {
  *
  * @param config - Config settings
  */
-export function test(config: IConfig) {
-  return new Promise(async (resolve, reject) => {
+export function test(config: IConfig): Promise<void> {
+  return new Promise(async (resolve: () => void, reject: (reason: Error) => void) => {
     try {
       await wctTests(config);
       resolve();

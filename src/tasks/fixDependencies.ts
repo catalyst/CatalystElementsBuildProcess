@@ -14,7 +14,7 @@ import { tasksHelpers, waitForAllPromises } from '../util';
 function fixPrismjs(config: IConfig, labelPrefix?: string): Promise<void> {
   const subTaskLabel = `prismjs`;
 
-  return new Promise(async (resolve, reject) => {
+  return new Promise(async (resolve: () => void, reject: (reason: Error) => void) => {
     try {
       const good = existsSync(`./${config.nodeModulesPath}/prismjs`);
       const bad = existsSync(`./${config.nodeModulesPath}/prism`);
@@ -25,6 +25,7 @@ function fixPrismjs(config: IConfig, labelPrefix?: string): Promise<void> {
           `skipping "${subTaskLabel}" - seems ok.`,
           labelPrefix
         );
+
         return;
       }
 
@@ -50,7 +51,7 @@ function fixPrismjs(config: IConfig, labelPrefix?: string): Promise<void> {
 function fixTestFixture(config: IConfig, labelPrefix?: string): Promise<void> {
   const subTaskLabel = `test-fixture`;
 
-  return new Promise(async (resolve, reject) => {
+  return new Promise(async (resolve: () => void, reject: (reason: Error) => void) => {
     try {
       const good = existsSync(
         `./${config.nodeModulesPath}/@polymer/test-fixture`
@@ -63,6 +64,7 @@ function fixTestFixture(config: IConfig, labelPrefix?: string): Promise<void> {
           `skipping "${subTaskLabel}" - seems ok.`,
           labelPrefix
         );
+
         return;
       }
 
@@ -92,7 +94,7 @@ function fixTestFixture(config: IConfig, labelPrefix?: string): Promise<void> {
 function fixAsync(config: IConfig, labelPrefix?: string): Promise<void> {
   const subTaskLabel = `async`;
 
-  return new Promise(async (resolve, reject) => {
+  return new Promise(async (resolve: () => void, reject: (reason: Error) => void) => {
     try {
       const good = existsSync(
         `./${config.nodeModulesPath}/async/dist/async.js`
@@ -105,6 +107,7 @@ function fixAsync(config: IConfig, labelPrefix?: string): Promise<void> {
           `skipping "${subTaskLabel}" - seems ok.`,
           labelPrefix
         );
+
         return;
       }
 
@@ -138,7 +141,7 @@ function fixAsync(config: IConfig, labelPrefix?: string): Promise<void> {
 function fixSinon(config: IConfig, labelPrefix?: string): Promise<void> {
   const subTaskLabel = `sinon`;
 
-  return new Promise(async (resolve, reject) => {
+  return new Promise(async (resolve: () => void, reject: (reason: Error) => void) => {
     try {
       const good = existsSync(`./${config.nodeModulesPath}/sinon/pkg/sinon.js`);
       const bad = existsSync(`./${config.nodeModulesPath}/sinonjs/sinon.js`);
@@ -149,6 +152,7 @@ function fixSinon(config: IConfig, labelPrefix?: string): Promise<void> {
           `skipping "${subTaskLabel}" - seems ok.`,
           labelPrefix
         );
+
         return;
       }
 
@@ -185,7 +189,7 @@ function fixIronScrollManager(
 ): Promise<void> {
   const subTaskLabel = `iron-scroll-manager.js`;
 
-  return new Promise(async (resolve, reject) => {
+  return new Promise(async (resolve: () => void, reject: (reason: Error) => void) => {
     try {
       const file = `./${
         config.nodeModulesPath
@@ -209,6 +213,7 @@ function fixIronScrollManager(
           `skipping "${subTaskLabel}" - seems ok.`,
           labelPrefix
         );
+
         return;
       }
 
@@ -230,8 +235,8 @@ function fixIronScrollManager(
  *
  * @param config - Config settings
  */
-export function fixDependencies(config: IConfig) {
-  return new Promise(async (resolve, reject) => {
+export function fixDependencies(config: IConfig): Promise<void> {
+  return new Promise(async (resolve: () => void, reject: (reason: Error) => void) => {
     try {
       await waitForAllPromises([
         fixPrismjs(config),

@@ -25,7 +25,7 @@ export default class MultiPromiseRejectionError extends Error {
     return `${this.errors.length} out of ${
       this.telly
     } promise were rejected.\nRejected errors:\n  - ${this.errors.join(
-      '  - \n'
+      '\n  - '
     )}`;
   }
 }

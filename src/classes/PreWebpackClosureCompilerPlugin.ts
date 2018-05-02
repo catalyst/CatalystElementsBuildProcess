@@ -9,13 +9,23 @@ import { RawSource } from 'webpack-sources';
  * Process the webpack output before handing it off to the WebpackClosureCompilerPlugin.
  */
 export class PreWebpackClosureCompilerPlugin {
-  private entries: { start: number; end: number; replacementCode: string }[];
+  /**
+   * Contains the new segments of code to replace original code with in the source code.
+   *
+   * Can't be done without a mutable array due to the implementation of `parseScript`
+   */
+  // tslint:disable-next-line:readonly-array
+  private readonly codeReplacements: {
+    readonly start: number;
+    readonly end: number;
+    readonly replacementCode: string;
+  }[];
 
   /**
-   * Make this object.
+   * Construct this plugin.
    */
   public constructor() {
-    this.entries = [];
+    this.codeReplacements = [];
   }
 
   /**
@@ -29,21 +39,45 @@ export class PreWebpackClosureCompilerPlugin {
       (compilation: webpack.compilation.Compilation) => {
         compilation.plugin(
           'optimize-chunk-assets',
-          (chunks: webpack.compilation.Chunk[], done: () => void) => {
+          (
+            chunks: ReadonlyArray<webpack.compilation.Chunk>,
+            done: () => void
+          ) => {
             for (const chunk of chunks) {
               for (const file of chunk.files) {
-                let source: string = compilation.assets[file].source();
+                const source: string = compilation.assets[file].source();
+
+                // Parse the source with the delegate to generate the replacement information.
                 parseScript(source, {}, this.processNode.bind(this));
-                const sortedEntries = this.entries.sort((a, b) => {
-                  return b.end - a.end;
-                });
-                for (const entry of sortedEntries) {
-                  source =
-                    source.slice(0, entry.start) +
-                    entry.replacementCode +
-                    source.slice(entry.end);
-                }
-                compilation.assets[file] = new RawSource(source);
+
+                // Update the file's source code with the code replacements in place.
+                // tslint:disable-next-line:no-object-mutation
+                compilation.assets[file] = new RawSource(
+                  this.codeReplacements.reduce(
+                    (result, replacement) => {
+                      const beforeReplacementCode = result.sourceCode.slice(
+                        0,
+                        result.offset + replacement.start
+                      );
+                      const afterReplacementCode = result.sourceCode.slice(
+                        result.offset + replacement.end
+                      );
+
+                      return {
+                        sourceCode:
+                          beforeReplacementCode +
+                          replacement.replacementCode +
+                          afterReplacementCode,
+                        offset:
+                          result.offset +
+                          replacement.replacementCode.length +
+                          replacement.start -
+                          replacement.end
+                      };
+                    },
+                    { sourceCode: '', offset: 0 }
+                  ).sourceCode
+                );
               }
             }
             done();
@@ -62,7 +96,7 @@ export class PreWebpackClosureCompilerPlugin {
   private processNode(node: Node, meta: any): void {
     if (node.type === 'ClassDeclaration') {
       if (
-        node.id != null &&
+        node.id !== null &&
         node.superClass != null &&
         node.superClass.type === 'MemberExpression'
       ) {
@@ -71,26 +105,27 @@ export class PreWebpackClosureCompilerPlugin {
         const superClassVar = `${className}_SuperClass_${Math.random()
           .toString(16)
           .substring(2)}`;
-        if (node.superClass.computed === true) {
+        if (node.superClass.computed) {
           if (node.superClass.object.type === 'Identifier') {
             const object = node.superClass.object.name;
-            let property;
-            if (node.superClass.property.type === 'Literal') {
-              property = `"${node.superClass.property.value}"`;
-            } else if (node.superClass.property.type === 'Identifier') {
-              property = `${node.superClass.property.name}`;
-            } else {
-              return;
+            const property =
+              node.superClass.property.type === 'Literal'
+                ? `"${node.superClass.property.value}"`
+                : node.superClass.property.type === 'Identifier'
+                  ? `${node.superClass.property.name}`
+                  : null;
+
+            if (property !== null) {
+              this.codeReplacements.push({
+                start: meta.start.offset,
+                end: meta.end.offset,
+                replacementCode:
+                  `const ${superClassVar} = ${object}[${property}];\n` +
+                  `class ${className} extends ${superClassVar} ${generate(
+                    classBody
+                  )}`
+              });
             }
-            this.entries.push({
-              start: meta.start.offset,
-              end: meta.end.offset,
-              replacementCode:
-                `const ${superClassVar} = ${object}[${property}];\n` +
-                `class ${className} extends ${superClassVar} ${generate(
-                  classBody
-                )}`
-            });
           }
         }
       }

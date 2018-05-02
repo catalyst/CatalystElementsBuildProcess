@@ -11,29 +11,26 @@ import { tasksHelpers } from '../util';
  * @param config - Config settings
  * @param labelPrefix - A prefix to print before the label
  */
-function wctTests(config: IConfig, labelPrefix?: string): Promise<void> {
+async function wctTests(config: IConfig, labelPrefix: string): Promise<void> {
   const subTaskLabel = 'wct';
 
-  return new Promise(async (resolve: () => void, reject: (reason: Error) => void) => {
-    try {
-      tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+  try {
+    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
-      if (existsSync(`./${config.dist.path}`)) {
-        await runTests(config.tests.wctConfig);
+    if (existsSync(`./${config.dist.path}`)) {
+      await runTests(config.tests.wctConfig);
 
-        resolve();
-        tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-      } else {
-        throw new Error(
-          `No ${config.dist.path}/ path exists - cannot run wct tests. ` +
-            `Please build the component before testing.`
-        );
-      }
-    } catch (error) {
-      reject(error);
-      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+      tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    } else {
+      throw new Error(
+        `No ${config.dist.path}/ path exists - cannot run wct tests. ` +
+          `Please build the component before testing.`
+      );
     }
-  });
+  } catch (error) {
+    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    throw error;
+  }
 }
 
 /**
@@ -41,13 +38,6 @@ function wctTests(config: IConfig, labelPrefix?: string): Promise<void> {
  *
  * @param config - Config settings
  */
-export function test(config: IConfig): Promise<void> {
-  return new Promise(async (resolve: () => void, reject: (reason: Error) => void) => {
-    try {
-      await wctTests(config);
-      resolve();
-    } catch (error) {
-      reject(error);
-    }
-  });
+export async function test(taskName: string, config: IConfig): Promise<void> {
+  await wctTests(config, taskName);
 }

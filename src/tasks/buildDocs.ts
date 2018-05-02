@@ -2,71 +2,65 @@
 import cheerio from 'cheerio';
 import escodegen from 'escodegen';
 import esprima from 'esprima';
-import { constants, existsSync } from 'fs';
-import { access, readdir, readFile } from 'fs/promises';
-import _glob from 'glob';
-import GulpClient from 'gulp';
+import { constants, createReadStream, createWriteStream, existsSync } from 'fs';
+import { access, copyFile, readdir, readFile, writeFile } from 'fs/promises';
 import flatmap from 'gulp-flatmap';
-import { checkout as _checkout, clone as _clone } from 'gulp-git';
-import htmlmin from 'gulp-htmlmin';
-import gulpIf from 'gulp-if';
-import modifyFile from 'gulp-modify-file';
 import rename from 'gulp-rename';
 import mergeStream from 'merge-stream';
-import { basename, dirname, extname, normalize } from 'path';
-import { HtmlSplitter, PolymerProject } from 'polymer-build';
+import {
+  basename as getFileBasename,
+  dirname as getDirName,
+  extname as getFileExtension,
+  join as joinPaths,
+  normalize as getNormalizedPath,
+  relative as getRelativePathBetween
+} from 'path';
+import {
+  Class,
+  Demo,
+  Element,
+  ElementMixin,
+  Namespace
+} from 'polymer-analyzer/lib/analysis-format/analysis-format';
+import { PolymerProject } from 'polymer-build';
+import promisePipe from 'promisepipe';
+import gitAbstract from 'simple-git';
 import { Stream } from 'stream';
 import { promisify } from 'util';
 import VinylFile from 'vinyl';
 import named from 'vinyl-named';
-import * as webpack from 'webpack';
+import webpack, * as webpackNamespace from 'webpack';
 import webpackStream from 'webpack-stream';
 
 import { IConfig } from '../config';
 import {
   cleanDocs,
   getWebpackPlugIns,
-  tasksHelpers,
-  UnrecoverableError,
-  waitForAllPromises
+  glob,
+  runAllPromises,
+  tasksHelpers
 } from '../util';
-
-// Promisified functions.
-const gitClone = promisify(_clone);
-const gitCheckout = promisify(_checkout);
-const glob = promisify(_glob);
 
 // The temp
 const tempSubpath = 'docs';
 
-// States if everything is ok. i.e. No important tasks have failed.
-let allOK = true;
-
 /**
- * Test if a directory is ready for cloning.
+ * Test if a directory is able to be cloned into.
  *
  * @param dirPath - Path of the directory to check
  */
-function directoryReadyForCloning(dirPath: string): Promise<void> {
-  return new Promise(async (resolve: () => void, reject: (reason: Error) => void) => {
-    try {
-      if (existsSync(dirPath)) {
-        await access(dirPath, constants.R_OK | constants.W_OK);
+async function directoryCanBeClonedInTo(dirPath: string): Promise<boolean> {
+  if (existsSync(dirPath)) {
+    await access(dirPath, constants.R_OK | constants.W_OK);
 
-        const files = await readdir(dirPath, 'utf8');
+    const files = await readdir(dirPath, 'utf8');
 
-        if (files.length === 0) {
-          resolve();
-        } else {
-          reject(new Error('Directory not empty.'));
-        }
-      } else {
-        resolve();
-      }
-    } catch (error) {
-      reject(error);
+    if (files.length !== 0) {
+      return false;
     }
-  });
+  }
+
+  return true;
 }
 
 /**
@@ -76,27 +70,25 @@ function directoryReadyForCloning(dirPath: string): Promise<void> {
  * @param dirPath - The path to clone the repo into
  * @param labelPrefix - A prefix to print before the label
  */
-function cloneRepository(
+async function cloneRepository(
   repoPath: string,
   dirPath: string,
-  labelPrefix?: string
+  labelPrefix: string
 ): Promise<void> {
   const subTaskLabel = `clone of ${repoPath}`;
 
-  return new Promise(async (resolve: () => void, reject: (reason: Error) => void) => {
-    try {
-      tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+  try {
+    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
-      await gitClone(repoPath, { args: `${dirPath} --quiet` });
+    const gitInstance = gitAbstract();
+    const clone = promisify(gitInstance.clone.bind(gitInstance));
+    await clone(repoPath, dirPath, { '--quiet': null });
 
-      resolve();
-      tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-    } catch (error) {
-      allOK = false;
-      reject(error);
-      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
-    }
-  });
+    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+  } catch (error) {
+    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    throw error;
+  }
 }
 
 /**
@@ -108,497 +100,497 @@ function cloneRepository(
  * @param config - Config settings
  * @param labelPrefix - A prefix to print before the label
  */
-function cloneRepositories(
-  packageFilePaths: string[],
+async function cloneRepositories(
+  packageFilePaths: ReadonlyArray<string>,
   config: IConfig,
-  labelPrefix?: string
-): Promise<void[]> {
-  const repos: Promise<void>[] = [];
+  labelPrefix: string
+  // tslint:disable-next-line:readonly-array
+): Promise<void> {
+  await Promise.all(
+    packageFilePaths.map(async packageFilePath => {
+      const data = await readFile(packageFilePath, 'utf8');
+      const json = JSON.parse(data);
 
-  for (const packageFilePath of packageFilePaths) {
-    repos.push(
-      // eslint-disable-next-line no-loop-func
-      new Promise(async (resolve: () => void, reject: (reason: Error) => void) => {
-        try {
-          const data = await readFile(packageFilePath, 'utf8');
-          const json = JSON.parse(data);
+      const name = json.name;
+      if (name == null) {
+        throw new Error(
+          `Name not set in the package.json file "${packageFilePath}".`
+        );
+      }
 
-          const name = json.name;
-          if (name == null) {
-            throw new Error(
-              `Name not set in the package.json file "${packageFilePath}".`
-            );
-          }
+      const version = json.version;
+      if (version == null) {
+        throw new Error(`Version not set in ${name}'s package.json file.`);
+      }
 
-          const version = json.version;
-          if (version == null) {
-            throw new Error(`Version not set in ${name}'s package.json file.`);
-          }
+      const repository = json.repository;
+      if (repository == null) {
+        throw new Error(`Repository not set in ${name}'s package.json file.`);
+      }
 
-          const repository = json.repository;
-          if (repository == null) {
-            throw new Error(
-              `Repository not set in ${name}'s package.json file.`
-            );
-          }
+      const repositoryIsObject = typeof repository === 'object';
+      if (repositoryIsObject && repository.type !== 'git') {
+        throw new Error(`"${repository.url}" is not a git repository.`);
+      }
+      const repositoryRawPath = repositoryIsObject
+        ? repository.url
+        : repository;
+      const repositoryPath = repositoryRawPath.replace(
+        /^git\+https:\/\//,
+        'git://'
+      );
 
-          const repoPath = (() => {
-            let p = '';
-            if (typeof repository === 'object') {
-              if (repository.type !== 'git') {
-                throw new Error(`"${repository}" is not a git repository.`);
-              }
-              p = repository.url;
-            } else {
-              p = repository;
-            }
+      const clonePath = `./${
+        config.temp.path
+      }/${tempSubpath}/demo-clones/${name}`;
 
-            return p.replace(/^git\+https:\/\//, 'git://');
-          })();
+      const skipClone = !(await directoryCanBeClonedInTo(clonePath));
 
-          const clonePath = `./${
-            config.temp.path
-          }/${tempSubpath}/demo-clones/${name}`;
+      if (skipClone) {
+        tasksHelpers.log.info(
+          `skipping clone of "${repositoryPath}" - output dir not empty.`,
+          labelPrefix
+        );
+      } else {
+        await cloneRepository(repositoryPath, clonePath, labelPrefix);
+      }
 
-          let skipClone = false;
-          try {
-            await directoryReadyForCloning(clonePath);
-          } catch (error) {
-            if (error.message === 'Directory not empty.') {
-              skipClone = true;
-            } else {
-              throw error;
-            }
-          }
-
-          if (skipClone) {
-            tasksHelpers.log.info(
-              `skipping clone of "${repoPath}" - output dir not empty.`,
-              labelPrefix
-            );
-          } else {
-            await cloneRepository(repoPath, clonePath, labelPrefix);
-          }
-
-          await gitCheckout(`v${version}`, { args: '--quiet', cwd: clonePath });
-
-          resolve();
-        } catch (error) {
-          reject(error);
-        }
-      })
-    );
-  }
-
-  return Promise.all(repos);
+      const gitInstance = gitAbstract(clonePath);
+      const checkout = promisify(gitInstance.checkout.bind(gitInstance));
+      await checkout([`v${version}`, '--quiet']);
+    })
+  );
 }
 
 /**
  * Copy all the node modules.
  *
- * @param  gulp - Gulp library
  * @param config - Config settings
  * @param labelPrefix - A prefix to print before the label
  */
-function copyNodeModules(
-  gulp: GulpClient.Gulp,
+async function copyNodeModules(
   config: IConfig,
-  labelPrefix?: string
+  labelPrefix: string
 ): Promise<void> {
   const subTaskLabel = 'node modules';
 
-  return new Promise((resolve: () => void, reject: (reason: Error) => void) => {
-    try {
-      // No point starting this task if another important task has already failed.
-      if (!allOK) {
-        throw new UnrecoverableError();
-      }
+  try {
+    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
-      tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    const filesRootPath = `./${config.nodeModulesPath}`;
+    const files = await glob(`${filesRootPath}/**`, {
+      follow: true
+    });
 
-      gulp
-        .src(`./${config.nodeModulesPath}/**`, { follow: true })
-        .pipe(
-          gulp.dest(
-            `./${config.temp.path}/${tempSubpath}/${
-              config.docs.nodeModulesPath
-            }`
-          )
-        )
-        .on('finish', () => {
-          resolve();
-          tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-        })
-        .on('error', (error: Error) => {
-          throw error;
-        });
-    } catch (error) {
-      reject(error);
-      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
-    }
-  });
+    await runAllPromises(
+      files.map(async file => {
+        if (config.package === undefined) {
+          throw new Error('No package data.');
+        }
+
+        const outDir = `./${config.temp.path}/${tempSubpath}/${
+          config.docs.nodeModulesPath
+        }`;
+        const basepath = getRelativePathBetween(filesRootPath, file);
+        const outFile = joinPaths(outDir, basepath);
+
+        await copyFile(file, outFile);
+      })
+    );
+
+    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+  } catch (error) {
+    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    throw error;
+  }
 }
 
 /**
  * Copy the docs' index page.
  *
- * @param  gulp - Gulp library
  * @param config - Config settings
  * @param labelPrefix - A prefix to print before the label
  */
-function copyDocsIndex(
-  gulp: GulpClient.Gulp,
+async function copyDocsIndex(
   config: IConfig,
-  labelPrefix?: string
+  labelPrefix: string
 ): Promise<void> {
   const subTaskLabel = 'index page';
 
-  return new Promise((resolve: () => void, reject: (reason: Error) => void) => {
-    try {
-      // No point starting this task if another important task has already failed.
-      if (!allOK) {
-        throw new UnrecoverableError();
-      }
+  try {
+    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
-      tasksHelpers.log.starting(subTaskLabel, labelPrefix);
-
-      gulp
-        .src(`./${config.docs.indexPage}`)
-        .pipe(
-          rename({
-            basename: 'index'
-          })
-        )
-        .pipe(gulp.dest(`./${config.temp.path}/${tempSubpath}`))
-        .on('finish', () => {
-          resolve();
-          tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-        })
-        .on('error', (error: Error) => {
-          throw error;
-        });
-    } catch (error) {
-      reject(error);
-      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    if (config.package === undefined) {
+      throw new Error('No package data.');
     }
-  });
+
+    const file = `./${config.docs.indexPage}`;
+
+    const outDir = `./${config.temp.path}/${tempSubpath}`;
+    const basepath = `index${getFileExtension(file)}`;
+    const outFile = joinPaths(outDir, basepath);
+
+    await copyFile(file, outFile);
+
+    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+  } catch (error) {
+    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    throw error;
+  }
 }
 
 /**
  * Copy the docs' extra dependencies.
  *
- * @param  gulp - Gulp library
  * @param config - Config settings
  * @param labelPrefix - A prefix to print before the label
  */
-function copyExtraDocDependencies(
-  gulp: GulpClient.Gulp,
+async function copyExtraDocDependencies(
   config: IConfig,
-  labelPrefix?: string
+  labelPrefix: string
 ): Promise<void> {
   const subTaskLabel = 'extra dependencies';
 
-  return new Promise((resolve: () => void, reject: (reason: Error) => void) => {
-    try {
-      // No point starting this task if another important task has already failed.
-      if (!allOK) {
-        throw new UnrecoverableError();
-      }
+  try {
+    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
-      tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    const filesRootPath = `.`;
+    const files = await glob([
+      `${filesRootPath}/${config.docs.importsImporterFilename}`,
+      `${filesRootPath}/${config.docs.importsFilename}`,
+      `${filesRootPath}/${config.docs.analysisFilename}`
+    ]);
 
-      gulp
-        .src([
-          `./${config.docs.importsImporterFilename}`,
-          `./${config.docs.importsFilename}`,
-          `./${config.docs.analysisFilename}`
-        ])
-        .pipe(gulp.dest(`./${config.temp.path}/${tempSubpath}`))
-        .on('finish', () => {
-          resolve();
-          tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-        })
-        .on('error', (error: Error) => {
-          throw error;
-        });
-    } catch (error) {
-      reject(error);
-      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
-    }
-  });
+    await runAllPromises(
+      files.map(async file => {
+        if (config.package === undefined) {
+          throw new Error('No package data.');
+        }
+
+        const outDir = `./${config.temp.path}/${tempSubpath}`;
+        const basepath = getRelativePathBetween(filesRootPath, file);
+        const outFile = joinPaths(outDir, basepath);
+
+        await copyFile(file, outFile);
+      })
+    );
+
+    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+  } catch (error) {
+    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    throw error;
+  }
 }
 
 /**
  * Copy over all the distribution files.
  *
- * @param  gulp - Gulp library
  * @param config - Config settings
  * @param labelPrefix - A prefix to print before the label
  */
-function copyDistributionFiles(
-  gulp: GulpClient.Gulp,
+async function copyDistributionFiles(
   config: IConfig,
-  labelPrefix?: string
+  labelPrefix: string
 ): Promise<void> {
   const subTaskLabel = 'distribution files';
 
-  return new Promise((resolve: () => void, reject: (reason: Error) => void) => {
-    try {
-      // No point starting this task if another important task has already failed.
-      if (!allOK) {
-        throw new UnrecoverableError();
-      }
+  try {
+    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
-      tasksHelpers.log.starting(subTaskLabel, labelPrefix);
-
-      if (config.package == null) {
-        throw new Error('No package data.');
-      }
-
-      gulp
-        .src(`./${config.dist.path}/**`)
-        .pipe(
-          gulp.dest(
-            `./${config.temp.path}/${tempSubpath}/${
-              config.docs.nodeModulesPath
-            }/${config.package.name}/`
-          )
-        )
-        .on('finish', () => {
-          resolve();
-          tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-        })
-        .on('error', (error: Error) => {
-          throw error;
-        });
-    } catch (error) {
-      reject(error);
-      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    if (config.package === undefined) {
+      throw new Error('No package data.');
     }
-  });
+
+    const filesRootPath = `./${config.dist.path}`;
+    const files = await glob(`${filesRootPath}/**`);
+    await runAllPromises(
+      files.map(async file => {
+        if (config.package === undefined) {
+          throw new Error('No package data.');
+        }
+
+        const outDir = `./${config.temp.path}/${tempSubpath}/${
+          config.docs.nodeModulesPath
+        }/${config.package.name}`;
+        const basepath = getRelativePathBetween(filesRootPath, file);
+        const outFile = joinPaths(outDir, basepath);
+
+        await copyFile(file, outFile);
+      })
+    );
+
+    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+  } catch (error) {
+    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    throw error;
+  }
 }
 
 /**
  * Copy over the demos in the demos folder.
  *
- * @param  gulp - Gulp library
  * @param config - Config settings
  * @param labelPrefix - A prefix to print before the label
  */
-function copyLocalDemos(
-  gulp: GulpClient.Gulp,
+async function copyLocalDemos(
   config: IConfig,
-  labelPrefix?: string
+  labelPrefix: string
 ): Promise<void> {
   const subTaskLabel = 'local demos';
 
-  return new Promise((resolve: () => void, reject: (reason: Error) => void) => {
-    try {
-      // No point starting this task if another important task has already failed.
-      if (!allOK) {
-        throw new UnrecoverableError();
-      }
+  try {
+    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
-      tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    const filesRootPath = `./${config.demos.path}`;
+    const files = await glob(`${filesRootPath}/**`);
+    await runAllPromises(
+      files.map(async file => {
+        if (config.package === undefined) {
+          throw new Error('No package data.');
+        }
 
-      if (config.package == null) {
-        throw new Error('No package data.');
-      }
+        const outDir = `./${config.temp.path}/${tempSubpath}/${
+          config.docs.nodeModulesPath
+        }/${config.package.name}`;
+        const basepath = getRelativePathBetween(filesRootPath, file);
+        const outFile = joinPaths(outDir, basepath);
 
-      gulp
-        .src(`./${config.demos.path}/**`, {
-          base: './'
-        })
-        .pipe(
-          gulp.dest(
-            `./${config.temp.path}/${tempSubpath}/${
-              config.docs.nodeModulesPath
-            }/${config.package.name}/`
-          )
-        )
-        .on('finish', () => {
-          resolve();
-          tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-        })
-        .on('error', (error: Error) => {
-          throw error;
-        });
-    } catch (error) {
-      reject(error);
-      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+        await copyFile(file, outFile);
+      })
+    );
+
+    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+  } catch (error) {
+    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    throw error;
+  }
+}
+
+/**
+ * Copy all the dependencies so they can be edited without affecting anything else.
+ *
+ * @param config - Config settings
+ * @param labelPrefix - A prefix to print before the label
+ */
+async function copyDependencies(
+  config: IConfig,
+  labelPrefix: string
+): Promise<void> {
+  const subTaskLabel = 'copy dependencies';
+
+  try {
+    const subTaskLabelPrefix = tasksHelpers.log.starting(
+      subTaskLabel,
+      labelPrefix
+    );
+
+    const baseSubTasks: ReadonlyArray<Promise<void>> = [
+      copyDocsIndex(config, subTaskLabelPrefix),
+      copyExtraDocDependencies(config, subTaskLabelPrefix),
+      copyDistributionFiles(config, subTaskLabelPrefix),
+      copyLocalDemos(config, subTaskLabelPrefix)
+    ];
+
+    const nodeModulesInPlace = existsSync(
+      `./${config.temp.path}/${tempSubpath}/${config.docs.nodeModulesPath}`
+    );
+
+    if (nodeModulesInPlace) {
+      tasksHelpers.log.info(
+        'skipping copying of node modules - already in place.',
+        subTaskLabelPrefix
+      );
     }
+
+    const copyNodeModulesTasks = nodeModulesInPlace
+      ? []
+      : [copyNodeModules(config, subTaskLabelPrefix)];
+
+    const subTasks: ReadonlyArray<Promise<void>> = [
+      ...baseSubTasks,
+      ...copyNodeModulesTasks
+    ];
+
+    await runAllPromises(subTasks);
+
+    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+  } catch (error) {
+    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    throw error;
+  }
+}
+
+/**
+ * Fix the elements in the analysis.
+ */
+function updateAnalysisElements(
+  elements: ReadonlyArray<Element> | undefined,
+  config: IConfig
+  // tslint:disable-next-line:readonly-array
+): Element[] | undefined {
+  if (elements === undefined) {
+    return undefined;
+  }
+
+  return elements.map(element => {
+    return {
+      ...element,
+      demos: updateAnalysisComponentDemos(element, config)
+    };
   });
 }
 
 /**
- * Copy all the dependencies so they can be editor with out affecting anything else.
- *
- * @param  gulp - Gulp library
- * @param config - Config settings
- * @param labelPrefix - A prefix to print before the label
+ * Fix the mixins in the analysis.
  */
-function copyDependencies(
-  gulp: GulpClient.Gulp,
-  config: IConfig,
-  labelPrefix?: string
-): Promise<void> {
-  const subTaskLabel = 'copy dependencies';
+function updateAnalysisElementMixins(
+  elementMixins: ReadonlyArray<ElementMixin> | undefined,
+  config: IConfig
+  // tslint:disable-next-line:readonly-array
+): ElementMixin[] | undefined {
+  if (elementMixins === undefined) {
+    return undefined;
+  }
 
-  return new Promise(async (resolve: () => void, reject: (reason: Error) => void) => {
-    try {
-      // No point starting this task if another important task has already failed.
-      if (!allOK) {
-        throw new UnrecoverableError();
-      }
+  return elementMixins.map(mixin => {
+    return {
+      ...mixin,
+      demos: updateAnalysisComponentDemos(mixin, config)
+    };
+  });
+}
 
-      const subTaskLabelPrefix = tasksHelpers.log.starting(
-        subTaskLabel,
-        labelPrefix
-      );
+/**
+ * Fix the namespaces in the analysis.
+ */
+function updateAnalysisNamespaces(
+  namespaces: ReadonlyArray<Namespace> | undefined,
+  config: IConfig
+  // tslint:disable-next-line:readonly-array
+): Namespace[] | undefined {
+  if (namespaces === undefined) {
+    return undefined;
+  }
 
-      const subTasks = [
-        copyDocsIndex(gulp, config, subTaskLabelPrefix),
-        copyExtraDocDependencies(gulp, config, subTaskLabelPrefix),
-        copyDistributionFiles(gulp, config, subTaskLabelPrefix),
-        copyLocalDemos(gulp, config, subTaskLabelPrefix)
-      ];
+  return namespaces.map(namespace => {
+    return {
+      ...namespace,
+      elements: updateAnalysisElements(namespace.elements, config),
+      mixins: updateAnalysisElementMixins(namespace.mixins, config),
+      classes: updateAnalysisClasses(namespace.classes, config)
+    };
+  });
+}
 
-      // Only copy node modules if they aren't already in place.
-      if (
-        existsSync(
-          `./${config.temp.path}/${tempSubpath}/${config.docs.nodeModulesPath}`
-        )
-      ) {
-        tasksHelpers.log.info(
-          'skipping copying of node modules - already in place.',
-          subTaskLabelPrefix
-        );
-      } else {
-        subTasks.push(copyNodeModules(gulp, config, subTaskLabelPrefix));
-      }
+/**
+ * Fix the classes in the analysis.
+ */
+function updateAnalysisClasses(
+  classes: ReadonlyArray<Class> | undefined,
+  config: IConfig
+  // tslint:disable-next-line:readonly-array
+): Class[] | undefined {
+  if (classes === undefined) {
+    return undefined;
+  }
 
-      await waitForAllPromises(subTasks);
+  return classes.map(classComponent => {
+    return {
+      ...classComponent,
+      demos: updateAnalysisComponentDemos(classComponent, config)
+    };
+  });
+}
 
-      tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-      resolve();
-    } catch (error) {
-      allOK = false;
-      reject(error);
-      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+/**
+ * Prefix the demos' url.
+ */
+function updateAnalysisComponentDemos(
+  component: Class,
+  config: IConfig
+  // tslint:disable-next-line:readonly-array
+): Demo[] {
+  return component.demos.map(demo => {
+    if (config.package === undefined) {
+      throw new Error('Package not set.');
     }
+
+    return {
+      ...demo,
+      url: `${config.docs.nodeModulesPath}/${config.package.name}/${demo.url}`
+    };
   });
 }
 
 /**
  * Update the analysis.
  *
- * @param  gulp - Gulp library
  * @param config - Config settings
  * @param labelPrefix - A prefix to print before the label
  */
-function updateAnalysis(
-  gulp: GulpClient.Gulp,
+async function updateAnalysis(
   config: IConfig,
-  labelPrefix?: string
+  labelPrefix: string
 ): Promise<void> {
   const subTaskLabel = 'update analysis';
 
-  return new Promise((resolve: () => void, reject: (reason: Error) => void) => {
-    try {
-      // No point starting this task if another important task has already failed.
-      if (!allOK) {
-        throw new UnrecoverableError();
-      }
+  try {
+    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
-      tasksHelpers.log.starting(subTaskLabel, labelPrefix);
-
-      gulp
-        .src(
-          `./${config.temp.path}/${tempSubpath}/${
-            config.docs.analysisFilename
-          }`,
-          {
-            base: './'
-          }
-        )
-        .pipe(
-          modifyFile((content: string) => {
-            if (config.package == null) {
-              throw new Error('Package not set.');
-            }
-
-            const analysis = JSON.parse(content);
-            const typesToFix = ['elements', 'mixins'];
-            for (const typeToFix of typesToFix) {
-              if (analysis[typeToFix]) {
-                for (const component of analysis[typeToFix]) {
-                  if (component.demos) {
-                    for (const demo of component.demos) {
-                      // Fix demo paths.
-                      demo.url = `${config.docs.nodeModulesPath}/${
-                        config.package.name
-                      }/${demo.url}`;
-                    }
-                  }
-                }
-              }
-            }
-
-            return JSON.stringify(analysis);
-          })
-        )
-        .pipe(gulp.dest('./'))
-        .on('finish', () => {
-          resolve();
-          tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-        })
-        .on('error', (error: Error) => {
-          throw error;
-        });
-    } catch (error) {
-      reject(error);
-      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    if (config.package === undefined) {
+      throw new Error('Package not set.');
     }
-  });
+
+    const file = `./${config.temp.path}/${tempSubpath}/${
+      config.docs.analysisFilename
+    }`;
+    const fileContent = await readFile(file, { encoding: 'utf8', flag: 'r' });
+    const analysis = JSON.parse(fileContent);
+    const updatedAnalysis = {
+      ...analysis,
+      ...{
+        elements: updateAnalysisElements(analysis.elements, config),
+        mixins: updateAnalysisElementMixins(analysis.mixins, config),
+        namespaces: updateAnalysisNamespaces(analysis.namespaces, config),
+        classes: updateAnalysisClasses(analysis.classes, config)
+      }
+    };
+
+    const updatedFileContent = JSON.stringify(updatedAnalysis);
+    await writeFile(file, updatedFileContent);
+
+    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+  } catch (error) {
+    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    throw error;
+  }
 }
 
 /**
  * Get the demos.
  *
- * @param  gulp - Gulp library
  * @param config - Config settings
  * @param labelPrefix - A prefix to print before the label
  */
-function getDemos(
-  gulp: GulpClient.Gulp,
-  config: IConfig,
-  labelPrefix?: string
-): Promise<void> {
+async function getDemos(config: IConfig, labelPrefix: string): Promise<void> {
   const subTaskLabel = 'get demos';
 
-  return new Promise(async (resolve: () => void, reject: (reason: Error) => void) => {
-    try {
-      // No point starting this task if another important task has already failed.
-      if (!allOK) {
-        throw new UnrecoverableError();
-      }
+  try {
+    const subTaskLabelPrefix = tasksHelpers.log.starting(
+      subTaskLabel,
+      labelPrefix
+    );
 
-      const subTaskLabelPrefix = tasksHelpers.log.starting(
-        subTaskLabel,
-        labelPrefix
-      );
+    const packageFiles = await glob(
+      `./${config.componenet.nodeModulesPath}/catalyst-*/package.json`
+    );
 
-      const files = await glob(
-        `./${config.componenet.nodeModulesPath}/catalyst-*/package.json`
-      );
+    if (packageFiles.length > 0) {
+      await cloneRepositories(packageFiles, config, subTaskLabelPrefix);
 
-      if (files.length > 0) {
-        await cloneRepositories(files, config, subTaskLabelPrefix);
-
-        const promises = [];
-
-        for (const file of files) {
-          const fileDirPath = dirname(file);
+      await runAllPromises(
+        packageFiles.map(async packageFile => {
+          const fileDirPath = getDirName(packageFile);
           const name =
             config.componenet.scope == null
               ? fileDirPath.substring(fileDirPath.lastIndexOf('/') + 1)
@@ -609,723 +601,571 @@ function getDemos(
             config.temp.path
           }/${tempSubpath}/demo-clones/${name}`;
 
-          const base = normalize(
-            config.componenet.scope === null ? `${dir}/..` : `${dir}/../..`
-          );
-
-          promises.push(
-            // tslint:disable-next-line:no-shadowed-variable
-            new Promise((resolve: () => void, reject: (reason: Error) => void) => {
-              gulp
-                .src(`${dir}/${config.demos.path}/**`, { base })
-                .pipe(
-                  gulp.dest(
-                    `./${config.temp.path}/${tempSubpath}/${
-                      config.docs.nodeModulesPath
-                    }`
-                  )
-                )
-                .on('finish', () => {
-                  resolve();
-                })
-                .on('error', (error: Error) => {
-                  reject(error);
-                });
+          const demoFiles = await glob(`${dir}/${config.demos.path}/**`);
+          await runAllPromises(
+            demoFiles.map(async demoFile => {
+              const outDir = `./${config.temp.path}/${tempSubpath}/${
+                config.docs.nodeModulesPath
+              }`;
+              const filename = getFileBasename(demoFile);
+              await copyFile(demoFile, `${outDir}/${filename}`);
             })
           );
-        }
-
-        await waitForAllPromises(promises);
-      }
-
-      resolve();
-      tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-    } catch (error) {
-      allOK = false;
-      reject(error);
-      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+        })
+      );
     }
-  });
+
+    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+  } catch (error) {
+    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    throw error;
+  }
 }
 
 /**
  * Update the references in the index file.
  *
- * @param  gulp - Gulp library
  * @param config - Config settings
  * @param labelPrefix - A prefix to print before the label
  */
-function indexPageUpdateReferences(
-  gulp: GulpClient.Gulp,
+async function indexPageUpdateReferences(
   config: IConfig,
-  labelPrefix?: string
+  labelPrefix: string
 ): Promise<void> {
   const subTaskLabel = 'index';
 
-  return new Promise((resolve: () => void, reject: (reason: Error) => void) => {
-    try {
-      // No point starting this task if another important task has already failed.
-      if (!allOK) {
-        throw new UnrecoverableError();
+  try {
+    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+
+    const file = `./${config.temp.path}/${tempSubpath}/index.html`;
+    const fileContent = await readFile(file, { encoding: 'utf8', flag: 'r' });
+    const $ = cheerio.load(fileContent);
+    // tslint:disable:no-delete no-object-mutation
+    $('script').each((_index: number, element: CheerioElement) => {
+      if (element.attribs.type === 'module') {
+        delete element.attribs.type;
       }
+      element.attribs.src = element.attribs.src
+        .replace(/^\.\.\/\.\.\//, `${config.docs.nodeModulesPath}/`)
+        .replace(/.mjs$/, '.js');
+    });
+    // tslint:enable:no-delete no-object-mutation
 
-      tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    const updatedFileContent = $.html();
+    await writeFile(file, updatedFileContent);
 
-      gulp
-        .src(`./${config.temp.path}/${tempSubpath}/index.html`, { base: './' })
-        .pipe(
-          modifyFile((content: string) => {
-            const $ = cheerio.load(content);
-            $('script').each((index: number, element: CheerioElement) => {
-              if (element.attribs.type === 'module') {
-                delete element.attribs.type;
-              }
-              element.attribs.src = element.attribs.src
-                .replace(/^\.\.\/\.\.\//, `${config.docs.nodeModulesPath}/`)
-                .replace(/.mjs$/, '.js');
-            });
-
-            return $.html();
-          })
-        )
-        .pipe(gulp.dest('./'))
-        .on('finish', () => {
-          resolve();
-          tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-        })
-        .on('error', (error: Error) => {
-          throw error;
-        });
-    } catch (error) {
-      reject(error);
-      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
-    }
-  });
+    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+  } catch (error) {
+    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    throw error;
+  }
 }
 
 /**
  * Update the references in each of the demos' pages.
  *
- * @param  gulp - Gulp library
  * @param config - Config settings
  * @param labelPrefix - A prefix to print before the label
  */
-function demosPagesUpdateReferences(
-  gulp: GulpClient.Gulp,
+async function demosPagesUpdateReferences(
   config: IConfig,
-  labelPrefix?: string
+  labelPrefix: string
 ): Promise<void> {
   const subTaskLabel = 'demo files';
 
-  return new Promise((resolve: () => void, reject: (reason: Error) => void) => {
-    try {
-      // No point starting this task if another important task has already failed.
-      if (!allOK) {
-        throw new UnrecoverableError();
-      }
+  try {
+    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
-      tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    const files = await glob(
+      `./${config.temp.path}/${tempSubpath}/${config.docs.nodeModulesPath}/${
+        config.componenet.scope
+      }/*/${config.demos.path}/*.html`
+    );
 
-      gulp
-        .src(
-          `./${config.temp.path}/${tempSubpath}/${
-            config.docs.nodeModulesPath
-          }/${config.componenet.scope}/*/${config.demos.path}/*.html`,
-          { base: './' }
-        )
-        .pipe(
-          modifyFile((content: string) => {
-            const $ = cheerio.load(content);
-            $('script[type="module"]').each((index: number, element: CheerioElement) => {
-              delete element.attribs.type;
-              element.attribs.src = element.attribs.src.replace(/.mjs$/, '.js');
-            });
-
-            return $.html();
-          })
-        )
-        .pipe(gulp.dest('./'))
-        .on('finish', () => {
-          resolve();
-          tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-        })
-        .on('error', (error: Error) => {
-          throw error;
+    await runAllPromises(
+      files.map(async file => {
+        const fileContent = await readFile(file, {
+          encoding: 'utf8',
+          flag: 'r'
         });
-    } catch (error) {
-      reject(error);
-      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
-    }
-  });
+        const $ = cheerio.load(fileContent);
+        // tslint:disable:no-delete no-object-mutation
+        $('script[type="module"]').each(
+          (_index: number, element: CheerioElement) => {
+            delete element.attribs.type;
+            element.attribs.src = element.attribs.src.replace(/.mjs$/, '.js');
+          }
+        );
+        // tslint:enable:no-delete no-object-mutation
+
+        const updatedFileContent = $.html();
+        await writeFile(file, updatedFileContent);
+      })
+    );
+
+    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+  } catch (error) {
+    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    throw error;
+  }
 }
 
 /**
  * Update the references in the imported files.
  *
- * @param  gulp - Gulp library
  * @param config - Config settings
  * @param labelPrefix - A prefix to print before the label
  */
-function indexImportsUpdateReferences(
-  gulp: GulpClient.Gulp,
+async function indexImportsUpdateReferences(
   config: IConfig,
-  labelPrefix?: string
+  labelPrefix: string
 ): Promise<void> {
   const subTaskLabel = 'imports';
 
-  return new Promise((resolve: () => void, reject: (reason: Error) => void) => {
-    try {
-      // No point starting this task if another important task has already failed.
-      if (!allOK) {
-        throw new UnrecoverableError();
-      }
+  try {
+    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
-      tasksHelpers.log.starting(subTaskLabel, labelPrefix);
-
-      gulp
-        .src(
-          `./${config.temp.path}/${tempSubpath}/${config.docs.importsFilename}`,
-          {
-            base: './'
-          }
-        )
-        .pipe(
-          modifyFile((content: string) => {
-            const parsedCode = esprima.parseModule(content);
-
-            // Static imports declaration must be defined in the body.
-            // This file should only have static imports.
-            for (const node of parsedCode.body) {
-              if (node.type === 'ImportDeclaration') {
-                if (
-                  node.source != null &&
-                  node.source.type === 'Literal' &&
-                  typeof node.source.value === 'string'
-                ) {
-                  node.source.value = node.source.value.replace(
-                    /\.\.\/\.\.\//g,
-                    `./${config.docs.nodeModulesPath}/`
-                  );
-                  node.source.raw = `'${node.source.value}'`;
-                }
-              }
+    const file = `./${config.temp.path}/${tempSubpath}/${
+      config.docs.importsFilename
+    }`;
+    const fileContent = await readFile(file, { encoding: 'utf8', flag: 'r' });
+    const program = esprima.parseModule(fileContent);
+    const updatedBody = program.body.map(node => {
+      if (node.type === 'ImportDeclaration') {
+        if (typeof node.source.value === 'string') {
+          return {
+            ...node,
+            source: {
+              ...node.source,
+              value: node.source.value.replace(
+                /\.\.\/\.\.\//g,
+                `./${config.docs.nodeModulesPath}/`
+              ),
+              raw: `'${node.source.value}'`
             }
+          };
+        }
+      }
+      return node;
+    });
+    const updatedProgram = {
+      ...program,
+      body: updatedBody
+    };
+    const updatedFileContent = escodegen.generate(updatedProgram);
+    await writeFile(file, updatedFileContent);
 
-            return escodegen.generate(parsedCode);
-          })
-        )
-        .pipe(gulp.dest('./'))
-        .on('finish', () => {
-          resolve();
-          tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-        })
-        .on('error', (error: Error) => {
-          throw error;
-        });
-    } catch (error) {
-      reject(error);
-      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
-    }
-  });
+    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+  } catch (error) {
+    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    throw error;
+  }
 }
 
 /**
  * Update the references in the index file.
  *
- * @param  gulp - Gulp library
  * @param config - Config settings
  * @param labelPrefix - A prefix to print before the label
  */
-function indexUpdateReferences(
-  gulp: GulpClient.Gulp,
+async function indexUpdateReferences(
   config: IConfig,
-  labelPrefix?: string
+  labelPrefix: string
 ): Promise<void> {
   const subTaskLabel = 'update references';
 
-  return new Promise(async (resolve: () => void, reject: (reason: Error) => void) => {
-    try {
-      // No point starting this task if another important task has already failed.
-      if (!allOK) {
-        throw new UnrecoverableError();
-      }
+  try {
+    const subTaskLabelPrefix = tasksHelpers.log.starting(
+      subTaskLabel,
+      labelPrefix
+    );
 
-      const subTaskLabelPrefix = tasksHelpers.log.starting(
-        subTaskLabel,
-        labelPrefix
-      );
+    await runAllPromises([
+      indexPageUpdateReferences(config, subTaskLabelPrefix),
+      indexImportsUpdateReferences(config, subTaskLabelPrefix)
+    ]);
 
-      await waitForAllPromises([
-        indexPageUpdateReferences(gulp, config, subTaskLabelPrefix),
-        indexImportsUpdateReferences(gulp, config, subTaskLabelPrefix)
-      ]);
-
-      resolve();
-      tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-    } catch (error) {
-      allOK = false;
-      reject(error);
-      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
-    }
-  });
+    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+  } catch (error) {
+    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    throw error;
+  }
 }
 
 /**
  * Update the references in each of the demo files.
  *
- * @param  gulp - Gulp library
  * @param config - Config settings
  * @param labelPrefix - A prefix to print before the label
  */
-function demosUpdateReferences(
-  gulp: GulpClient.Gulp,
+async function demosUpdateReferences(
   config: IConfig,
-  labelPrefix?: string
+  labelPrefix: string
 ): Promise<void> {
   const subTaskLabel = 'update references';
 
-  return new Promise(async (resolve: () => void, reject: (reason: Error) => void) => {
-    try {
-      // No point starting this task if another important task has already failed.
-      if (!allOK) {
-        throw new UnrecoverableError();
-      }
+  try {
+    const subTaskLabelPrefix = tasksHelpers.log.starting(
+      subTaskLabel,
+      labelPrefix
+    );
 
-      const subTaskLabelPrefix = tasksHelpers.log.starting(
-        subTaskLabel,
-        labelPrefix
-      );
+    await runAllPromises([
+      demosPagesUpdateReferences(config, subTaskLabelPrefix)
+    ]);
 
-      await waitForAllPromises([
-        demosPagesUpdateReferences(gulp, config, subTaskLabelPrefix)
-      ]);
-
-      resolve();
-      tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-    } catch (error) {
-      allOK = false;
-      reject(error);
-      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
-    }
-  });
+    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+  } catch (error) {
+    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    throw error;
+  }
 }
 
 /**
  * Finalize the index page.
  *
- * @param  gulp - Gulp library
  * @param config - Config settings
  * @param labelPrefix - A prefix to print before the label
  */
-function finalizeIndexPage(
-  gulp: GulpClient.Gulp,
+async function finalizeIndexPage(
   config: IConfig,
-  labelPrefix?: string
+  labelPrefix: string
 ): Promise<void> {
   const subTaskLabel = 'finalize';
 
-  return new Promise((resolve: () => void, reject: (reason: Error) => void) => {
-    try {
-      // No point starting this task if another important task has already failed.
-      if (!allOK) {
-        throw new UnrecoverableError();
-      }
+  try {
+    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
-      tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    const docsImportsBaseName = getFileBasename(
+      config.docs.importsFilename,
+      getFileExtension(config.docs.importsFilename)
+    );
 
-      const docsImportsBaseName = basename(
-        config.docs.importsFilename,
-        extname(config.docs.importsFilename)
-      );
+    const docsImportsImporterBaseName = getFileBasename(
+      config.docs.importsImporterFilename,
+      getFileExtension(config.docs.importsImporterFilename)
+    );
 
-      const docsImportsImporterBaseName = basename(
-        config.docs.importsImporterFilename,
-        extname(config.docs.importsImporterFilename)
-      );
+    const filePath = `./${config.temp.path}/${tempSubpath}/${
+      config.docs.importsImporterFilename
+    }`;
 
-      gulp
-        .src(
-          `./${config.temp.path}/${tempSubpath}/${
-            config.docs.importsImporterFilename
-          }`,
-          {
-            base: config.temp.path
-          }
-        )
-        .pipe(named())
-        .pipe(
-          webpackStream(
-            {
-              mode: 'none',
-              output: {
-                chunkFilename: `${docsImportsBaseName}.[id].js`,
-                filename: `${docsImportsImporterBaseName}.js`
-              },
-              plugins: getWebpackPlugIns(),
-              target: 'web'
-            },
-            webpack
+    await promisePipe(
+      createReadStream(filePath),
+      named(),
+      webpackStream(
+        {
+          mode: 'none',
+          output: {
+            chunkFilename: `${docsImportsBaseName}.[id].js`,
+            filename: `${docsImportsImporterBaseName}.js`
+          },
+          plugins: getWebpackPlugIns(),
+          target: 'web'
+        },
+        webpackNamespace
+      ),
+      flatmap((stream: Stream, file: VinylFile) => {
+        return stream
+          .pipe(
+            modifyFile((content: string) => {
+              return content.replace(/\\\\\$/g, '$');
+            })
           )
-        )
-        .pipe(
-          flatmap((stream: Stream, file: VinylFile) => {
-            return stream
-              .pipe(
-                modifyFile((content: string) => {
-                  return content.replace(/\\\\\$/g, '$');
-                })
-              )
-              .pipe(
-                rename({
-                  basename: basename(file.path, extname(file.path))
-                })
-              )
-              .pipe(gulp.dest(`./${config.temp.path}/${tempSubpath}`));
-          })
-        )
-        .on('finish', () => {
-          resolve();
-          tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-        })
-        .on('error', (error: Error) => {
-          throw error;
-        });
-    } catch (error) {
-      reject(error);
-      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
-    }
-  });
+          .pipe(
+            rename({
+              basename: getFileBasename(file.path, getFileExtension(file.path))
+            })
+          )
+          .pipe(
+            createWriteStream(
+              `./${config.temp.path}/${tempSubpath}/${
+                config.docs.importsImporterFilename
+              }`
+            )
+          );
+      })
+    );
+
+    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+  } catch (error) {
+    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    throw error;
+  }
 }
 
 /**
  * Finalize the demos.
  *
- * @param  gulp - Gulp library
  * @param config - Config settings
  * @param labelPrefix - A prefix to print before the label
  */
-function finalizeDemos(
-  gulp: GulpClient.Gulp,
+async function finalizeDemos(
   config: IConfig,
-  labelPrefix?: string
+  labelPrefix: string
 ): Promise<void> {
   const subTaskLabel = 'finalize';
 
-  return new Promise((resolve: () => void, reject: (reason: Error) => void) => {
-    try {
-      // No point starting this task if another important task has already failed.
-      if (!allOK) {
-        throw new UnrecoverableError();
-      }
+  try {
+    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
-      tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    const demoImportsBaseName = getFileBasename(
+      config.demos.importsFilename,
+      getFileExtension(config.demos.importsFilename)
+    );
 
-      const demoImportsBaseName = basename(
-        config.demos.importsFilename,
-        extname(config.demos.importsFilename)
-      );
+    const docsImportsImporterBaseName = getFileBasename(
+      config.demos.importsImporterFilename,
+      getFileExtension(config.demos.importsImporterFilename)
+    );
 
-      const docsImportsImporterBaseName = basename(
-        config.demos.importsImporterFilename,
-        extname(config.demos.importsImporterFilename)
-      );
+    const sourceFiles = await glob(
+      `${config.temp.path}/${tempSubpath}/${config.docs.nodeModulesPath}/${
+        config.componenet.scope
+      }/*/${config.demos.path}/${config.demos.importsImporterFilename}`
+    );
 
-      gulp
-        .src(
-          `${config.temp.path}/${tempSubpath}/${config.docs.nodeModulesPath}/${
-            config.componenet.scope
-          }/*/${config.demos.path}/${config.demos.importsImporterFilename}`
-        )
-        .pipe(
-          flatmap((demoStream: Stream, demoFile: VinylFile) => {
-            const output = dirname(demoFile.path);
+    const webpackResults = await runAllPromises(
+      sourceFiles.map(async file => {
+        const outDir = getDirName(file);
+        const compiler: webpack.Compiler = webpack({
+          mode: 'none',
+          entry: file,
+          output: {
+            path: outDir,
+            chunkFilename: `${demoImportsBaseName}.[id].js`,
+            filename: `${docsImportsImporterBaseName}.js`
+          },
+          plugins: getWebpackPlugIns(),
+          target: 'web'
+        } as any);
 
-            return demoStream
-              .pipe(
-                webpackStream(
-                  {
-                    mode: 'none',
-                    output: {
-                      chunkFilename: `${demoImportsBaseName}.[id].js`,
-                      filename: `${docsImportsImporterBaseName}.js`
-                    },
-                    plugins: getWebpackPlugIns(),
-                    target: 'web'
-                  },
-                  webpack
-                )
-              )
-              .pipe(
-                flatmap((builtStream: Stream, builtFile: VinylFile) => {
-                  return builtStream
-                    .pipe(
-                      modifyFile((content: string) => {
-                        return content.replace(/\\\\\$/g, '$');
-                      })
-                    )
-                    .pipe(
-                      rename({
-                        basename: basename(builtFile.path, '.js')
-                      })
-                    )
-                    .pipe(gulp.dest(output));
-                })
-              );
-          })
-        )
-        .on('finish', () => {
-          resolve();
-          tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-        })
-        .on('error', (error: Error) => {
-          throw error;
+        const runCompiler: () => Promise<webpack.Stats> = promisify(
+          compiler.run.bind(compiler)
+        );
+        const stats = await runCompiler();
+
+        const assets: ReadonlyArray<{ readonly name: string }> = stats.toJson({
+          assets: true,
+          cachedAssets: false
+        }).assets;
+
+        const filesOutput = assets.reduce(
+          (files, asset) => {
+            return [...files, joinPaths(outDir, asset.name)];
+          },
+          [] as ReadonlyArray<string>
+        );
+
+        return {
+          log: stats.toString({
+            chunks: false,
+            colors: true
+          }),
+          filesOutput
+        };
+      })
+    );
+
+    const outFiles = webpackResults.reduce(
+      (files, result) => {
+        // tslint:disable-next-line:no-console
+        console.log(result.log);
+
+        return [...files, ...result.filesOutput];
+      },
+      [] as ReadonlyArray<string>
+    );
+
+    await runAllPromises(
+      outFiles.map(async file => {
+        const fileContent = await readFile(file, {
+          encoding: 'utf8',
+          flag: 'r'
         });
-    } catch (error) {
-      reject(error);
-      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
-    }
-  });
+        const updatedFileContent = fileContent.replace(/\\\\\$/g, '$');
+        await writeFile(file, updatedFileContent);
+      })
+    );
+
+    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+  } catch (error) {
+    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    throw error;
+  }
 }
 
 /**
  * Build the index page.
  *
- * @param  gulp - Gulp library
  * @param config - Config settings
  * @param labelPrefix - A prefix to print before the label
  */
-function buildIndexPage(
-  gulp: GulpClient.Gulp,
+async function buildIndexPage(
   config: IConfig,
-  labelPrefix?: string
+  labelPrefix: string
 ): Promise<void> {
   const subTaskLabel = 'index page';
 
-  return new Promise(async (resolve: () => void, reject: (reason: Error) => void) => {
-    try {
-      // No point starting this task if another important task has already failed.
-      if (!allOK) {
-        throw new UnrecoverableError();
-      }
+  try {
+    const subTaskLabelPrefix = tasksHelpers.log.starting(
+      subTaskLabel,
+      labelPrefix
+    );
 
-      const subTaskLabelPrefix = tasksHelpers.log.starting(
-        subTaskLabel,
-        labelPrefix
-      );
+    await indexUpdateReferences(config, subTaskLabelPrefix);
+    await finalizeIndexPage(config, subTaskLabelPrefix);
 
-      await indexUpdateReferences(gulp, config, subTaskLabelPrefix);
-      await finalizeIndexPage(gulp, config, subTaskLabelPrefix);
-
-      resolve();
-      tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-    } catch (error) {
-      allOK = false;
-      reject(error);
-      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
-    }
-  });
+    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+  } catch (error) {
+    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    throw error;
+  }
 }
 
 /**
  * Build the index page.
  *
- * @param  gulp - Gulp library
  * @param config - Config settings
  * @param labelPrefix - A prefix to print before the label
  */
-function buildDemos(
-  gulp: GulpClient.Gulp,
-  config: IConfig,
-  labelPrefix?: string
-): Promise<void> {
+async function buildDemos(config: IConfig, labelPrefix: string): Promise<void> {
   const subTaskLabel = 'demos';
 
-  return new Promise(async (resolve: () => void, reject: (reason: Error) => void) => {
-    try {
-      // No point starting this task if another important task has already failed.
-      if (!allOK) {
-        throw new UnrecoverableError();
-      }
+  try {
+    const subTaskLabelPrefix = tasksHelpers.log.starting(
+      subTaskLabel,
+      labelPrefix
+    );
 
-      const subTaskLabelPrefix = tasksHelpers.log.starting(
-        subTaskLabel,
-        labelPrefix
-      );
+    await demosUpdateReferences(config, subTaskLabelPrefix);
+    await finalizeDemos(config, subTaskLabelPrefix);
 
-      await demosUpdateReferences(gulp, config, subTaskLabelPrefix);
-      await finalizeDemos(gulp, config, subTaskLabelPrefix);
-
-      resolve();
-      tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-    } catch (error) {
-      allOK = false;
-      reject(error);
-      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
-    }
-  });
+    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+  } catch (error) {
+    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    throw error;
+  }
 }
 
 /**
  * Build the index page.
  *
- * @param  gulp - Gulp library
  * @param config - Config settings
  * @param labelPrefix - A prefix to print before the label
  */
-function build(
-  gulp: GulpClient.Gulp,
-  config: IConfig,
-  labelPrefix?: string
-): Promise<void> {
+async function build(config: IConfig, labelPrefix: string): Promise<void> {
   const subTaskLabel = 'build';
 
-  return new Promise(async (resolve: () => void, reject: (reason: Error) => void) => {
-    try {
-      // No point starting this task if another important task has already failed.
-      if (!allOK) {
-        throw new UnrecoverableError();
-      }
+  try {
+    const subTaskLabelPrefix = tasksHelpers.log.starting(
+      subTaskLabel,
+      labelPrefix
+    );
 
-      const subTaskLabelPrefix = tasksHelpers.log.starting(
-        subTaskLabel,
-        labelPrefix
-      );
+    await buildIndexPage(config, subTaskLabelPrefix);
+    await buildDemos(config, subTaskLabelPrefix);
 
-      await buildIndexPage(gulp, config, subTaskLabelPrefix);
-      await buildDemos(gulp, config, subTaskLabelPrefix);
-
-      resolve();
-      tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-    } catch (error) {
-      allOK = false;
-      reject(error);
-      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
-    }
-  });
+    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+  } catch (error) {
+    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    throw error;
+  }
 }
 
 /**
  * Generate the docs.
  *
- * @param  gulp - Gulp library
  * @param config - Config settings
  * @param labelPrefix - A prefix to print before the label
  */
-function generate(
-  gulp: GulpClient.Gulp,
-  config: IConfig,
-  labelPrefix?: string
-): Promise<void> {
+async function generate(config: IConfig, labelPrefix: string): Promise<void> {
   const subTaskLabel = 'generate';
 
-  return new Promise((resolve: () => void, reject: (reason: Error) => void) => {
-    try {
-      // No point starting this task if another important task has already failed.
-      if (!allOK) {
-        throw new UnrecoverableError();
-      }
+  try {
+    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
-      tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    const docsImportsBaseName = getFileBasename(
+      config.docs.importsFilename,
+      getFileExtension(config.docs.importsFilename)
+    );
 
-      const docsImportsBaseName = basename(
-        config.docs.importsFilename,
-        extname(config.docs.importsFilename)
-      );
+    const docsImportsImporterBaseName = getFileBasename(
+      config.docs.importsImporterFilename,
+      getFileExtension(config.docs.importsImporterFilename)
+    );
 
-      const docsImportsImporterBaseName = basename(
-        config.docs.importsImporterFilename,
-        extname(config.docs.importsImporterFilename)
-      );
+    const buildConfig = {
+      root: `${config.temp.path}/${tempSubpath}/`,
+      entrypoint: `index${getFileExtension(config.docs.indexPage)}`,
+      fragments: [],
+      sources: [
+        `${config.docs.nodeModulesPath}/${
+          config.componenet.scope
+        }/catalyst-*/**/*`
+      ],
+      extraDependencies: [
+        `${
+          config.docs.nodeModulesPath
+        }/@webcomponents/webcomponentsjs/[!gulpfile]*.js`,
+        `${
+          config.docs.nodeModulesPath
+        }/@webcomponents/shadycss/[!gulpfile]*.js`,
+        `${docsImportsImporterBaseName}.js`,
+        `${docsImportsBaseName}.*.js`,
+        `${config.docs.analysisFilename}`
+      ],
+      builds: [
+        {
+          name: 'docs',
 
-      const buildConfig = {
-        root: `${config.temp.path}/${tempSubpath}/`,
-        entrypoint: `index${extname(config.docs.indexPage)}`,
-        fragments: [],
-        sources: [
-          `${config.docs.nodeModulesPath}/${
-            config.componenet.scope
-          }/catalyst-*/**/*`
-        ],
-        extraDependencies: [
-          `${
-            config.docs.nodeModulesPath
-          }/@webcomponents/webcomponentsjs/[!gulpfile]*.js`,
-          `${
-            config.docs.nodeModulesPath
-          }/@webcomponents/shadycss/[!gulpfile]*.js`,
-          `${docsImportsImporterBaseName}.js`,
-          `${docsImportsBaseName}.*.js`,
-          `${config.docs.analysisFilename}`
-        ],
-        builds: [
-          {
-            name: 'docs',
+          // Disable these settings as they are either not wanted or handled elsewhere.
+          bundle: false,
+          js: { compile: false, minify: false },
+          css: { minify: false },
+          html: { minify: false },
+          addServiceWorker: false,
+          addPushManifest: false,
+          insertPrefetchLinks: false
+        }
+      ]
+    };
 
-            // Disable these settings as they are either not wanted or handled elsewhere.
-            bundle: false,
-            js: { compile: false, minify: false },
-            css: { minify: false },
-            html: { minify: false },
-            addServiceWorker: false,
-            addPushManifest: false,
-            insertPrefetchLinks: false
-          }
-        ]
-      };
+    const docBuilder = new PolymerProject(buildConfig);
 
-      const docBuilder = new PolymerProject(buildConfig);
-      const sourcesHtmlSplitter = new HtmlSplitter();
+    await promisePipe(
+      mergeStream(docBuilder.sources(), docBuilder.dependencies()),
+      docBuilder.addCustomElementsEs5Adapter(),
+      rename(path => {
+        const prefix = getNormalizedPath(`${config.temp.path}/${tempSubpath}`);
+        if (path.dirname !== undefined && path.dirname.indexOf(prefix) === 0) {
+          // tslint:disable-next-line:no-object-mutation
+          path.dirname = getNormalizedPath(
+            path.dirname.substring(prefix.length)
+          );
+        }
+      }),
+      createWriteStream(`./${config.docs.path}`)
+    );
 
-      mergeStream(docBuilder.sources(), docBuilder.dependencies())
-        .pipe(docBuilder.addCustomElementsEs5Adapter())
-        .pipe(sourcesHtmlSplitter.split())
-        .pipe(gulpIf(/\.html$/, htmlmin(config.build.tools.htmlMinifier)))
-        .pipe(sourcesHtmlSplitter.rejoin())
-        .pipe(
-          rename((filepath: rename.ParsedPath) => {
-            const prefix = normalize(`${config.temp.path}/${tempSubpath}`);
-            if (filepath.dirname != null && filepath.dirname.indexOf(prefix) === 0) {
-              filepath.dirname = normalize(
-                filepath.dirname.substring(prefix.length)
-              );
-            }
-          })
-        )
-        .pipe(gulp.dest(`./${config.docs.path}`))
-        .on('finish', () => {
-          resolve();
-          tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-        })
-        .on('error', (error: Error) => {
-          throw error;
-        });
-    } catch (error) {
-      allOK = false;
-      reject(error);
-      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
-    }
-  });
+    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+  } catch (error) {
+    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    throw error;
+  }
 }
 
 /**
  * Build the docs for the component.
- *
- * @param gulp
- * @param config
  */
-export function buildDocs(gulp: GulpClient.Gulp, config: IConfig): Promise<void> {
-  return new Promise(async (resolve: () => void, reject: (reason: Error) => void) => {
-    try {
-      await copyDependencies(gulp, config);
-      await updateAnalysis(gulp, config);
-      await getDemos(gulp, config);
-      await build(gulp, config);
-      await cleanDocs(config);
-      await generate(gulp, config);
-
-      resolve();
-    } catch (error) {
-      reject(error);
-    }
-  });
+export async function buildDocs(
+  taskName: string,
+  config: IConfig
+): Promise<void> {
+  await copyDependencies(config, taskName);
+  await updateAnalysis(config, taskName);
+  await getDemos(config, taskName);
+  await build(config, taskName);
+  await cleanDocs(config, taskName);
+  await generate(config, taskName);
 }

@@ -1,34 +1,51 @@
 /**
  * An error that occurs when one of multiple Promises rejects.
  */
-export class MultiPromiseRejectionError extends Error {
-  private errors: Error[];
-  private telly: number;
+export class MultiPromiseRejectionError<T> extends Error {
+  /**
+   * The Errors that occurred.
+   */
+  private readonly promiseErrors: ReadonlyArray<Error>;
 
   /**
    * Contract a new MultiPromiseRejectionError.
    *
    * @param multiPromiseResults - The results of the promises that were executed.
    */
-  constructor(multiPromiseResults: any[]) {
+  public constructor(
+    multiPromiseResults: ReadonlyArray<
+      { readonly value: T } | { readonly error: Error }
+    >
+  ) {
     super();
-    this.errors = [];
-    this.telly = multiPromiseResults.length;
-    for (const result of multiPromiseResults) {
-      if (result.status !== 0) {
-        this.errors.push(result.error);
-      }
-    }
+
+    // Extract out the errors.
+    this.promiseErrors = multiPromiseResults.reduce(
+      (previous, current) => {
+        if ((current as any).error != null) {
+          return [...previous, (current as { readonly error: Error }).error];
+        }
+        return previous;
+      },
+      [] as ReadonlyArray<Error>
+    );
   }
 
   /**
-   * Get the message of this error.
+   * Get the message for this error.
    */
-  get message(): string {
-    return `${this.errors.length} out of ${
-      this.telly
-    } promise were rejected.\nRejected errors:\n  - ${this.errors.join(
+  public get message(): string {
+    return `${this.promiseErrors.length} out of ${
+      this.promiseErrors.length
+    } promise were rejected.\nRejected errors:\n  - ${this.promiseErrors.join(
       '\n  - '
     )}`;
+  }
+
+  /**
+   * Get the errors.
+   */
+  public get errors(): ReadonlyArray<Error> {
+    return this.promiseErrors;
   }
 }

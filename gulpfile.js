@@ -16,7 +16,7 @@ let tasksMap;
 try {
   tasksMap = {};
   for (const task of tasksToImport) {
-    tasksMap[task] = lib.tasks[task](gulp, task);
+    tasksMap[task] = lib.tasks[task](task);
   }
 } catch (error) {
   tasksMap = {};

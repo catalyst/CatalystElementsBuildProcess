@@ -1,9 +1,11 @@
 // Libraries.
-import { blue, cyan, green, grey, red, white } from 'ansi-colors';
+import { blue, cyan, green, grey, magenta, red } from 'ansi-colors';
 import del from 'del';
+import exec from 'exec-chainable';
 import log from 'fancy-log';
+import nodeGlob from 'glob';
 import stripColor from 'strip-color';
-import VinylFile from 'vinyl';
+import { promisify } from 'util';
 import { Plugin } from 'webpack';
 import WebpackClosureCompilerPlugin from 'webpack-closure-compiler';
 
@@ -11,38 +13,66 @@ import { MultiPromiseRejectionError } from './classes/MultiPromiseRejectionError
 import { PreWebpackClosureCompilerPlugin } from './classes/PreWebpackClosureCompilerPlugin';
 import { IConfig } from './config';
 
-// Helper functions for tasks.
+// Promisified functions.
+const nodeGlobPromise = promisify(nodeGlob);
+
+/**
+ * Get the full formatted prefix.
+ */
+function getFullFormattedPrefix(prefixes: ReadonlyArray<string>): string {
+  return prefixes.reduce((previous, current) => {
+    if (previous === '') {
+      return grey(stripColor(current));
+    }
+    return `${previous} ${grey(`'→ ${stripColor(current)}`)}`;
+  }, '');
+}
+
+/**
+ * Helper functions for tasks.
+ */
 export const tasksHelpers = {
   log: {
-    failed: (label: string, prefix: string = '') => {
-      const fullLabel = `${grey(stripColor(prefix))} ${blue('→')} ${cyan(
-        label
-      )}`;
-      log(`Failed     ${fullLabel} ${red('✗')}`);
+    // See: https://github.com/jonaskello/tslint-immutable/issues/73
+    // tslint:disable-next-line:readonly-array
+    failed: (label: string, ...prefixes: string[]) => {
+      const fullLabel = `${getFullFormattedPrefix(prefixes)} ${blue(
+        '→'
+      )} ${cyan(label)}`;
+      log(`Failed    ${fullLabel} ${red('✗')}`);
 
       return fullLabel;
     },
-    info: (label: string, prefix: string = '') => {
-      const fullLabel = `${grey(stripColor(prefix))} ${blue('→')} ${white(
-        label
-      )}`;
-      log(`Info       ${fullLabel}`);
+
+    // See: https://github.com/jonaskello/tslint-immutable/issues/73
+    // tslint:disable-next-line:readonly-array
+    info: (label: string, ...prefixes: string[]) => {
+      const fullLabel = `${getFullFormattedPrefix(prefixes)} ${blue(
+        '→'
+      )} ${magenta(label)}`;
+      log(`Info      ${fullLabel}`);
 
       return label;
     },
-    starting: (label: string, prefix: string = '') => {
-      const fullLabel = `${grey(stripColor(prefix))} ${blue('→')} ${cyan(
-        label
-      )}`;
-      log(`Starting   ${fullLabel}...`);
+
+    // See: https://github.com/jonaskello/tslint-immutable/issues/73
+    // tslint:disable-next-line:readonly-array
+    starting: (label: string, ...prefixes: string[]) => {
+      const fullLabel = `${getFullFormattedPrefix(prefixes)} ${blue(
+        '→'
+      )} ${cyan(label)}`;
+      log(`Starting  ${fullLabel}...`);
 
       return fullLabel;
     },
-    successful: (label: string, prefix: string = '') => {
-      const fullLabel = `${grey(stripColor(prefix))} ${blue('→')} ${cyan(
-        label
-      )}`;
-      log(`Finished   ${fullLabel} ${green('✓')}`);
+
+    // See: https://github.com/jonaskello/tslint-immutable/issues/73
+    // tslint:disable-next-line:readonly-array
+    successful: (label: string, ...prefixes: string[]) => {
+      const fullLabel = `${getFullFormattedPrefix(prefixes)} ${blue(
+        '→'
+      )} ${cyan(label)}`;
+      log(`Finished  ${fullLabel} ${green('✓')}`);
 
       return fullLabel;
     }
@@ -56,79 +86,62 @@ export const tasksHelpers = {
  * @param label - The label to show on the console after `clean: `
  * @param labelPrefix - A prefix to print before the label
  */
-export function clean(
+export async function clean(
   path: string,
-  label?: string,
-  labelPrefix?: string
+  label: string = path,
+  labelPrefix: string
 ): Promise<void> {
-  const subTaskLabel = `clean: ${label == null ? path : label}`;
+  const subTaskLabel = `clean: ${label}`;
 
-  return new Promise(
-    async (resolve: () => void, reject: (reason: Error) => void) => {
-      tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+  tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
-      try {
-        await del(path);
-        tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-        resolve();
-      } catch (error) {
-        tasksHelpers.log.failed(subTaskLabel, labelPrefix);
-        reject(error);
-      }
-    }
-  );
+  try {
+    await del(path);
+    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+  } catch (error) {
+    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    throw error;
+  }
 }
 
 /**
  * Returns a new promise that will not resolving or rejecting until all the given
- * promises to finish either resolved or rejected.
+ * promises have either resolved or rejected.
  *
  * @param promises - The promises to wait for
  */
-export function waitForAllPromises(promises: Promise<any>[]): Promise<any[]> {
-  return new Promise(
-    async (
-      resolve: (results: ({ value: any } | { error: Error })[]) => void,
-      reject: (reason: Error) => void
-    ) => {
+export async function runAllPromises<T>(
+  promises: ReadonlyArray<Promise<T>>
+): Promise<ReadonlyArray<T>> {
+  const promiseResults: ReadonlyArray<
+    { readonly value: T } | { readonly error: Error }
+  > = await Promise.all(
+    promises.map(async (promise: Promise<T>) => {
       try {
-        const results: (
-          | { value: any }
-          | { error: Error })[] = await Promise.all(
-          promises.map(async (promise: Promise<any>) => {
-            try {
-              const value = await promise;
+        const value = await promise;
 
-              return { value };
-            } catch (error) {
-              return { error };
-            }
-          })
-        );
-
-        if (
-          results.filter(
-            (result: { value: any } | { error: Error }) =>
-              (result as any).error != null
-          ).length === 0
-        ) {
-          resolve(results);
-          return;
-        }
-
-        reject(new MultiPromiseRejectionError(results));
-        return;
+        return { value };
       } catch (error) {
-        reject(error);
-        return ;
+        return { error };
       }
-    }
+    })
+  );
+
+  return promiseResults.reduce(
+    (previous, current) => {
+      if ((current as any).error != null) {
+        throw new MultiPromiseRejectionError<T>(promiseResults);
+      }
+      return [...previous, (current as { readonly value: T }).value];
+    },
+    [] as ReadonlyArray<T>
   );
 }
 
 /**
  * Get a new WebpackClosureCompilerPlugin that has been configured.
  */
+// tslint:disable-next-line:readonly-array
 export function getWebpackPlugIns(): Plugin[] {
   return [
     new PreWebpackClosureCompilerPlugin(),
@@ -145,61 +158,75 @@ export function getWebpackPlugIns(): Plugin[] {
 }
 
 /**
- * Transform function that returns the contents of the given file.
- *
- * @param filePath - The file path
- * @param file - The file
- */
-export function transformGetFileContents(
-  filepath: string,
-  file?: VinylFile
-): string {
-  if (file != null && file.isBuffer()) {
-    return file.contents.toString('utf8');
-  }
-  throw new Error();
-}
-
-/**
  * Clean dist folder.
- *
- * @param config
- * @param labelPrefix
  */
-export function cleanDist(
+export async function cleanDist(
   config: IConfig,
-  labelPrefix?: string
+  labelPrefix: string
 ): Promise<void> {
-  return clean(`./${config.dist.path}`, 'dist', labelPrefix);
+  await clean(`./${config.dist.path}`, 'dist', labelPrefix);
 }
 
 /**
  * Clean temp folder.
- *
- * @param config
- * @param labelPrefix
  */
-export function cleanTemp(
+export async function cleanTemp(
   config: IConfig,
-  labelPrefix?: string
+  labelPrefix: string
 ): Promise<void> {
-  return clean(`./${config.temp.path}`, 'temp', labelPrefix);
+  await clean(`./${config.temp.path}`, 'temp', labelPrefix);
 }
 
 /**
  * Clean docs folder.
- *
- * @param config
- * @param labelPrefix
  */
-export function cleanDocs(
+export async function cleanDocs(
   config: IConfig,
-  labelPrefix?: string
+  labelPrefix: string
 ): Promise<void> {
-  return clean(`./${config.docs.path}`, 'docs', labelPrefix);
+  await clean(`./${config.docs.path}`, 'docs', labelPrefix);
 }
 
 /**
- * A unrecoverable error.
+ * Glob matching with support for multiple patterns.
  */
-export class UnrecoverableError extends Error {}
+export async function glob(
+  pattern: string | ReadonlyArray<string>,
+  options?: nodeGlob.IOptions
+  // tslint:disable-next-line:readonly-array
+): Promise<string[]> {
+  if (Array.isArray(pattern)) {
+    if (pattern.length === 0) {
+      throw new Error('No glob patterns given.');
+    }
+    if (pattern.length === 1) {
+      return nodeGlobPromise(pattern[0], options);
+    }
+    return nodeGlobPromise(`{${pattern.join(',')}}`, options);
+  }
+  return nodeGlobPromise(pattern as string, options);
+}
+
+/**
+ * Transpose a 2D-array (flip diagonally).
+ */
+export function transpose<T>(
+  array: ReadonlyArray<ReadonlyArray<T>>
+  // tslint:disable-next-line:readonly-array
+): T[][] {
+  return array[0].map((_, index) => array.map(row => row[index]));
+}
+
+/**
+ * TODO: Get the regexp to select all the text in an injection placeholder.
+ */
+export function getInjectRegExp(keyword: string): RegExp {
+  return /.*/;
+}
+
+/**
+ * Run a command on the command line.
+ */
+export async function runCommand(command: string): Promise<string> {
+  return (await exec(command)).replace(/\n$/, '');
+}

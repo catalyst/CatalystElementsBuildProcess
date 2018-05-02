@@ -3,145 +3,232 @@ import { magenta, yellow } from 'ansi-colors';
 import archiver, { ArchiverOptions, Format as ArchiverFormat } from 'archiver';
 import del from 'del';
 import escapeStringRegexp from 'escape-string-regexp';
-import exec from 'exec-chainable';
 import { createWriteStream } from 'fs';
-import { readdir } from 'fs/promises';
-import GulpClient from 'gulp';
-import {
-  checkout as _checkout,
-  merge as _merge,
-  push as _push,
-  revParse as _revParse,
-  status as _status,
-  tag as _tag
-} from 'gulp-git';
-import release from 'gulp-github-release';
-import modifyFile from 'gulp-modify-file';
-import { normalize } from 'path';
+import { readdir, readFile, writeFile } from 'fs/promises';
+import { normalize as normalizePath } from 'path';
 import prompt from 'prompt';
+import _gitHubRelease, { PublishReleaseSettings } from 'publish-release';
 import { promisify } from 'util';
 
 import { IConfig } from '../config';
-import { tasksHelpers, waitForAllPromises } from '../util';
+import { glob, runAllPromises, runCommand, tasksHelpers } from '../util';
 
 // Promisified functions.
-const gitCheckout = promisify(_checkout);
-const gitMerge = promisify(_merge);
-const gitRevParse = promisify(_revParse);
-const gitPush = promisify(_push);
-const gitStatus = promisify(_status);
-const gitTag = promisify(_tag);
 const promptGet = promisify(prompt.get);
+const gitHubRelease = promisify(_gitHubRelease);
 
 const dryRunLabel = magenta(' - dry run');
 
-type TPublishSettings = {
-  isPrerelease: boolean;
-  npmTag: string;
-  symver: string;
-};
+// tslint:disable-next-line:max-line-length
+const fullSymVerRegExp = /^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-[0-9a-z-]+(?:\.[0-9a-z-]+)*)?(?:\+[0-9a-z-]+(?:\.[0-9a-z-]+)*)?$/gi;
+const basicSymVerRegExp = /^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$/gi;
+
+/**
+ * Publish the component.
+ */
+export async function publish(
+  taskName: string,
+  config: IConfig
+): Promise<void> {
+  // Are we doing a dryrun?
+  if (config.publish.dryrun) {
+    tasksHelpers.log.info(`${magenta('Performing dry run')}`);
+  }
+
+  if (config.package === undefined) {
+    throw new Error('No package data.');
+  }
+
+  const currentBranch = await runCommand('git rev-parse --abbrev-ref HEAD');
+
+  prompt.start();
+
+  // Publish to npm.
+  const publishedInfo = await (async () => {
+    try {
+      return await npmPublish(currentBranch, config, taskName);
+    } finally {
+      await cleanUp(currentBranch, taskName);
+    }
+  })();
+
+  // Print out information about the npm release. Ignore any errors.
+  try {
+    await printNpmReleaseInfo(
+      config,
+      {
+        version: publishedInfo.version.semantic,
+        ...publishedInfo.releaseInfo
+      },
+      taskName
+    );
+  } catch (error) {}
+
+  // Ask the user if they want to push the changes to git.
+  if (await promptUserPushToGit()) {
+    // Push changes to GitHub.
+    await doPushToGit(
+      config,
+      publishedInfo.git.currentBranch,
+      publishedInfo.git.majorBranch,
+      taskName
+    );
+
+    // Only prompt about a GitHub release if the project is hosted on GitHub.
+    if (config.publish.hostedOnGitHub) {
+      // Ask the user if they want to do a GitHub release.
+      const gitHubReleaseSettings = await promptUserGitHubReleaseSettings(
+        publishedInfo.git.tag,
+        publishedInfo.version.prerelease,
+        config.package
+      );
+
+      if (gitHubReleaseSettings.create) {
+        await createGitHubRelease(
+          config,
+          {
+            ...gitHubReleaseSettings.options,
+            version: publishedInfo.version.semantic
+          },
+          taskName
+        );
+      }
+    }
+  }
+}
+
+/**
+ * Perform a dry run of the publish task.
+ */
+export function publishDry(taskName: string, config: IConfig): Promise<void> {
+  const dryConfig = {
+    ...config,
+    publish: {
+      ...config.publish,
+      dryrun: true,
+      force: true
+    }
+  };
+
+  return publish(taskName, dryConfig);
+}
+
+async function npmPublish(
+  currentBranch: string,
+  config: IConfig,
+  taskName: string
+): Promise<IPublishedInfo> {
+  const publishInfoSettingsUpdate = await getPublishSettings(currentBranch);
+
+  // Run checks.
+  await runAllPromises([
+    gitChecks(
+      config,
+      publishInfoSettingsUpdate.git.currentBranch,
+      publishInfoSettingsUpdate.version.prerelease,
+      taskName
+    ),
+    fileChecks(config, taskName)
+  ]);
+
+  // Update the version in package.json.
+  await updateVersion(
+    config,
+    publishInfoSettingsUpdate.version.semantic,
+    taskName
+  );
+
+  // Merge changes into the release's major branch.
+  await mergeChangesIntoMajorBranch(
+    config,
+    publishInfoSettingsUpdate.git.majorBranch,
+    publishInfoSettingsUpdate.git.currentBranch,
+    taskName
+  );
+
+  // Create a git tag for the release.
+  await createTag(config, publishInfoSettingsUpdate.git.tag, taskName);
+
+  // Publish the release to npm.
+  const publishResults = await releaseToNpm(
+    config,
+    publishInfoSettingsUpdate.releaseInfo.npmTag,
+    taskName
+  );
+
+  return {
+    ...publishInfoSettingsUpdate,
+    releaseInfo: {
+      ...publishInfoSettingsUpdate.releaseInfo,
+      versionCommit: publishResults.versionCommit,
+      lastCommit: publishResults.lastCommit,
+      publisher: publishResults.publisher
+    }
+  };
+}
 
 /**
  * Prompt the user for information about how to publish.
  */
-function promptUserPublishSettings(): Promise<TPublishSettings> {
-  return new Promise(
-    async (
-      resolve: (value: TPublishSettings) => void,
-      reject: (reason: Error) => void
-    ) => {
-      try {
-        prompt.start();
-
-        // Get version.
-        const promptSemVer = await promptGet({
-          properties: {
-            symver: {
-              description: 'Release semantic version',
-              message: 'Must be a semantic version e.g. x.y.z',
-              pattern: /^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-[0-9a-z-]+(?:\.[0-9a-z-]+)*)?(?:\+[0-9a-z-]+(?:\.[0-9a-z-]+)*)?$/gi,
-              required: true,
-              type: 'string'
-            }
-          }
-        });
-
-        // Prerelease version?
-        const isPrerelease =
-          promptSemVer.symver.search(
-            /^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$/gi
-          ) !== 0;
-
-        // Get npm dist tag
-        const promptNpm = await promptGet({
-          properties: {
-            tag: {
-              default: isPrerelease ? 'beta' : 'latest',
-              description: 'npm-dist-tag',
-              message: 'Invalid tag',
-              pattern: /^[a-z][a-z0-9-_]*$/gi,
-              required: true,
-              type: 'string'
-            }
-          }
-        });
-
-        // Done.
-        resolve({
-          isPrerelease,
-          npmTag: promptNpm.tag,
-          symver: promptSemVer.symver
-        });
-      } catch (error) {
-        reject(error);
+async function promptUserPublishSettings(): Promise<{
+  readonly isPrerelease: boolean;
+  readonly npmTag: string;
+  readonly symver: string;
+}> {
+  // Get version.
+  const promptSemVer: { readonly symver: string } = await promptGet({
+    properties: {
+      symver: {
+        description: 'Release semantic version',
+        message: 'Must be a semantic version e.g. x.y.z',
+        pattern: fullSymVerRegExp,
+        required: true,
+        type: 'string'
       }
     }
-  );
+  });
+
+  // Prerelease version?
+  const isPrerelease = promptSemVer.symver.search(basicSymVerRegExp) !== 0;
+
+  // Get npm dist tag
+  const promptNpm = await promptGet({
+    properties: {
+      tag: {
+        default: isPrerelease ? 'beta' : 'latest',
+        description: 'npm-dist-tag',
+        message: 'Invalid tag',
+        pattern: /^[a-z][a-z0-9-_]*$/gi,
+        required: true,
+        type: 'string'
+      }
+    }
+  });
+
+  return {
+    isPrerelease,
+    npmTag: promptNpm.tag,
+    symver: promptSemVer.symver
+  };
 }
 
 /**
  * Prompt the user if they want to push the changes to git.
  */
-function promptUserPushToGit(): Promise<boolean> {
-  return new Promise(
-    async (
-      resolve: (value: boolean) => void,
-      reject: (reason: Error) => void
-    ) => {
-      try {
-        prompt.start();
-
-        const promptPush = await promptGet({
-          properties: {
-            push: {
-              default: true,
-              description: 'Push changes to git?',
-              required: true,
-              type: 'boolean'
-            }
-          }
-        });
-
-        resolve(promptPush.push);
-      } catch (error) {
-        reject(error);
+async function promptUserPushToGit(): Promise<boolean> {
+  const promptPush: { readonly push: boolean } = await promptGet({
+    properties: {
+      push: {
+        default: true,
+        description: 'Push changes to git?',
+        required: true,
+        type: 'boolean'
       }
     }
-  );
-}
+  });
 
-type TGitHubReleaseSettings = {
-  create: boolean;
-  settings: {
-    manifest: { [key: string]: any };
-    prerelease: boolean;
-    tag: string;
-    token: string;
-    name: string;
-    notes: string;
-    draft: boolean;
-  };
-};
+  return promptPush.push;
+}
 
 /**
  * Prompt the user for information about the GitHub release settings.
@@ -150,109 +237,110 @@ type TGitHubReleaseSettings = {
  * @param prerelease - Prerelease?
  * @param packageJson - The package.json info
  */
-function promptUserGitHubReleaseSettings(
+async function promptUserGitHubReleaseSettings(
   tag: string,
   prerelease: boolean,
-  packageJson: { [key: string]: any }
-): Promise<TGitHubReleaseSettings> {
-  return new Promise(
-    async (
-      resolve: (value: TGitHubReleaseSettings) => void,
-      reject: (reason: Error) => void
-    ) => {
-      try {
-        prompt.start();
-
-        const input: any = {
-          create: false,
-          settings: {
-            manifest: packageJson,
-            prerelease,
-            tag
-          }
-        };
-
-        const promptCreateRelease = await promptGet({
-          properties: {
-            createRelease: {
-              default: true,
-              description: 'Create a GitHub release',
-              required: true,
-              type: 'boolean'
-            }
-          }
-        });
-
-        input.create = promptCreateRelease.createRelease;
-
-        if (input.create) {
-          const releaseSettingsResult = await promptGet({
-            properties: {
-              token: {
-                default: process.env.GITHUB_TOKEN,
-                description: 'GitHub access token',
-                required: true,
-                type: 'string'
-              },
-              name: {
-                default: tag,
-                description: 'Release name',
-                required: true,
-                type: 'string'
-              },
-              notes: {
-                description: 'Release notes',
-                type: 'string'
-              },
-              draft: {
-                default: false,
-                description: 'Draft release',
-                required: true,
-                type: 'boolean'
-              }
-            }
-          });
-
-          input.settings.token = releaseSettingsResult.token;
-          input.settings.name = releaseSettingsResult.name;
-          input.settings.notes = releaseSettingsResult.notes;
-          input.settings.draft = releaseSettingsResult.draft;
-        }
-
-        resolve(input);
-      } catch (error) {
-        reject(error);
+  packageJson: { readonly [key: string]: any }
+): Promise<
+  | {
+      readonly create: true;
+      readonly options: {
+        readonly manifest: { readonly [key: string]: any };
+        readonly prerelease: boolean;
+        readonly tag: string;
+        readonly token: string;
+        readonly name: string;
+        readonly notes: string;
+        readonly draft: boolean;
+      };
+    }
+  | {
+      readonly create: false;
+    }
+> {
+  const promptCreateRelease: {
+    readonly createRelease: boolean;
+  } = await promptGet({
+    properties: {
+      createRelease: {
+        default: true,
+        description: 'Create a GitHub release',
+        required: true,
+        type: 'boolean'
       }
     }
-  );
+  });
+
+  const create = promptCreateRelease.createRelease;
+
+  if (!create) {
+    return {
+      create: false
+    };
+  }
+
+  const releaseSettingsResult: {
+    readonly token: string;
+    readonly name: string;
+    readonly notes: string;
+    readonly draft: boolean;
+  } = await promptGet({
+    properties: {
+      token: {
+        default: process.env.GITHUB_TOKEN,
+        description: 'GitHub access token',
+        required: true,
+        type: 'string'
+      },
+      name: {
+        default: tag,
+        description: 'Release name',
+        required: true,
+        type: 'string'
+      },
+      notes: {
+        description: 'Release notes',
+        type: 'string'
+      },
+      draft: {
+        default: false,
+        description: 'Draft release',
+        required: true,
+        type: 'boolean'
+      }
+    }
+  });
+
+  return {
+    create: true,
+    options: {
+      manifest: packageJson,
+      prerelease,
+      tag,
+      token: releaseSettingsResult.token,
+      name: releaseSettingsResult.name,
+      notes: releaseSettingsResult.notes,
+      draft: releaseSettingsResult.draft
+    }
+  };
 }
 
 /**
  * Prompt the user to confirm the publish.
  */
-function promptUserConfirmPublish(): Promise<boolean> {
-  return new Promise(
-    async (resolve: (value: boolean) => void, reject: (reason: Error) => void) => {
-      try {
-        prompt.start();
-
-        const promptConfirmPublish = await promptGet({
-          properties: {
-            confirmPublish: {
-              default: true,
-              description: 'Are you sure you want to publish to npm?',
-              required: true,
-              type: 'boolean'
-            }
-          }
-        });
-
-        resolve(promptConfirmPublish.confirmPublish);
-      } catch (error) {
-        reject(error);
+async function promptUserConfirmPublish(): Promise<boolean> {
+  const promptConfirmPublish = await promptGet({
+    properties: {
+      confirmPublish: {
+        default: true,
+        description: 'Are you sure you want to publish to npm?',
+        required: true,
+        type: 'boolean'
       }
     }
-  );
+  });
+
+  return promptConfirmPublish.confirmPublish;
 }
 
 /**
@@ -261,27 +349,22 @@ function promptUserConfirmPublish(): Promise<boolean> {
  * @param config - Config settings
  * @param labelPrefix - A prefix to print before the label
  */
-function gitCheckWorkingDirector(labelPrefix?: string): Promise<void> {
+async function gitCheckWorkingDirector(labelPrefix: string): Promise<void> {
   const subTaskLabel = 'working director clean';
 
-  return new Promise(
-    async (resolve: () => void, reject: (reason: Error) => void) => {
-      try {
-        tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+  try {
+    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
-        const status = await gitStatus({ args: '--porcelain' });
-        if (status !== '') {
-          throw new Error('Cannot publish - working directory is not clean.');
-        }
-
-        resolve();
-        tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-      } catch (error) {
-        reject(error);
-        tasksHelpers.log.failed(subTaskLabel, labelPrefix);
-      }
+    const status = await runCommand('git status --porcelain');
+    if (status !== '') {
+      throw new Error('Cannot publish - working directory is not clean.');
     }
-  );
+
+    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+  } catch (error) {
+    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    throw error;
+  }
 }
 
 /**
@@ -292,37 +375,35 @@ function gitCheckWorkingDirector(labelPrefix?: string): Promise<void> {
  * @param prerelease - Prerelease publish?
  * @param labelPrefix - A prefix to print before the label
  */
-function gitCheckGoodBranch(
+async function gitCheckGoodBranch(
   config: IConfig,
   branch: string,
   prerelease: boolean,
-  labelPrefix?: string
+  labelPrefix: string
 ): Promise<void> {
   const subTaskLabel = 'branch';
 
-  return new Promise((resolve: () => void, reject: (reason: Error) => void) => {
-    try {
-      tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+  try {
+    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
-      const branchMuchMatch = prerelease
-        ? config.publish.prereleaseBranchRegex
-        : new RegExp(`^${escapeStringRegexp(config.publish.masterBranch)}$`);
+    const branchMuchMatch = prerelease
+      ? config.publish.prereleaseBranchRegex
+      : new RegExp(`^${escapeStringRegexp(config.publish.masterBranch)}$`);
 
-      if (branch.search(branchMuchMatch) < 0) {
-        throw new Error(
-          prerelease
-            ? `Cannot publish - not on valid prerelease branch. Branch name much match this regex: ${config.publish.prereleaseBranchRegex.toString()}`
-            : `Cannot publish - not on "${config.publish.masterBranch}" branch.`
-        );
-      }
-
-      resolve();
-      tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-    } catch (error) {
-      reject(error);
-      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    if (branch.search(branchMuchMatch) < 0) {
+      throw new Error(
+        prerelease
+          ? `Cannot publish - not on valid prerelease branch. Branch name much match this regex: ` +
+            config.publish.prereleaseBranchRegex.toString()
+          : `Cannot publish - not on "${config.publish.masterBranch}" branch.`
+      );
     }
-  });
+
+    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+  } catch (error) {
+    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    throw error;
+  }
 }
 
 /**
@@ -330,33 +411,30 @@ function gitCheckGoodBranch(
  *
  * @param labelPrefix - A prefix to print before the label
  */
-function gitCheckSynced(labelPrefix?: string): Promise<void> {
+async function gitCheckSynced(labelPrefix: string): Promise<void> {
   const subTaskLabel = 'in sync with upstream';
 
-  return new Promise(
-    async (resolve: () => void, reject: (reason: Error) => void) => {
-      try {
-        tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+  try {
+    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
-        await exec('git fetch --quiet');
+    await runCommand('git fetch --quiet');
 
-        if (
-          (await gitRevParse({ args: 'HEAD' })) !==
-          (await gitRevParse({ args: '@{u}' }))
-        ) {
-          throw new Error(
-            'Cannot publish - remote history differ. Please push/pull changes.'
-          );
-        }
+    const [head, remote] = await Promise.all([
+      runCommand('git rev-parse HEAD'),
+      runCommand('git rev-parse @{u}')
+    ]);
 
-        resolve();
-        tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-      } catch (error) {
-        reject(error);
-        tasksHelpers.log.failed(subTaskLabel, labelPrefix);
-      }
+    if (head !== remote) {
+      throw new Error(
+        'Cannot publish - remote history differs. Please pull/push changes.'
+      );
     }
-  );
+
+    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+  } catch (error) {
+    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    throw error;
+  }
 }
 
 /**
@@ -367,43 +445,42 @@ function gitCheckSynced(labelPrefix?: string): Promise<void> {
  * @param prerelease - Prerelease publish?
  * @param labelPrefix - A prefix to print before the label
  */
-function gitChecks(
+async function gitChecks(
   config: IConfig,
   branch: string,
   prerelease: boolean,
-  labelPrefix?: string
+  labelPrefix: string
 ): Promise<void> {
   const subTaskLabel = 'git checks';
 
-  return new Promise(
-    async (resolve: () => void, reject: (reason: Error) => void) => {
-      try {
-        if (!config.publish.runGitChecks) {
-          resolve();
-          tasksHelpers.log.info(`skipping ${subTaskLabel}`, labelPrefix);
-
-          return;
-        }
-
-        const subTaskLabelPrefix = tasksHelpers.log.starting(
-          subTaskLabel,
-          labelPrefix
-        );
-
-        await waitForAllPromises([
-          gitCheckWorkingDirector(subTaskLabelPrefix),
-          gitCheckGoodBranch(config, branch, prerelease, subTaskLabelPrefix),
-          gitCheckSynced(subTaskLabelPrefix)
-        ]);
-
-        resolve();
-        tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-      } catch (error) {
-        reject(error);
-        tasksHelpers.log.failed(subTaskLabel, labelPrefix);
-      }
+  try {
+    if (!config.publish.runGitChecks) {
+      tasksHelpers.log.info(`skipping ${subTaskLabel}`, labelPrefix);
+      return;
     }
-  );
+
+    const subTaskLabelPrefix = tasksHelpers.log.starting(
+      subTaskLabel,
+      labelPrefix
+    );
+
+    await runAllPromises([
+      gitCheckWorkingDirector(subTaskLabelPrefix),
+      gitCheckGoodBranch(config, branch, prerelease, subTaskLabelPrefix),
+      gitCheckSynced(subTaskLabelPrefix)
+    ]);
+
+    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+  } catch (error) {
+    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+
+    // Ignore the error if force is true.
+    if (config.publish.force) {
+      console.warn(`Continuing despite error (force):\n  ${error}`);
+    } else {
+      throw error;
+    }
+  }
 }
 
 /**
@@ -413,41 +490,39 @@ function gitChecks(
  * @param distFiles - An array of all the files that will be published
  * @param labelPrefix - A prefix to print before the label
  */
-function fileCheckModule(
+async function fileCheckModule(
   config: IConfig,
-  distFiles: string[],
-  labelPrefix?: string
+  distFiles: ReadonlyArray<string>,
+  labelPrefix: string
 ): Promise<void> {
   const subTaskLabel = 'module';
 
-  return new Promise((resolve: () => void, reject: (reason: Error) => void) => {
-    try {
-      if (config.componenet.name == null || !config.publish.checkFiles.module) {
-        resolve();
-        tasksHelpers.log.info(`skipping ${subTaskLabel}`, labelPrefix);
-
-        return;
-      }
-
-      tasksHelpers.log.starting(subTaskLabel, labelPrefix);
-
-      const filename = `${config.componenet.name}${
-        config.build.module.extension
-      }`;
-      if (config.build.module.build && !distFiles.includes(filename)) {
-        throw new Error(
-          `Module file missing ` +
-            `(cannot find "./${config.dist.path}/${filename}").`
-        );
-      }
-
-      resolve();
-      tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-    } catch (error) {
-      reject(error);
-      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+  try {
+    if (
+      config.componenet.name === undefined ||
+      !config.publish.checkFiles.module
+    ) {
+      tasksHelpers.log.info(`skipping ${subTaskLabel}`, labelPrefix);
+      return;
     }
-  });
+
+    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+
+    const filename = `${config.componenet.name}${
+      config.build.module.extension
+    }`;
+    if (config.build.module.build && !distFiles.includes(filename)) {
+      throw new Error(
+        `Module file missing ` +
+          `(cannot find "./${config.dist.path}/${filename}").`
+      );
+    }
+
+    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+  } catch (error) {
+    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    throw error;
+  }
 }
 
 /**
@@ -457,41 +532,39 @@ function fileCheckModule(
  * @param distFiles - An array of all the files that will be published
  * @param labelPrefix - A prefix to print before the label
  */
-function fileCheckScript(
+async function fileCheckScript(
   config: IConfig,
-  distFiles: string[],
-  labelPrefix?: string
+  distFiles: ReadonlyArray<string>,
+  labelPrefix: string
 ): Promise<void> {
   const subTaskLabel = 'script';
 
-  return new Promise((resolve: () => void, reject: (reason: Error) => void) => {
-    try {
-      if (config.componenet.name == null || !config.publish.checkFiles.script) {
-        resolve();
-        tasksHelpers.log.info(`skipping ${subTaskLabel}`, labelPrefix);
-
-        return;
-      }
-
-      tasksHelpers.log.starting(subTaskLabel, labelPrefix);
-
-      const filename = `${config.componenet.name}${
-        config.build.script.extension
-      }`;
-      if (config.build.script.build && !distFiles.includes(filename)) {
-        throw new Error(
-          `Script file missing ` +
-            `(cannot find "./${config.dist.path}/${filename}").`
-        );
-      }
-
-      resolve();
-      tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-    } catch (error) {
-      reject(error);
-      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+  try {
+    if (
+      config.componenet.name === undefined ||
+      !config.publish.checkFiles.script
+    ) {
+      tasksHelpers.log.info(`skipping ${subTaskLabel}`, labelPrefix);
+      return;
     }
-  });
+
+    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+
+    const filename = `${config.componenet.name}${
+      config.build.script.extension
+    }`;
+    if (config.build.script.build && !distFiles.includes(filename)) {
+      throw new Error(
+        `Script file missing ` +
+          `(cannot find "./${config.dist.path}/${filename}").`
+      );
+    }
+
+    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+  } catch (error) {
+    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    throw error;
+  }
 }
 
 /**
@@ -501,39 +574,34 @@ function fileCheckScript(
  * @param distFiles - An array of all the files that will be published
  * @param labelPrefix - A prefix to print before the label
  */
-function fileCheckPackage(
+async function fileCheckPackage(
   config: IConfig,
-  distFiles: string[],
-  labelPrefix?: string
+  distFiles: ReadonlyArray<string>,
+  labelPrefix: string
 ): Promise<void> {
   const subTaskLabel = 'package';
 
-  return new Promise((resolve: () => void, reject: (reason: Error) => void) => {
-    try {
-      if (!config.publish.checkFiles.package) {
-        resolve();
-        tasksHelpers.log.info(`skipping ${subTaskLabel}`, labelPrefix);
-
-        return;
-      }
-
-      tasksHelpers.log.starting(subTaskLabel, labelPrefix);
-
-      const filename = 'package.json';
-      if (!distFiles.includes(filename)) {
-        throw new Error(
-          `Package file missing ` +
-            `(cannot find "./${config.dist.path}/${filename}").`
-        );
-      }
-
-      resolve();
-      tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-    } catch (error) {
-      reject(error);
-      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+  try {
+    if (!config.publish.checkFiles.package) {
+      tasksHelpers.log.info(`skipping ${subTaskLabel}`, labelPrefix);
+      return;
     }
-  });
+
+    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+
+    const filename = 'package.json';
+    if (!distFiles.includes(filename)) {
+      throw new Error(
+        `Package file missing ` +
+          `(cannot find "./${config.dist.path}/${filename}").`
+      );
+    }
+
+    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+  } catch (error) {
+    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    throw error;
+  }
 }
 
 /**
@@ -543,39 +611,34 @@ function fileCheckPackage(
  * @param distFiles - An array of all the files that will be published
  * @param labelPrefix - A prefix to print before the label
  */
-function fileCheckLicense(
+async function fileCheckLicense(
   config: IConfig,
-  distFiles: string[],
-  labelPrefix?: string
+  distFiles: ReadonlyArray<string>,
+  labelPrefix: string
 ): Promise<void> {
   const subTaskLabel = 'license';
 
-  return new Promise((resolve: () => void, reject: (reason: Error) => void) => {
-    try {
-      if (!config.publish.checkFiles.license) {
-        resolve();
-        tasksHelpers.log.info(`skipping ${subTaskLabel}`, labelPrefix);
-
-        return;
-      }
-
-      tasksHelpers.log.starting(subTaskLabel, labelPrefix);
-
-      const filename = 'LICENSE';
-      if (!distFiles.includes(filename)) {
-        throw new Error(
-          `License file missing ` +
-            `(cannot find "./${config.dist.path}/${filename}").`
-        );
-      }
-
-      resolve();
-      tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-    } catch (error) {
-      reject(error);
-      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+  try {
+    if (!config.publish.checkFiles.license) {
+      tasksHelpers.log.info(`skipping ${subTaskLabel}`, labelPrefix);
+      return;
     }
-  });
+
+    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+
+    const filename = 'LICENSE';
+    if (!distFiles.includes(filename)) {
+      throw new Error(
+        `License file missing ` +
+          `(cannot find "./${config.dist.path}/${filename}").`
+      );
+    }
+
+    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+  } catch (error) {
+    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    throw error;
+  }
 }
 
 /**
@@ -585,39 +648,34 @@ function fileCheckLicense(
  * @param distFiles - An array of all the files that will be published
  * @param labelPrefix - A prefix to print before the label
  */
-function fileCheckReadme(
+async function fileCheckReadme(
   config: IConfig,
-  distFiles: string[],
-  labelPrefix?: string
+  distFiles: ReadonlyArray<string>,
+  labelPrefix: string
 ): Promise<void> {
   const subTaskLabel = 'readme';
 
-  return new Promise((resolve: () => void, reject: (reason: Error) => void) => {
-    try {
-      if (!config.publish.checkFiles.readme) {
-        resolve();
-        tasksHelpers.log.info(`skipping ${subTaskLabel}`, labelPrefix);
-
-        return;
-      }
-
-      tasksHelpers.log.starting(subTaskLabel, labelPrefix);
-
-      const filename = 'README.md';
-      if (!distFiles.includes(filename)) {
-        throw new Error(
-          `Readme file missing ` +
-            `(cannot find "./${config.dist.path}/${filename}").`
-        );
-      }
-
-      resolve();
-      tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-    } catch (error) {
-      reject(error);
-      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+  try {
+    if (!config.publish.checkFiles.readme) {
+      tasksHelpers.log.info(`skipping ${subTaskLabel}`, labelPrefix);
+      return;
     }
-  });
+
+    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+
+    const filename = 'README.md';
+    if (!distFiles.includes(filename)) {
+      throw new Error(
+        `Readme file missing ` +
+          `(cannot find "./${config.dist.path}/${filename}").`
+      );
+    }
+
+    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+  } catch (error) {
+    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    throw error;
+  }
 }
 
 /**
@@ -626,113 +684,112 @@ function fileCheckReadme(
  * @param config - Config settings
  * @param labelPrefix - A prefix to print before the label
  */
-function fileChecks(config: IConfig, labelPrefix?: string): Promise<void> {
+async function fileChecks(config: IConfig, labelPrefix: string): Promise<void> {
   const subTaskLabel = 'file checks';
 
-  return new Promise(
-    async (resolve: () => void, reject: (reason: Error) => void) => {
-      try {
-        if (!config.publish.runFileChecks) {
-          resolve();
-          tasksHelpers.log.info(`skipping ${subTaskLabel}`, labelPrefix);
+  try {
+    if (!config.publish.runFileChecks) {
+      tasksHelpers.log.info(`skipping ${subTaskLabel}`, labelPrefix);
 
-          return;
-        }
-
-        const subTaskLabelPrefix = tasksHelpers.log.starting(
-          subTaskLabel,
-          labelPrefix
-        );
-
-        // Read the files that will be published.
-        const distFiles = await readdir(config.dist.path, 'utf8');
-
-        // Make sure there are files.
-        if (distFiles.length === 0) {
-          throw new Error('There are no files to publish.');
-        }
-
-        // Check files.
-        await waitForAllPromises([
-          fileCheckModule(config, distFiles, subTaskLabelPrefix),
-          fileCheckScript(config, distFiles, subTaskLabelPrefix),
-          fileCheckPackage(config, distFiles, subTaskLabelPrefix),
-          fileCheckLicense(config, distFiles, subTaskLabelPrefix),
-          fileCheckReadme(config, distFiles, subTaskLabelPrefix)
-        ]);
-
-        resolve();
-        tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-      } catch (error) {
-        reject(error);
-        tasksHelpers.log.failed(subTaskLabel, labelPrefix);
-      }
+      return;
     }
-  );
+
+    const subTaskLabelPrefix = tasksHelpers.log.starting(
+      subTaskLabel,
+      labelPrefix
+    );
+
+    // Read the files that will be published.
+    const distFiles = await readdir(config.dist.path, 'utf8');
+
+    // Make sure there are files.
+    if (distFiles.length === 0) {
+      throw new Error('There are no files to publish.');
+    }
+
+    // Check files.
+    await runAllPromises([
+      fileCheckModule(config, distFiles, subTaskLabelPrefix),
+      fileCheckScript(config, distFiles, subTaskLabelPrefix),
+      fileCheckPackage(config, distFiles, subTaskLabelPrefix),
+      fileCheckLicense(config, distFiles, subTaskLabelPrefix),
+      fileCheckReadme(config, distFiles, subTaskLabelPrefix)
+    ]);
+
+    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+  } catch (error) {
+    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+
+    // Ignore the error if force is true.
+    if (config.publish.force) {
+      console.warn(`Continuing despite error (force):\n  ${error}`);
+    } else {
+      throw error;
+    }
+  }
 }
 
 /**
  * Update the version.
  *
- * @param gulp - Gulp library
  * @param config - Config settings
  * @param newVersion - The version to update to
  * @param labelPrefix - A prefix to print before the label
  */
-function updateVersion(
-  gulp: GulpClient.Gulp,
+async function updateVersion(
   config: IConfig,
   newVersion: string,
-  labelPrefix?: string
+  labelPrefix: string
 ): Promise<void> {
   const subTaskLabel = 'update version';
 
-  return new Promise((resolve: () => void, reject: (reason: Error) => void) => {
-    try {
-      // Are we doing a dryrun?
-      if (config.publish.dryrun) {
-        resolve();
-        tasksHelpers.log.info(
-          `skipping ${subTaskLabel}${dryRunLabel}`,
-          labelPrefix
-        );
+  try {
+    // Are we doing a dryrun?
+    if (config.publish.dryrun) {
+      tasksHelpers.log.info(
+        `skipping ${subTaskLabel}${dryRunLabel}`,
+        labelPrefix
+      );
 
-        return;
-      }
-
-      tasksHelpers.log.starting(subTaskLabel, labelPrefix);
-
-      gulp
-        .src([`./package.json`, `./${config.dist.path}/package.json`], {
-          base: './'
-        })
-        .pipe(
-          modifyFile((content: string) => {
-            const json = JSON.parse(content);
-            json.version = newVersion;
-
-            return `${JSON.stringify(json, null, 2)}\n`;
-          })
-        )
-        .pipe(gulp.dest('./'))
-        .on('finish', async () => {
-          // If there were changes.
-          if ((await gitStatus({ args: '--porcelain' })) !== '') {
-            // Commit them.
-            await exec(`git add . && git commit -m "${newVersion}"`);
-          }
-
-          resolve();
-          tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-        })
-        .on('error', (error: Error) => {
-          throw error;
-        });
-    } catch (error) {
-      reject(error);
-      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+      return;
     }
-  });
+
+    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+
+    const files = await glob([
+      `./package.json`,
+      `./${config.dist.path}/package.json`
+    ]);
+
+    await runAllPromises(
+      files.map(async file => {
+        const fileContent = await readFile(file, {
+          encoding: 'utf8',
+          flag: 'r'
+        });
+        const packageObject = JSON.parse(fileContent);
+        const updatedPackageObject = `${JSON.stringify(
+          { ...packageObject, version: newVersion },
+          null,
+          2
+        )}\n`;
+
+        await writeFile(file, updatedPackageObject);
+      })
+    );
+
+    // If there were changes.
+    if ((await runCommand('git status --porcelain')) !== '') {
+      // Commit them.
+      // FIXME: Shell injection.
+      await runCommand(`git add . && git commit -m "${newVersion}"`);
+    }
+
+    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+  } catch (error) {
+    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    throw error;
+  }
 }
 
 /**
@@ -742,39 +799,34 @@ function updateVersion(
  * @param tag - The tag to create
  * @param labelPrefix - A prefix to print before the label
  */
-function createTag(
+async function createTag(
   config: IConfig,
   tag: string,
-  labelPrefix?: string
+  labelPrefix: string
 ): Promise<void> {
   const subTaskLabel = 'create tag';
 
-  return new Promise(
-    async (resolve: () => void, reject: (reason: Error) => void) => {
-      try {
-        // Are we doing a dryrun?
-        if (config.publish.dryrun) {
-          resolve();
-          tasksHelpers.log.info(
-            `skipping ${subTaskLabel}${dryRunLabel}`,
-            labelPrefix
-          );
+  try {
+    // Are we doing a dryrun?
+    if (config.publish.dryrun) {
+      tasksHelpers.log.info(
+        `skipping ${subTaskLabel}${dryRunLabel}`,
+        labelPrefix
+      );
 
-          return;
-        }
-
-        tasksHelpers.log.starting(subTaskLabel, labelPrefix);
-
-        await gitTag(tag, null, null);
-
-        resolve();
-        tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-      } catch (error) {
-        reject(error);
-        tasksHelpers.log.failed(subTaskLabel, labelPrefix);
-      }
+      return;
     }
-  );
+
+    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+
+    // FIXME: Shell injection.
+    await runCommand(`git tag ${tag}`);
+
+    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+  } catch (error) {
+    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    throw error;
+  }
 }
 
 /**
@@ -785,55 +837,42 @@ function createTag(
  * @param fromBranch - Thr branch to merge from
  * @param labelPrefix - A prefix to print before the label
  */
-function mergeIntoMajorBranch(
+async function mergeChangesIntoMajorBranch(
   config: IConfig,
-  majorBranch: string,
+  majorBranch: string | null,
   fromBranch: string,
-  labelPrefix?: string
+  labelPrefix: string
 ): Promise<void> {
   const subTaskLabel = 'merge into major branch';
 
-  return new Promise(
-    async (resolve: () => void, reject: (reason: Error) => void) => {
-      try {
-        if (majorBranch === null) {
-          resolve();
-          tasksHelpers.log.info(`skipping ${subTaskLabel}`, labelPrefix);
-
-          return;
-        }
-
-        // Are we doing a dryrun?
-        if (config.publish.dryrun) {
-          resolve();
-          tasksHelpers.log.info(
-            `skipping ${subTaskLabel}${dryRunLabel}`,
-            labelPrefix
-          );
-
-          return;
-        }
-
-        tasksHelpers.log.starting(subTaskLabel, labelPrefix);
-
-        await gitCheckout(majorBranch, { args: '-b' });
-        await gitMerge(fromBranch);
-
-        resolve();
-        tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-      } catch (error) {
-        reject(error);
-        tasksHelpers.log.failed(subTaskLabel, labelPrefix);
-      }
+  try {
+    if (majorBranch === null) {
+      tasksHelpers.log.info(`skipping ${subTaskLabel}`, labelPrefix);
+      return;
     }
-  );
-}
 
-type TPublishToNpm = {
-  lastCommit: string;
-  publisher: string;
-  versionCommit: string;
-};
+    // Are we doing a dryrun?
+    if (config.publish.dryrun) {
+      tasksHelpers.log.info(
+        `skipping ${subTaskLabel}${dryRunLabel}`,
+        labelPrefix
+      );
+      return;
+    }
+
+    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+
+    // FIXME: Shell injection.
+    await runCommand(`git checkout ${majorBranch} -b`);
+    // FIXME: Shell injection.
+    await runCommand(`git merge ${fromBranch}`);
+
+    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+  } catch (error) {
+    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    throw error;
+  }
+}
 
 /**
  * Publish to npm.
@@ -842,55 +881,52 @@ type TPublishToNpm = {
  * @param npmTag - The npm release tag
  * @param labelPrefix - A prefix to print before the label
  */
-function publishToNpm(
+async function releaseToNpm(
   config: IConfig,
   npmTag: string,
-  labelPrefix?: string
-): Promise<TPublishToNpm> {
+  labelPrefix: string
+): Promise<{
+  readonly lastCommit: string;
+  readonly publisher: string;
+  readonly versionCommit: string;
+}> {
   const subTaskLabel = 'publish to npm';
 
-  return new Promise(
-    async (resolve: (value: TPublishToNpm) => void, reject: (reason: Error) => void) => {
-      try {
-        // Are we doing a dryrun?
-        if (config.publish.dryrun) {
-          resolve({
-            lastCommit: (await exec('git log -1 --oneline')).replace(/\n$/, ''),
-            publisher: (await exec('npm whoami --silent')).replace(/\n$/, ''),
-            versionCommit: '?????'
-          });
-          tasksHelpers.log.info(
-            `skipping ${subTaskLabel}${dryRunLabel}`,
-            labelPrefix
-          );
-
-          return;
-        }
-
-        const confirm = await promptUserConfirmPublish();
-
-        if (confirm) {
-          await exec(
-            `npm publish ${normalize(`./${config.dist.path}`)} --tag ${npmTag}`
-          );
-        } else {
-          throw new Error('User aborted.');
-        }
-
-        resolve({
-          lastCommit: (await exec(
-            'git log -2 --oneline --reverse | head -1'
-          )).replace(/\n$/, ''),
-          publisher: (await exec('npm whoami --silent')).replace(/\n$/, ''),
-          versionCommit: (await exec('git log -1 --oneline')).replace(/\n$/, '')
-        });
-        tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-      } catch (error) {
-        reject(error);
-        tasksHelpers.log.failed(subTaskLabel, labelPrefix);
-      }
+  try {
+    // Are we doing a dryrun?
+    if (config.publish.dryrun) {
+      tasksHelpers.log.info(
+        `skipping ${subTaskLabel}${dryRunLabel}`,
+        labelPrefix
+      );
+      return {
+        lastCommit: await runCommand('git log -1 --oneline'),
+        publisher: await runCommand('npm whoami --silent'),
+        versionCommit: '?????'
+      };
     }
-  );
+
+    const confirm = await promptUserConfirmPublish();
+
+    if (confirm) {
+      // FIXME: Shell injection.
+      await runCommand(
+        `npm publish ${normalizePath(`./${config.dist.path}`)} --tag ${npmTag}`
+      );
+    } else {
+      throw new Error('User aborted.');
+    }
+
+    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    return {
+      lastCommit: await runCommand('git log -2 --oneline --reverse | head -1'),
+      publisher: await runCommand('npm whoami --silent'),
+      versionCommit: await runCommand('git log -1 --oneline')
+    };
+  } catch (error) {
+    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    throw error;
+  }
 }
 
 /**
@@ -899,27 +935,26 @@ function publishToNpm(
  * @param branch - The branch the git repo should be on.
  * @param labelPrefix - A prefix to print before the label
  */
-function restoreBranch(branch: string, labelPrefix?: string): Promise<void> {
+async function restoreBranch(
+  branch: string,
+  labelPrefix: string
+): Promise<void> {
   const subTaskLabel = 'restore branch';
 
-  return new Promise(
-    async (resolve: () => void, reject: (reason: Error) => void) => {
-      try {
-        tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+  try {
+    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
-        // No need to check the branch out if it is already checked out.
-        if ((await gitRevParse({ args: '--abbrev-ref HEAD' })) !== branch) {
-          await gitCheckout(branch);
-        }
-
-        resolve();
-        tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-      } catch (error) {
-        reject(error);
-        tasksHelpers.log.failed(subTaskLabel, labelPrefix);
-      }
+    // No need to check the branch out if it is already checked out.
+    if ((await runCommand('rev-parse --abbrev-ref HEAD')) !== branch) {
+      // FIXME: Shell injection.
+      await runCommand(`git checkout ${branch}`);
     }
-  );
+
+    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+  } catch (error) {
+    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    throw error;
+  }
 }
 
 /**
@@ -928,27 +963,22 @@ function restoreBranch(branch: string, labelPrefix?: string): Promise<void> {
  * @param branch - The branch the git repo should be on.
  * @param labelPrefix - A prefix to print before the label
  */
-function cleanUp(branch: string, labelPrefix?: string): Promise<void> {
+async function cleanUp(branch: string, labelPrefix: string): Promise<void> {
   const subTaskLabel = 'clean up';
 
-  return new Promise(
-    async (resolve: () => void, reject: (reason: Error) => void) => {
-      try {
-        const subTaskLabelPrefix = tasksHelpers.log.starting(
-          subTaskLabel,
-          labelPrefix
-        );
+  try {
+    const subTaskLabelPrefix = tasksHelpers.log.starting(
+      subTaskLabel,
+      labelPrefix
+    );
 
-        await restoreBranch(branch, subTaskLabelPrefix);
+    await restoreBranch(branch, subTaskLabelPrefix);
 
-        resolve();
-        tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-      } catch (error) {
-        reject(error);
-        tasksHelpers.log.failed(subTaskLabel, labelPrefix);
-      }
-    }
-  );
+    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+  } catch (error) {
+    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    throw error;
+  }
 }
 
 /**
@@ -958,38 +988,35 @@ function cleanUp(branch: string, labelPrefix?: string): Promise<void> {
  * @param releaseInfo - Information about the release
  * @param labelPrefix - A prefix to print before the label
  */
-function printNpmReleaseInfo(
+async function printNpmReleaseInfo(
   config: IConfig,
   releaseInfo: any,
-  labelPrefix?: string
+  labelPrefix: string
 ): Promise<void> {
   const subTaskLabel = 'release info';
 
-  return new Promise((resolve: () => void, reject: (reason: Error) => void) => {
-    try {
-      tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+  try {
+    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
-      // Are we doing a dryrun?
-      if (config.publish.dryrun) {
-        // eslint-disable-next-line no-console
-        console.info(`  ${magenta('=== Dry Run ===')}`);
-      }
-
+    // Are we doing a dryrun?
+    if (config.publish.dryrun) {
       // eslint-disable-next-line no-console
-      console.info(`\
+      console.info(`  ${magenta('=== Dry Run ===')}`);
+    }
+
+    // eslint-disable-next-line no-console
+    console.info(`\
   ${yellow('Version')}:               ${releaseInfo.version}
   ${yellow('Version commit')}:        ${releaseInfo.versionCommit}
   ${yellow('Last commit')}:           ${releaseInfo.lastCommit}
   ${yellow('NPM tag')}:               ${releaseInfo.npmTag}
   ${yellow('Publisher')}:             ${releaseInfo.publisher}`);
 
-      resolve();
-      tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-    } catch (error) {
-      reject(error);
-      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
-    }
-  });
+    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+  } catch (error) {
+    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    throw error;
+  }
 }
 
 /**
@@ -1000,46 +1027,38 @@ function printNpmReleaseInfo(
  * @param majorBranch - The release's major branch
  * @param labelPrefix - A prefix to print before the label
  */
-function pushToGit(
+async function doPushToGit(
   config: IConfig,
   currentBranch: string,
-  majorBranch: string,
-  labelPrefix?: string
+  majorBranch: string | null,
+  labelPrefix: string
 ): Promise<void> {
   const subTaskLabel = 'git push';
 
-  return new Promise(
-    async (resolve: () => void, reject: (reason: Error) => void) => {
-      try {
-        // Are we doing a dryrun?
-        if (config.publish.dryrun) {
-          resolve();
-          tasksHelpers.log.info(
-            `skipping ${subTaskLabel}${dryRunLabel}`,
-            labelPrefix
-          );
-
-          return;
-        }
-
-        tasksHelpers.log.starting(subTaskLabel, labelPrefix);
-
-        const branches = [currentBranch];
-        if (majorBranch != null) {
-          branches.push(majorBranch);
-        }
-
-        await gitPush('origin', branches);
-        await gitPush('origin', null, { args: '--tags' });
-
-        resolve();
-        tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-      } catch (error) {
-        reject(error);
-        tasksHelpers.log.failed(subTaskLabel, labelPrefix);
-      }
+  try {
+    // Are we doing a dryrun?
+    if (config.publish.dryrun) {
+      tasksHelpers.log.info(
+        `skipping ${subTaskLabel}${dryRunLabel}`,
+        labelPrefix
+      );
+      return;
     }
-  );
+
+    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+
+    const branches =
+      majorBranch === null ? [currentBranch] : [currentBranch, majorBranch];
+
+    // FIXME: Shell injection.
+    await runCommand(`git push origin ${branches.join(' ')}`);
+    await runCommand('git push origin --tags');
+
+    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+  } catch (error) {
+    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    throw error;
+  }
 }
 
 /**
@@ -1050,50 +1069,42 @@ function pushToGit(
  * @param format - The format of the archive
  * @param formatOptions - The format settings
  */
-function createArchive(
+async function createArchive(
   directory: string,
   outputFile: string,
   format: ArchiverFormat,
   formatOptions: ArchiverOptions
 ): Promise<void> {
-  return new Promise(
-    async (resolve: () => void, reject: (reason: Error) => void) => {
-      try {
-        // Delete the file if it already exists.
-        await del(outputFile);
+  // Delete the file if it already exists.
+  await del(outputFile);
 
-        const outputStream = createWriteStream(outputFile);
-        const archive = archiver(format, formatOptions);
+  const outputStream = createWriteStream(outputFile);
+  const archive = archiver(format, formatOptions);
 
-        archive.on('warning', (error: any) => {
-          if (error.code === 'ENOENT') {
-            console.warn(error);
-          } else {
-            reject(error);
-          }
-        });
-
-        archive.on('error', (error: Error) => {
-          reject(error);
-        });
-
-        archive.on('finish', () => {
-          resolve();
-        });
-
-        // Connect the archive and output stream.
-        archive.pipe(outputStream);
-
-        // Add the files.
-        archive.directory(directory, false);
-
-        // Finalize the archive.
-        archive.finalize();
-      } catch (error) {
-        reject(error);
-      }
+  archive.on('warning', (error: any) => {
+    if (error.code === 'ENOENT') {
+      console.warn(error);
+    } else {
+      throw error;
     }
-  );
+  });
+
+  archive.on('error', (error: Error) => {
+    throw error;
+  });
+
+  archive.on('finish', () => {
+    return;
+  });
+
+  // Connect the archive and output stream.
+  archive.pipe(outputStream);
+
+  // Add the files.
+  archive.directory(directory, false);
+
+  // Finalize the archive.
+  archive.finalize();
 }
 
 /**
@@ -1103,348 +1114,230 @@ function createArchive(
  * @param version - The version of the release
  * @param labelPrefix - A prefix to print before the label
  */
-function createArchivesForGitHubRelease(
+async function createArchivesForGitHubRelease(
   config: IConfig,
   version: string,
-  labelPrefix?: string
+  labelPrefix: string
+  // tslint:disable-next-line:readonly-array
 ): Promise<string[]> {
   const subTaskLabel = 'create archives';
 
-  return new Promise(
-    async (resolve: (value: string[]) => void, reject: (reason: Error) => void) => {
-      try {
-        if (config.componenet.name == null) {
-          resolve([]);
-          tasksHelpers.log.info(`skipping ${subTaskLabel}`, labelPrefix);
-
-          return;
-        }
-
-        tasksHelpers.log.starting(subTaskLabel, labelPrefix);
-
-        const archiveFormats = config.publish.archiveFormats;
-
-        const assets: string[] = [];
-        const archivers: Promise<void>[] = [];
-
-        for (const [format, formatConfig] of Object.entries(archiveFormats)) {
-          if (!formatConfig.ignore) {
-            const outputFile = `./${config.temp.path}/${
-              config.componenet.name
-            }-${version}${formatConfig.extension}`;
-
-            archivers.push(
-              createArchive(
-                `./${config.dist.path}`,
-                outputFile,
-                format as ArchiverFormat,
-                formatConfig.options
-              )
-            );
-
-            assets.push(outputFile);
-          }
-        }
-
-        await Promise.all(archivers);
-
-        resolve(assets);
-        tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-      } catch (error) {
-        reject(error);
-        tasksHelpers.log.failed(subTaskLabel, labelPrefix);
-      }
+  try {
+    if (config.componenet.name === undefined) {
+      tasksHelpers.log.info(`skipping ${subTaskLabel}`, labelPrefix);
+      return [];
     }
-  );
+
+    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+
+    const archiveFormats = config.publish.archiveFormats;
+
+    const { assets, archivers } = Object.entries(archiveFormats).reduce(
+      (result, format) => {
+        const archiveFormatRaw = format[0];
+
+        if (archiveFormatRaw !== 'tar' && archiveFormatRaw !== 'zip') {
+          throw new Error('Unknown archive format.');
+        }
+
+        const [archiveFormat, formatConfig]: [
+          ArchiverFormat,
+          {
+            readonly extension: string;
+            readonly ignore: boolean;
+            readonly options: ArchiverOptions;
+          }
+        ] = [archiveFormatRaw, format[1]];
+
+        if (formatConfig.ignore) {
+          return result;
+        }
+
+        const outputFile = `./${config.temp.path}/${
+          config.componenet.name
+        }-${version}${formatConfig.extension}`;
+
+        return {
+          assets: [...result.assets, outputFile],
+          archivers: [
+            ...result.archivers,
+            createArchive(
+              `./${config.dist.path}`,
+              outputFile,
+              archiveFormat,
+              formatConfig.options
+            )
+          ]
+        };
+      },
+      // tslint:disable:readonly-array
+      { assets: [], archivers: [] } as {
+        readonly assets: string[];
+        readonly archivers: Promise<void>[];
+      }
+      // tslint:enable:readonly-array
+    );
+
+    await Promise.all(archivers);
+
+    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    return assets;
+  } catch (error) {
+    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    throw error;
+  }
 }
 
 /**
  * Commit the GitHub release.
  *
- * @param gulp - Gulp library
  * @param config - Config settings
  * @param settings - Settings for the release
  * @param [assets=[]] - Extra assets to upload
  * @param labelPrefix - A prefix to print before the label
  */
-function commitGitHubRelease(
-  gulp: GulpClient.Gulp,
+async function commitGitHubRelease(
   config: IConfig,
-  settings: object,
-  assets: string[] = [],
-  labelPrefix?: string
+  settings: PublishReleaseSettings,
+  labelPrefix: string
 ): Promise<void> {
   const subTaskLabel = 'commit';
 
-  return new Promise((resolve: () => void, reject: (reason: Error) => void) => {
-    try {
-      // Are we doing a dryrun?
-      if (config.publish.dryrun) {
-        resolve();
-        tasksHelpers.log.info(
-          `skipping ${subTaskLabel}${dryRunLabel}`,
-          labelPrefix
-        );
-
-        return;
-      }
-
-      tasksHelpers.log.starting(subTaskLabel, labelPrefix);
-
-      let rejected = false;
-
-      gulp
-        .src(assets, { allowEmpty: true })
-        .pipe(release(settings))
-        .on('end', () => {
-          if (!rejected) {
-            resolve();
-            tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-          }
-        })
-        .on('error', (error: Error) => {
-          rejected = true;
-          throw error;
-        });
-    } catch (error) {
-      reject(error);
-      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+  try {
+    // Are we doing a dryrun?
+    if (config.publish.dryrun) {
+      tasksHelpers.log.info(
+        `skipping ${subTaskLabel}${dryRunLabel}`,
+        labelPrefix
+      );
+      return;
     }
-  });
+
+    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+
+    await gitHubRelease(settings);
+
+    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+  } catch (error) {
+    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    throw error;
+  }
 }
 
 /**
  * Create a GitHub release.
  *
- * @param gulp - Gulp library
  * @param config - Config settings
- * @param settings - Settings for the release
+ * @param options - Settings for the release
  * @param labelPrefix - A prefix to print before the label
  */
-function createGitHubRelease(
-  gulp: GulpClient.Gulp,
+async function createGitHubRelease(
   config: IConfig,
-  settings: any,
-  labelPrefix?: string
+  options: {
+    readonly manifest: {
+      readonly [key: string]: any;
+    };
+    readonly prerelease: boolean;
+    readonly tag: string;
+    readonly token: string;
+    readonly name: string;
+    readonly notes: string;
+    readonly draft: boolean;
+    readonly version: string;
+  },
+  labelPrefix: string
 ): Promise<void> {
   const subTaskLabel = 'GitHub release';
 
-  return new Promise(
-    async (resolve: () => void, reject: (reason: Error) => void) => {
-      try {
-        const subTaskLabelPrefix = tasksHelpers.log.starting(
-          subTaskLabel,
-          labelPrefix
-        );
+  try {
+    const subTaskLabelPrefix = tasksHelpers.log.starting(
+      subTaskLabel,
+      labelPrefix
+    );
 
-        const archives = await createArchivesForGitHubRelease(
-          config,
-          settings.version,
-          subTaskLabelPrefix
-        );
+    const archives = await createArchivesForGitHubRelease(
+      config,
+      options.version,
+      subTaskLabelPrefix
+    );
 
-        try {
-          await commitGitHubRelease(
-            gulp,
-            config,
-            settings,
-            archives,
-            subTaskLabelPrefix
-          );
-        } catch (error) {
-          // TODO: Prompt the user if they want to try again.
-          // TODO: Prompt for new parameters.
+    try {
+      const releaseSettings = {
+        ...options,
+        assets: archives
+      };
 
-          // Display the error message.
-          // console.error(
-          //   `Failed to commit GitHub release.\nReturned error message: ${
-          //     error.message
-          //   }`
-          // );
+      await commitGitHubRelease(config, releaseSettings, subTaskLabelPrefix);
+    } catch (error) {
+      // TODO: Prompt the user if they want to try again.
+      // TODO: Prompt for new parameters.
 
-          // TODO: Replace with user abort error (once prompts above are working).
-          throw error;
-        }
+      // Display the error message.
+      // console.error(
+      //   `Failed to commit GitHub release.\nReturned error message: ${
+      //     error.message
+      //   }`
+      // );
 
-        resolve();
-        tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-      } catch (error) {
-        reject(error);
-        tasksHelpers.log.failed(subTaskLabel, labelPrefix);
-      }
+      // TODO: Replace with user abort error (once prompts above are working).
+      throw error;
     }
-  );
+
+    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+  } catch (error) {
+    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    throw error;
+  }
 }
 
 /**
- * Publish the component.
- *
- * @param gulp
- * @param config
+ * Get publishing settings from the user.
  */
-export function publish(gulp: GulpClient.Gulp, config: IConfig): Promise<void> {
-  return new Promise(
-    async (resolve: () => void, reject: (reason: Error) => void) => {
-      try {
-        // Are we doing a dryrun?
-        if (config.publish.dryrun) {
-          tasksHelpers.log.info(`${magenta('Performing dry run')}`);
-        }
+async function getPublishSettings(
+  currentBranch: string
+): Promise<IPublishSettings> {
+  const input = await promptUserPublishSettings();
 
-        if (config.package == null) {
-          throw new Error('No package data.');
-        }
-
-        // Information about the environment and setting the user want for publishing.
-        const info: any = {
-          git: {
-            currentBranch: await gitRevParse({ args: '--abbrev-ref HEAD' }),
-            majorBranch: null,
-            tag: null
-          },
-          releaseInfo: {
-            lastCommit: null,
-            npmTag: null,
-            publisher: null,
-            versionCommit: null
-          },
-          version: {
-            prerelease: false,
-            semantic: null
-          }
-        };
-
-        // Input from the user.
-        const input: any = {};
-        let failed: Error | undefined;
-        try {
-          // Get publishing settings from the user.
-          input.publishing = await promptUserPublishSettings();
-          info.version.semantic = input.publishing.symver;
-          info.version.prerelease = input.publishing.isPrerelease;
-          info.releaseInfo.npmTag = input.publishing.npmTag;
-          info.git.tag = `v${info.version.semantic}`;
-          info.git.majorBranch =
-            Number.parseInt(info.version.semantic.split('.')[0], 10) !== 0 &&
-            !info.version.prerelease
-              ? `${info.version.semantic.split('.')[0]}.x`
-              : null;
-
-          // Check that git is ok based on the settings given.
-          try {
-            await gitChecks(
-              config,
-              info.git.currentBranch,
-              info.version.prerelease
-            );
-          } catch (error) {
-            // Ignore the error if force is true.
-            if (config.publish.force) {
-              console.warn(`Continuing despite error (force):\n  ${error}`);
-            } else {
-              throw error;
-            }
-          }
-
-          // Check that the files are ok based on the settings given.
-          try {
-            await fileChecks(config);
-          } catch (error) {
-            // Ignore the error if force is true.
-            if (config.publish.force) {
-              console.warn(`Continuing despite error (force):\n  ${error}`);
-            } else {
-              throw error;
-            }
-          }
-
-          // Update the version.
-          await updateVersion(gulp, config, info.version.semantic);
-
-          // Merge changes into the release's major branch.
-          await mergeIntoMajorBranch(
-            config,
-            info.git.majorBranch,
-            info.git.currentBranch
-          );
-
-          // Create a git tag for the release.
-          await createTag(config, info.git.tag);
-
-          // Publish the release to npm.
-          const publishResults = await publishToNpm(
-            config,
-            info.releaseInfo.npmTag
-          );
-          info.releaseInfo.versionCommit = publishResults.versionCommit;
-          info.releaseInfo.lastCommit = publishResults.lastCommit;
-          info.releaseInfo.publisher = publishResults.publisher;
-        } catch (error) {
-          failed = error;
-        } finally {
-          // Clean up.
-          await cleanUp(info.git.currentBranch);
-        }
-
-        // Failed?
-        if (failed != null) {
-          reject(failed);
-          return;
-        }
-
-        // Print out information about the npm release. Ignore any errors.
-        try {
-          await printNpmReleaseInfo(config, {
-            version: info.version.semantic,
-            ...info.releaseInfo
-          });
-        } catch (error) {}
-
-        // Ask the user if they want to push the changes to git.
-        input.pushToGit = await promptUserPushToGit();
-
-        // User want to push changes.
-        if (input.pushToGit) {
-          // Push changes to GitHub.
-          await pushToGit(config, info.git.currentBranch, info.git.majorBranch);
-
-          // Only prompt about a GitHub release if the hosted on GitHub.
-          if (config.publish.hostedOnGitHub) {
-            // Ask the user if they want to do a GitHub release.
-            input.gitHubRelease = await promptUserGitHubReleaseSettings(
-              info.git.tag,
-              info.version.prerelease,
-              config.package
-            );
-
-            // User wants to create a release.
-            if (input.gitHubRelease.create) {
-              await createGitHubRelease(gulp, config, {
-                version: info.version.semantic,
-                ...input.gitHubRelease.settings
-              });
-            }
-          }
-        }
-        resolve();
-      } catch (error) {
-        // Resolve regardless of any errors caught here.
-        resolve();
-        console.error(`Something when wrong: ${error.message}`);
-      }
+  return {
+    version: {
+      semantic: input.symver,
+      prerelease: input.isPrerelease
+    },
+    releaseInfo: {
+      npmTag: input.npmTag
+    },
+    git: {
+      currentBranch,
+      tag: `v${input.symver}`,
+      majorBranch:
+        Number.parseInt(input.symver.split('.')[0], 10) !== 0 &&
+        !input.isPrerelease
+          ? `${input.symver.split('.')[0]}.x`
+          : null
     }
-  );
+  };
 }
 
-/**
- * Perform a dry run of the publish task.
- *
- * @param gulp
- * @param config
- */
-export function publishDry(gulp: GulpClient.Gulp, config: IConfig): Promise<void> {
-  config.publish.dryrun = true;
-  config.publish.force = true;
+interface IPublishSettings {
+  readonly git: {
+    readonly currentBranch: string;
+    readonly majorBranch: string | null;
+    readonly tag: string;
+  };
+  readonly releaseInfo: {
+    readonly npmTag: string;
+  };
+  readonly version: {
+    readonly prerelease: boolean;
+    readonly semantic: string;
+  };
+}
 
-  return publish(gulp, config);
+interface IPublishedInfo extends IPublishSettings {
+  readonly releaseInfo: {
+    readonly npmTag: string;
+    readonly lastCommit: string;
+    readonly publisher: string;
+    readonly versionCommit: string;
+  };
 }

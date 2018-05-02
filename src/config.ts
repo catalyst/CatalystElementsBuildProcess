@@ -3,7 +3,7 @@
  */
 
 // Libraries.
-import archiver, {
+import {
   ArchiverOptions,
   CoreOptions,
   TarOptions,
@@ -15,6 +15,7 @@ import postcssCqProlyfill from 'cq-prolyfill/postcss-plugin';
 import cssMQPacker from 'css-mqpacker';
 import cssnano from 'cssnano';
 import { Options as htmlMinifierOptions } from 'html-minifier';
+import postcss from 'postcss';
 import postcssAutoReset from 'postcss-autoreset';
 import postcssCssNext from 'postcss-cssnext';
 import postcssFontMagician from 'postcss-font-magician';
@@ -29,281 +30,323 @@ declare interface IConfig {
   /**
    * Build settings.
    */
-  build: {
+  readonly build: {
     /**
      * Module settings
      */
-    module: {
+    readonly module: {
       /**
        * Build the module?
        */
-      build: boolean;
+      readonly build: boolean;
+
       /**
        * Module extension
        */
-      extension: string;
+      readonly extension: string;
     };
+
     /**
      * Script settings
      */
-    script: {
+    readonly script: {
       /**
        * Build the script?
        */
-      build: boolean;
+      readonly build: boolean;
+
       /**
        * Script extension
        */
-      extension: string;
+      readonly extension: string;
+
       /**
        * Bundle in all the imports?
        */
-      bundleImports: boolean;
+      readonly bundleImports: boolean;
+
       /**
        * Export all the static imports?
        */
-      exportAllStaticImports: boolean;
+      readonly exportAllStaticImports: boolean;
     };
+
     /**
      * Config options for tools used in the build process.
      */
-    tools: {
+    readonly tools: {
       /**
        * HTML Minifier settings
        */
-      htmlMinifier?: htmlMinifierOptions;
+      readonly htmlMinifier?: htmlMinifierOptions;
+
       /**
        * PostCSS settings
        */
-      postcss?: {
-        plugins?: any[];
-        options?: object;
+      readonly postcss?: {
+        readonly plugins?: ReadonlyArray<postcss.AcceptedPlugin>;
+        readonly options?: postcss.ProcessOptions;
       };
     };
   };
+
   /**
    * Component settings.
    */
-  componenet: {
+  readonly componenet: {
     /**
      * The name of the component.
      */
-    name?: string;
+    readonly name?: string;
+
     /**
      * The npm scope of the component
      */
-    scope?: string | null;
+    readonly scope?: string | null;
+
     /**
      * The path to the component when it is in node modules.
      */
-    nodeModulesPath?: string;
+    readonly nodeModulesPath?: string;
   };
+
   /**
    * Demo settings.
    */
-  demos: {
+  readonly demos: {
     /**
      * The file that imports the demo dependencies relative to `demos.path`.
      */
-    importsFilename: string;
+    readonly importsFilename: string;
+
     /**
      * The file that imports `demos.importsFilename` relative to `demos.path`.
      */
-    importsImporterFilename: string;
+    readonly importsImporterFilename: string;
+
     /**
      * The path to the demos folder relative to the component's project root.
      */
-    path: string;
+    readonly path: string;
   };
+
   /**
    * Distribution settings.
    */
-  dist: {
+  readonly dist: {
     /**
      * The path to the distribution folder relative to the component's project root.
      */
-    path: string;
+    readonly path: string;
   };
+
   /**
    * Documentation settings.
    */
-  docs: {
+  readonly docs: {
     /**
      * The file that contains the analysis data relative to the component's project root.
      */
-    analysisFilename: string;
+    readonly analysisFilename: string;
+
     /**
      * The file that imports the docs dependencies relative to the component's project root.
      */
-    importsFilename: string;
+    readonly importsFilename: string;
+
     /**
      * The file that imports `docs.importsFilename` relative to the component's project root.
      */
-    importsImporterFilename: string;
+    readonly importsImporterFilename: string;
+
     /**
      * The index page of the documentation relative to the component's project root.
      */
-    indexPage: string;
+    readonly indexPage: string;
+
     /**
      * The folder name for the node modules inside docs.
      */
-    nodeModulesPath: string;
+    readonly nodeModulesPath: string;
+
     /**
      * The path to the documentation folder relative to the component's project root.
      */
-    path: string;
+    readonly path: string;
   };
+
   /**
    * Where the node module files are relative to the component's project root.
    */
-  nodeModulesPath?: string;
+  readonly nodeModulesPath: string;
+
   /**
    * Publish settings.
    */
-  publish: {
+  readonly publish: {
     /**
      * Archives formats to upload to GitHub Release.
      */
-    archiveFormats: {
+    readonly archiveFormats: {
       /**
        * Tar archive.
        */
-      tar: {
+      readonly tar: {
         /**
          * File extension.
          */
-        extension: string;
+        readonly extension: string;
+
         /**
          * Don't use this format.
          */
-        ignore: boolean;
+        readonly ignore: boolean;
+
         /**
          * Archive options.
          */
-        options: CoreOptions & TransformOptions & TarOptions;
+        readonly options: CoreOptions & TransformOptions & TarOptions;
       };
+
       /**
        * Zip archive.
        */
-      zip: {
+      readonly zip: {
         /**
          * File extension.
          */
-        extension: string;
+        readonly extension: string;
+
         /**
          * Don't use this format.
          */
-        ignore: boolean;
+        readonly ignore: boolean;
+
         /**
          * Archive options.
          */
-        options: CoreOptions & TransformOptions & ZipOptions;
+        readonly options: CoreOptions & TransformOptions & ZipOptions;
       };
-      [key: string]: {
-        extension: string;
-        ignore: boolean;
-        options: ArchiverOptions;
+      readonly [key: string]: {
+        readonly extension: string;
+        readonly ignore: boolean;
+        readonly options: ArchiverOptions;
       };
     };
+
     /**
      * Run checks on the following files: (ignored if `runFileChecks` is false)
      */
-    checkFiles: {
-      package: boolean;
-      script: boolean;
-      module: boolean;
-      license: boolean;
-      readme: boolean;
+    readonly checkFiles: {
+      readonly package: boolean;
+      readonly script: boolean;
+      readonly module: boolean;
+      readonly license: boolean;
+      readonly readme: boolean;
     };
+
     /**
      * Do a dry run?
      */
-    dryrun: boolean;
+    readonly dryrun: boolean;
+
     /**
      * For the release - ignore non critical errors along the way.
      */
-    force: boolean;
+    readonly force: boolean;
+
     /**
      * Is the component project hosted on GitHub?
      */
-    hostedOnGitHub: boolean;
+    readonly hostedOnGitHub: boolean;
+
     /**
      * The name of the git master branch.
      */
-    masterBranch: string;
+    readonly masterBranch: string;
+
     /**
      * Regex for the prerelease branches.
      */
-    prereleaseBranchRegex: RegExp;
+    readonly prereleaseBranchRegex: RegExp;
+
     /**
      * Check that the files are ready publishing?
      */
-    runFileChecks: boolean;
+    readonly runFileChecks: boolean;
+
     /**
      * Check that git has everything in sync and ready for publishing?
      */
-    runGitChecks: boolean;
+    readonly runGitChecks: boolean;
   };
+
   /**
    * Source settings.
    */
-  src: {
+  readonly src: {
     /**
      * The path to the source folder relative to the component's project root.
      */
-    path: string;
+    readonly path: string;
+
     /**
      * The path to the entrypoint file relative to `src.path`
      */
-    entrypoint?: string;
+    readonly entrypoint?: string;
+
     /**
      * The templates to be injected.
      */
-    template?: {
-      css?: string;
-      html?: string;
+    readonly template?: {
+      readonly css?: string;
+      readonly html?: string;
     };
   };
+
   /**
    * Temp settings.
    */
-  temp: {
+  readonly temp: {
     /**
      * The path to the temp folder relative to the component's project root.
      */
-    path: string;
+    readonly path: string;
   };
+
   /**
    * Test settings.
    */
-  tests: {
+  readonly tests: {
     /**
      * The path to the test folder relative to the component's project root.
      */
-    path: string;
+    readonly path: string;
+
     /**
      * The config for Web Component Tester.
      */
-    wctConfig?: {
-      plugins?: {
-        local?: {
-          browsers?: string[];
-          browserOptions?: {
-            chrome?: string[];
-            firefox?: string[];
+    readonly wctConfig?: {
+      readonly plugins?: {
+        readonly local?: {
+          readonly browsers?: ReadonlyArray<string>;
+          readonly browserOptions?: {
+            readonly chrome?: ReadonlyArray<string>;
+            readonly firefox?: ReadonlyArray<string>;
           };
         };
       };
-      npm?: boolean;
+      readonly npm?: boolean;
     };
   };
+
   /**
    * Contents of component project's package.json file.
    */
-  package?: {
-    [key: string]: any;
+  readonly package?: {
+    readonly [key: string]: any;
   };
-  [key: string]: any;
+  readonly [key: string]: any;
 }
 // tslint:enable:no-reserved-keywords
 
@@ -420,7 +463,7 @@ const defaultConfig: IConfig = {
       script: true,
       module: true,
       license: true,
-      readme: true,
+      readme: true
     },
     dryrun: false,
     force: false,

@@ -1,23 +1,27 @@
 // Libraries.
-import { writeFile } from 'fs/promises';
-import _glob from 'glob';
-import GulpClient from 'gulp';
-import rename from 'gulp-rename';
-import { basename, extname, normalize } from 'path';
+import { copyFile, writeFile } from 'fs/promises';
+import {
+  basename as getFileBasename,
+  extname as getFileExtension,
+  normalize as normalizePath
+} from 'path';
 import {
   Analyzer,
   FsUrlLoader,
   generateAnalysis as processAnalysis,
   PackageUrlResolver
 } from 'polymer-analyzer';
-import { Analysis as ProcessedAnalysis } from 'polymer-analyzer/lib/analysis-format/analysis-format';
-import { promisify } from 'util';
+import {
+  Analysis as ProcessedAnalysis,
+  Class,
+  Demo,
+  Element,
+  ElementMixin,
+  Namespace
+} from 'polymer-analyzer/lib/analysis-format/analysis-format';
 
 import { IConfig } from '../config';
-import { tasksHelpers, waitForAllPromises } from '../util';
-
-// Promisified functions.
-const glob = promisify(_glob);
+import { glob, runAllPromises, tasksHelpers } from '../util';
 
 // The temp path.
 const tempSubpath = 'analyze';
@@ -32,92 +36,188 @@ function fixAnalysis(
   analysis: ProcessedAnalysis,
   config: IConfig
 ): ProcessedAnalysis {
-  const typesToFix = ['elements', 'mixins'];
-
-  for (const typeToFix of typesToFix) {
-    const typeData = (analysis as any)[typeToFix];
-
-    // If the type is defined.
-    if (typeData != null) {
-      // For each component.
-      for (const component of typeData) {
-        const base = basename(component.path, extname(component.path));
-
-        // Don't refer to the component's temp path, but rather its node path.
-        if (
-          component.path != null &&
-          component.path.indexOf(`${config.temp.path}/${tempSubpath}/`) === 0
-        ) {
-          // Remove temp dir prefix.
-          component.path = component.path.substring(
-            `${config.temp.path}/${tempSubpath}/`.length
-          );
-
-          component.path = `${config.nodeModulesPath}/${
-            config.componenet.scope
-          }/${base}/${base}${config.build.module.extension}`;
-        }
-
-        // If `demos` is defined.
-        if (component.demos != null) {
-          // For each demo.
-          for (const demo of component.demos) {
-            // Prefix its url.
-            demo.url = normalize(`../${base}/${demo.url}`);
-          }
-        }
-      }
+  return {
+    ...analysis,
+    ...{
+      elements: fixAnalysisElements(analysis.elements, config),
+      mixins: fixAnalysisElementMixins(analysis.mixins, config),
+      namespaces: fixAnalysisNamespaces(analysis.namespaces, config),
+      classes: fixAnalysisClasses(analysis.classes, config)
     }
+  } as ProcessedAnalysis;
+}
+
+/**
+ * Fix the elements in the analysis.
+ */
+function fixAnalysisElements(
+  elements: ReadonlyArray<Element> | undefined,
+  config: IConfig
+  // tslint:disable-next-line:readonly-array
+): Element[] | undefined {
+  if (elements === undefined) {
+    return undefined;
   }
 
-  return analysis;
+  return elements.map(element => {
+    return {
+      ...element,
+      paths: fixAnalysisComponentPath(element, config),
+      demos: fixAnalysisComponentDemos(element)
+    };
+  });
+}
+
+/**
+ * Fix the mixins in the analysis.
+ */
+function fixAnalysisElementMixins(
+  elementMixins: ReadonlyArray<ElementMixin> | undefined,
+  config: IConfig
+  // tslint:disable-next-line:readonly-array
+): ElementMixin[] | undefined {
+  if (elementMixins === undefined) {
+    return undefined;
+  }
+
+  return elementMixins.map(mixin => {
+    return {
+      ...mixin,
+      paths: fixAnalysisComponentPath(mixin, config),
+      demos: fixAnalysisComponentDemos(mixin)
+    };
+  });
+}
+
+/**
+ * Fix the namespaces in the analysis.
+ */
+function fixAnalysisNamespaces(
+  namespaces: ReadonlyArray<Namespace> | undefined,
+  config: IConfig
+  // tslint:disable-next-line:readonly-array
+): Namespace[] | undefined {
+  if (namespaces === undefined) {
+    return undefined;
+  }
+
+  return namespaces.map(namespace => {
+    return {
+      ...namespace,
+      elements: fixAnalysisElements(namespace.elements, config),
+      mixins: fixAnalysisElementMixins(namespace.mixins, config),
+      classes: fixAnalysisClasses(namespace.classes, config)
+    };
+  });
+}
+
+/**
+ * Fix the classes in the analysis.
+ */
+function fixAnalysisClasses(
+  classes: ReadonlyArray<Class> | undefined,
+  config: IConfig
+  // tslint:disable-next-line:readonly-array
+): Class[] | undefined {
+  if (classes === undefined) {
+    return undefined;
+  }
+
+  return classes.map(classComponent => {
+    return {
+      ...classComponent,
+      paths: fixAnalysisComponentPath(classComponent, config),
+      demos: fixAnalysisComponentDemos(classComponent)
+    };
+  });
+}
+
+/**
+ * Don't refer to the file's temp path, but rather its node path.
+ */
+function fixAnalysisComponentPath(
+  component: Class,
+  config: IConfig
+): string | undefined {
+  if (component.path === undefined) {
+    return component.path;
+  }
+
+  const pathBase = getFileBasename(
+    component.path,
+    getFileExtension(component.path)
+  );
+
+  return component.path.indexOf(`${config.temp.path}/${tempSubpath}/`) !== 0
+    ? component.path
+    : `${config.nodeModulesPath}/${
+        config.componenet.scope
+      }/${pathBase}/${pathBase}${config.build.module.extension}`;
+}
+
+/**
+ * Prefix the demos' url.
+ */
+function fixAnalysisComponentDemos(
+  component: Class
+  // tslint:disable-next-line:readonly-array
+): Demo[] {
+  // No path? Don't change anything.
+  if (component.path === undefined) {
+    return component.demos;
+  }
+
+  const pathBase = getFileBasename(
+    component.path,
+    getFileExtension(component.path)
+  );
+
+  return component.demos.map(demo => {
+    return {
+      ...demo,
+      url: normalizePath(`../${pathBase}/${demo.url}`)
+    };
+  });
 }
 
 /**
  * Copy all the elements over to the temp folder for analysis.
  *
- * @param gulp - Gulp library
  * @param config - Config settings
  * @param labelPrefix - A prefix to print before
  */
-function getElementsForAnalysis(
-  gulp: GulpClient.Gulp,
+async function copyElementsForAnalysis(
   config: IConfig,
-  labelPrefix?: string
+  labelPrefix: string
 ): Promise<void> {
   const subTaskLabel = 'get files';
 
-  return new Promise((resolve: () => void, reject: (reason: Error) => void) => {
-    try {
-      tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+  try {
+    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
-      gulp
-        .src([
-          `./${config.dist.path}/**/*${config.build.module.extension}`,
-          `./${config.componenet.nodeModulesPath}/catalyst-*/**/*${
-            config.build.module.extension
-          }`
-        ])
-        .pipe(
-          // FIXME: Polymer analyser does not yet support .mjs files so rename to .js
-          rename({
-            dirname: '/',
-            extname: '.js'
-          })
-        )
-        .pipe(gulp.dest(`./${config.temp.path}/${tempSubpath}`))
-        .on('finish', () => {
-          resolve();
-          tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-        })
-        .on('error', (error: Error) => {
-          throw error;
-        });
-    } catch (error) {
-      reject(error);
-      tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    const filepaths = await glob([
+      `./${config.dist.path}/**/*${config.build.module.extension}`,
+      `./${config.componenet.nodeModulesPath}/catalyst-*/**/*${
+        config.build.module.extension
+      }`
+    ]);
+
+    for (const filepath of filepaths) {
+      // Polymer analyser currently only support .js files.
+      const ext = config.build.module.extension.substring(
+        config.build.module.extension.lastIndexOf('.')
+      );
+      const outpath = `./${config.temp.path}/${tempSubpath}/${getFileBasename(
+        filepath,
+        ext
+      )}.js`;
+
+      await copyFile(filepath, outpath);
     }
-  });
+  } catch (error) {
+    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    throw error;
+  }
 }
 
 /**
@@ -126,77 +226,59 @@ function getElementsForAnalysis(
  * @param config - Config settings
  * @param labelPrefix - A prefix to print before
  */
-function generateAnalysis(
+async function generateAnalysis(
   config: IConfig,
-  labelPrefix?: string
+  labelPrefix: string
 ): Promise<void> {
   const subTaskLabel = 'generate';
 
-  return new Promise(
-    async (resolve: () => void, reject: (reason: Error) => void) => {
-      try {
-        tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+  try {
+    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
-        const files = await glob(
-          `./${config.temp.path}/${tempSubpath}/**/*.js`
-        );
-        const analyzer = new Analyzer({
-          urlLoader: new FsUrlLoader('./'),
-          urlResolver: new PackageUrlResolver({
-            packageDir: './'
-          })
-        });
-        const analysis = await analyzer.analyze(files);
-        const formattedAnalysis = processAnalysis(
-          analysis,
-          analyzer.urlResolver
-        );
-        const formattedfixedAnalysis = fixAnalysis(formattedAnalysis, config);
+    const files = await glob(`./${config.temp.path}/${tempSubpath}/**/*.js`);
+    const analyzer = new Analyzer({
+      urlLoader: new FsUrlLoader('./'),
+      urlResolver: new PackageUrlResolver({
+        packageDir: './'
+      })
+    });
+    // tslint:disable-next-line:readonly-array
+    const analysis = await analyzer.analyze(files);
+    const formattedAnalysis = processAnalysis(analysis, analyzer.urlResolver);
+    const formattedfixedAnalysis = fixAnalysis(formattedAnalysis, config);
 
-        const analysisFileContents = JSON.stringify(
-          formattedfixedAnalysis,
-          null,
-          2
-        );
-        const minifiedAnalysisFileContents = JSON.stringify(
-          formattedfixedAnalysis
-        );
+    const analysisFileContents = JSON.stringify(
+      formattedfixedAnalysis,
+      null,
+      2
+    );
+    const minifiedAnalysisFileContents = JSON.stringify(formattedfixedAnalysis);
 
-        await waitForAllPromises([
-          writeFile(`./`, analysisFileContents, { encoding: 'utf8' }),
-          writeFile(
-            `./${config.docs.path}/${config.docs.analysisFilename}`,
-            minifiedAnalysisFileContents,
-            { encoding: 'utf8' }
-          )
-        ]);
+    await runAllPromises([
+      writeFile(`./`, analysisFileContents, { encoding: 'utf8' }),
+      writeFile(
+        `./${config.docs.path}/${config.docs.analysisFilename}`,
+        minifiedAnalysisFileContents,
+        { encoding: 'utf8' }
+      )
+    ]);
 
-        resolve();
-        tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-      } catch (error) {
-        reject(error);
-        tasksHelpers.log.failed(subTaskLabel, labelPrefix);
-      }
-    }
-  );
+    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+  } catch (error) {
+    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    throw error;
+  }
 }
 
 /**
  * Analyze the component.
  *
- * @param gulp - Gulp library
  * @param config - Config settings
  */
-export function analyze(gulp: GulpClient.Gulp, config: IConfig): Promise<void> {
-  return new Promise(
-    async (resolve: () => void, reject: (reason: Error) => void) => {
-      try {
-        await getElementsForAnalysis(gulp, config);
-        await generateAnalysis(config);
-        resolve();
-      } catch (error) {
-        reject(error);
-      }
-    }
-  );
+export async function analyze(
+  taskName: string,
+  config: IConfig
+): Promise<void> {
+  await copyElementsForAnalysis(config, taskName);
+  await generateAnalysis(config, taskName);
 }

@@ -1,14 +1,37 @@
 /* eslint-env node */
 
 const del = require('del');
+const fs = require('fs');
 const gulp = require('gulp');
 const modifyFile = require('gulp-modify-file');
 const ts = require('gulp-typescript');
-const lib = require('./dist');
+let lib = null;
 
-gulp.task('lint', lib.tasks.lint(gulp));
-gulp.task('publish', lib.tasks.publish(gulp));
-gulp.task('publish-dry', lib.tasks.publishDry(gulp));
+if (fs.existsSync('./dist/lib/index.js')) {
+  lib = require('./dist');
+}
+
+const tasksToImport = ['lint', 'publish', 'publishDry'];
+let tasksMap;
+try {
+  tasksMap = {};
+  for (const task of tasksToImport) {
+    tasksMap[task] = lib.tasks[task](gulp, task);
+  }
+} catch (error) {
+  tasksMap = {};
+  for (const task of tasksToImport) {
+    tasksMap[task] = function() {
+      throw new Error(
+        `"${task}" not available - run build tasks first to enable it.`
+      );
+    };
+  }
+}
+
+for (const [task, taskFunc] of Object.entries(tasksMap)) {
+  gulp.task(task, taskFunc);
+}
 
 gulp.task('build', () => {
   return new Promise(async (resolve, reject) => {

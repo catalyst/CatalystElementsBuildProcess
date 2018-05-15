@@ -12,24 +12,23 @@ if (fs.existsSync('./dist/lib/index.js')) {
 }
 
 const tasksToImport = ['lint', 'publish', 'publishDry'];
-let tasksMap;
-try {
-  tasksMap = {};
-  for (const task of tasksToImport) {
-    tasksMap[task] = lib.tasks[task](task);
-  }
-} catch (error) {
-  tasksMap = {};
-  for (const task of tasksToImport) {
-    tasksMap[task] = function() {
-      throw new Error(
-        `"${task}" not available - run build tasks first to enable it.`
-      );
-    };
-  }
-}
+const tasksMap =
+  lib === null
+    ? tasksToImport.map(task => {
+        return [
+          task,
+          function() {
+            throw new Error(
+              `"${task}" not available - run "build" task first to enable it.`
+            );
+          }
+        ];
+      })
+    : tasksToImport.map(task => {
+        return [task, lib.tasks[task](task)];
+      });
 
-for (const [task, taskFunc] of Object.entries(tasksMap)) {
+for (const [task, taskFunc] of tasksMap) {
   gulp.task(task, taskFunc);
 }
 

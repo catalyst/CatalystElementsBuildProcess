@@ -23,6 +23,10 @@ yarn add --dev @catalyst-elements/build-process
 
 ## Usage
 
+The tasks provided by this project are designed to be used with [NodeJs](http://nodejs.org).
+
+Below is an example using [Gulp](https://gulpjs.com/):
+
 ### Step 1. Configure your gulpfile.js
 
 Example `gulpfile.js` file:
@@ -31,8 +35,8 @@ Example `gulpfile.js` file:
 const gulp = require('gulp');
 const buildProcess = require('@catalyst-elements/build-process');
 
-// Set the config for my componenet.
-buildProcess.setConfig('./package.json', {
+// Get the config for the tasks.
+const config = buildProcess.getConfig({
   componenet: {
     // The name of the component
     name: 'catalyst-componenet'
@@ -50,7 +54,7 @@ buildProcess.setConfig('./package.json', {
 
 // Register all the exported tasks.
 for (const [name, func] of Object.entries(buildProcess.tasks)) {
-  gulp.task(name, func(gulp));
+  gulp.task(name, func(name, config));
 }
 ```
 
@@ -63,27 +67,27 @@ Example `package.json` file:
   "name": "my-element",
   "scripts": {
     "analyze": "./node_modules/.bin/gulp analyze",
-    "build": "./node_modules/.bin/gulp build",
     "build-docs": "./node_modules/.bin/gulp build-docs",
+    "build": "./node_modules/.bin/gulp build",
     "clean": "./node_modules/.bin/gulp clean",
+    "do-dry-publish": "./node_modules/.bin/gulp lint && ./node_modules/.bin/gulp build && ./node_modules/.bin/gulp test && ./node_modules/.bin/gulp publishDry",
+    "do-publish": "./node_modules/.bin/gulp lint && ./node_modules/.bin/gulp build && ./node_modules/.bin/gulp test && ./node_modules/.bin/gulp publish",
     "lint": "./node_modules/.bin/gulp lint",
-    "test": "./node_modules/.bin/gulp test",
-    "do-publish":
-      "./node_modules/.bin/gulp lint && ./node_modules/.bin/gulp build && ./node_modules/.bin/gulp test && ./node_modules/.bin/gulp publish",
     "postinstall": "./node_modules/.bin/gulp fix-dependencies",
-    "prepublishOnly":
-      "echo \"Error: use the 'do-publish' script to publish.\" && exit 1"
+    "prepublishOnly": "echo \"Error: use the 'do-publish' script to publish.\" && exit 1",
+    "test": "./node_modules/.bin/gulp test"
   },
   "devDependencies": {
-    "@catalyst-elements/build-process": "*",
-    "@polymer/iron-component-page": "^3.0.0-pre.1",
-    "@polymer/iron-demo-helpers": "^3.0.0-pre.1",
     "@polymer/test-fixture": "^3.0.0-pre.1",
-    "@webcomponents/shadycss": "^1.1.1",
-    "@webcomponents/webcomponentsjs": "^1.1.0",
     "web-component-tester": "^6.5.0"
   }
 }
+```
+
+### Step 3. Use it
+
+```sh
+npm run build
 ```
 
 ## Contributions

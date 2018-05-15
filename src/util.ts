@@ -1,6 +1,7 @@
 // Libraries.
 import { blue, cyan, green, grey, magenta, red } from 'ansi-colors';
 import del from 'del';
+import escapeStringRegexp from 'escape-string-regexp';
 import exec from 'exec-chainable';
 import log from 'fancy-log';
 import nodeGlob from 'glob';
@@ -218,10 +219,15 @@ export function transpose<T>(
 }
 
 /**
- * TODO: Get the regexp to select all the text in an injection placeholder.
+ * Get the regexp to select all the text in an injection placeholder.
  */
 export function getInjectRegExp(keyword: string): RegExp {
-  return /.*/;
+  return new RegExp(
+    `${escapeStringRegexp(`[[inject:${keyword}]]`)}[\s\S]*?${escapeStringRegexp(
+      `[[endinject]]`
+    )}`,
+    'g'
+  );
 }
 
 /**

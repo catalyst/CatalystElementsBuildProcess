@@ -100,7 +100,10 @@ export async function publish(
 /**
  * Perform a dry run of the publish task.
  */
-export function publishDry(taskName: string, config: IConfig): Promise<void> {
+export async function publishDry(
+  taskName: string,
+  config: IConfig
+): Promise<void> {
   const dryConfig = {
     ...config,
     publish: {

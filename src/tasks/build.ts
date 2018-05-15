@@ -100,10 +100,15 @@ async function checkSourceFiles(
     );
     const program = esprima.parseModule(entrypoint);
 
-    for (const node of program.body) {
+    const defaultExports = program.body.reduce((count, node) => {
       if (node.type === 'ExportDefaultDeclaration') {
-        throw new Error('Do not use default exports.');
+        return count + 1;
       }
+      return count;
+    }, 0);
+
+    if (defaultExports > 0) {
+      throw new Error(`Do not use default exports. ${defaultExports} found.`);
     }
 
     tasksHelpers.log.successful(subTaskLabel, labelPrefix);

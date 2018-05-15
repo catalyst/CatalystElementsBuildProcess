@@ -202,18 +202,20 @@ async function copyElementsForAnalysis(
       }`
     ]);
 
-    for (const filepath of filepaths) {
-      // Polymer analyser currently only support .js files.
-      const ext = config.build.module.extension.substring(
-        config.build.module.extension.lastIndexOf('.')
-      );
-      const outpath = `./${config.temp.path}/${tempSubpath}/${getFileBasename(
-        filepath,
-        ext
-      )}.js`;
+    await Promise.all(
+      filepaths.map(async filepath => {
+        // Polymer analyser currently only support .js files.
+        const ext = config.build.module.extension.substring(
+          config.build.module.extension.lastIndexOf('.')
+        );
+        const outpath = `./${config.temp.path}/${tempSubpath}/${getFileBasename(
+          filepath,
+          ext
+        )}.js`;
 
-      await copyFile(filepath, outpath);
-    }
+        await copyFile(filepath, outpath);
+      })
+    );
   } catch (error) {
     tasksHelpers.log.failed(subTaskLabel, labelPrefix);
     throw error;

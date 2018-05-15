@@ -43,8 +43,8 @@ export class PreWebpackClosureCompilerPlugin {
             chunks: ReadonlyArray<webpack.compilation.Chunk>,
             done: () => void
           ) => {
-            for (const chunk of chunks) {
-              for (const file of chunk.files) {
+            chunks.map(chunk => {
+              chunk.files.map(file => {
                 const source: string = compilation.assets[file].source();
 
                 // Parse the source with the delegate to generate the replacement information.
@@ -78,8 +78,8 @@ export class PreWebpackClosureCompilerPlugin {
                     { sourceCode: '', offset: 0 }
                   ).sourceCode
                 );
-              }
-            }
+              });
+            });
             done();
           }
         );

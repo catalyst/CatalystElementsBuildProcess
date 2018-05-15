@@ -291,7 +291,7 @@ async function lintTS(labelPrefix: string): Promise<void> {
     const files = TsLinter.getFileNames(program);
     const linter = new TsLinter({ fix: false }, program);
 
-    for (const file of files) {
+    files.map(file => {
       const sourceFile = program.getSourceFile(file);
       if (sourceFile == null) {
         throw new Error(`Failed to get source file for "${file}"`);
@@ -302,7 +302,7 @@ async function lintTS(labelPrefix: string): Promise<void> {
         file
       ).results;
       linter.lint(file, fileContents, configuration);
-    }
+    });
 
     const result = linter.getResult();
 

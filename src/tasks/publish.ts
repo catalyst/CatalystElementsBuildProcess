@@ -3,8 +3,12 @@ import { magenta, yellow } from 'ansi-colors';
 import archiver, { ArchiverOptions, Format as ArchiverFormat } from 'archiver';
 import del from 'del';
 import escapeStringRegexp from 'escape-string-regexp';
-import { createWriteStream } from 'fs';
-import { readdir, readFile, writeFile } from 'fs/promises';
+import {
+  createWriteStream,
+  readdir as _readdir,
+  readFile as _readFile,
+  writeFile as _writeFile
+} from 'fs';
 import { normalize as normalizePath } from 'path';
 import prompt from 'prompt';
 import _gitHubRelease, { PublishReleaseSettings } from 'publish-release';
@@ -14,6 +18,9 @@ import { IConfig } from '../config';
 import { glob, runAllPromises, runCommand, tasksHelpers } from '../util';
 
 // Promisified functions.
+const readdir = promisify(_readdir);
+const readFile = promisify(_readFile);
+const writeFile = promisify(_writeFile);
 const promptGet = promisify(prompt.get);
 const gitHubRelease = promisify(_gitHubRelease);
 
@@ -116,6 +123,9 @@ export async function publishDry(
   return publish(taskName, dryConfig);
 }
 
+/**
+ * Publish the release to npm.
+ */
 async function npmPublish(
   currentBranch: string,
   config: IConfig,

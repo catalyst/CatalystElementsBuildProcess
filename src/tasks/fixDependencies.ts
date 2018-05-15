@@ -1,9 +1,21 @@
 // Libraries.
-import { existsSync } from 'fs';
-import { mkdir, readFile, symlink, writeFile } from 'fs/promises';
+import {
+  existsSync,
+  mkdir as _mkdir,
+  readFile as _readFile,
+  symlink as _symlink,
+  writeFile as _writeFile
+} from 'fs';
+import { promisify } from 'util';
 
 import { IConfig } from '../config';
 import { runAllPromises, tasksHelpers } from '../util';
+
+// Promisified functions.
+const mkdir = promisify(_mkdir);
+const readFile = promisify(_readFile);
+const symlink = promisify(_symlink);
+const writeFile = promisify(_writeFile);
 
 /**
  * Fix prismjs.

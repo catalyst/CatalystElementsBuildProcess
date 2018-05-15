@@ -2,7 +2,7 @@
 import { cyan, green, magenta, red, yellow } from 'ansi-colors';
 import cheerio from 'cheerio';
 import eslint from 'eslint';
-import { access, readFile } from 'fs/promises';
+import { access as _access, readFile as _readFile } from 'fs';
 import {
   isAbsolute as isAbsolutePath,
   relative as relativePathBetween
@@ -13,9 +13,14 @@ import {
   Linter as TsLinter,
   LintResult as TsLintResult
 } from 'tslint';
+import { promisify } from 'util';
 
 import { IConfig } from '../config';
 import { glob, runAllPromises, tasksHelpers, transpose } from '../util';
+
+// Promisified functions.
+const access = promisify(_access);
+const readFile = promisify(_readFile);
 
 /**
  * A linting error that can be displayed.

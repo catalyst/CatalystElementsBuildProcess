@@ -2,8 +2,17 @@
 import cheerio from 'cheerio';
 import escodegen from 'escodegen';
 import esprima from 'esprima';
-import { constants, createReadStream, createWriteStream, existsSync } from 'fs';
-import { access, copyFile, readdir, readFile, writeFile } from 'fs/promises';
+import {
+  access as _access,
+  constants,
+  copyFile as _copyFile,
+  createReadStream,
+  createWriteStream,
+  existsSync,
+  readdir as _readdir,
+  readFile as _readFile,
+  writeFile as _writeFile
+} from 'fs';
 import flatmap from 'gulp-flatmap';
 import rename from 'gulp-rename';
 import mergeStream from 'merge-stream';
@@ -40,6 +49,13 @@ import {
   runAllPromises,
   tasksHelpers
 } from '../util';
+
+// Promisified functions.
+const access = promisify(_access);
+const copyFile = promisify(_copyFile);
+const readdir = promisify(_readdir);
+const readFile = promisify(_readFile);
+const writeFile = promisify(_writeFile);
 
 // The temp
 const tempSubpath = 'docs';

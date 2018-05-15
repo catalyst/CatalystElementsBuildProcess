@@ -1,6 +1,7 @@
 // Libraries.
 import deepMerge from 'deepmerge';
-import { readFile } from 'fs/promises';
+import { readFile as _readFile } from 'fs';
+import { promisify } from 'util';
 
 // Config
 import { defaultConfig, IConfig } from './config';
@@ -14,6 +15,9 @@ import { lint } from './tasks/lint';
 import { publish, publishDry } from './tasks/publish';
 import { test } from './tasks/test';
 import { cleanTemp } from './util';
+
+// Promisified functions.
+const readFile = promisify(_readFile);
 
 /**
  * Get the config for the build process.

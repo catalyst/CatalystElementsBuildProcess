@@ -1,5 +1,5 @@
 // Libraries.
-import { copyFile, writeFile } from 'fs/promises';
+import { copyFile as _copyFile, writeFile as _writeFile } from 'fs';
 import {
   basename as getFileBasename,
   extname as getFileExtension,
@@ -19,9 +19,14 @@ import {
   ElementMixin,
   Namespace
 } from 'polymer-analyzer/lib/analysis-format/analysis-format';
+import { promisify } from 'util';
 
 import { IConfig } from '../config';
 import { glob, runAllPromises, tasksHelpers } from '../util';
+
+// Promisified functions.
+const copyFile = promisify(_copyFile);
+const writeFile = promisify(_writeFile);
 
 // The temp path.
 const tempSubpath = 'analyze';

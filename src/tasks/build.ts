@@ -13,7 +13,12 @@ import {
   VariableDeclarator
   // tslint:disable-next-line:no-implicit-dependencies
 } from 'estree';
-import { copyFile, readFile, symlink, writeFile } from 'fs/promises';
+import {
+  copyFile as _copyFile,
+  readFile as _readFile,
+  symlink as _symlink,
+  writeFile as _writeFile
+} from 'fs';
 import { minify as htmlMinifier } from 'html-minifier';
 import sass from 'node-sass';
 import {
@@ -35,6 +40,12 @@ import {
   runAllPromises,
   tasksHelpers
 } from '../util';
+
+// Promisified functions.
+const copyFile = promisify(_copyFile);
+const readFile = promisify(_readFile);
+const symlink = promisify(_symlink);
+const writeFile = promisify(_writeFile);
 
 // The temp path.
 const tempSubpath = 'build';

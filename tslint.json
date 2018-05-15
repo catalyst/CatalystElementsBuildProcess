@@ -185,7 +185,6 @@
     "no-submodule-imports": {
       "options": [
         "cq-prolyfill/postcss-plugin",
-        "fs/promises",
         "polymer-analyzer/lib/analysis-format/analysis-format"
       ]
     },

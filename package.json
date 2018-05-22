@@ -26,6 +26,7 @@
     "lint": "./node_modules/.bin/gulp lint"
   },
   "dependencies": {
+    "@types/shell-quote": "^1.6.0",
     "ansi-colors": "^1.1.0",
     "archiver": "^2.1.1",
     "cheerio": "^1.0.0-rc.2",
@@ -64,6 +65,7 @@
     "prompt": "^1.0.0",
     "publish-release": "^1.5.1",
     "sass-lint": "^1.12.1",
+    "shell-quote": "^1.6.1",
     "simple-git": "^1.92.0",
     "strip-color": "^0.1.0",
     "tslint": "^5.10.0",

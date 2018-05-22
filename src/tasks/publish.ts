@@ -12,6 +12,7 @@ import {
 import { normalize as normalizePath } from 'path';
 import prompt from 'prompt';
 import _gitHubRelease, { PublishReleaseSettings } from 'publish-release';
+import { quote as shellQuote } from 'shell-quote';
 import { promisify } from 'util';
 
 import { IConfig } from '../config';
@@ -794,8 +795,9 @@ async function updateVersion(
     // If there were changes.
     if ((await runCommand('git status --porcelain')) !== '') {
       // Commit them.
-      // FIXME: Shell injection.
-      await runCommand(`git add . && git commit -m "${newVersion}"`);
+      await runCommand(
+        `git add . && git commit -m "${shellQuote([newVersion])}"`
+      );
     }
 
     tasksHelpers.log.successful(subTaskLabel, labelPrefix);
@@ -832,8 +834,7 @@ async function createTag(
 
     tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
-    // FIXME: Shell injection.
-    await runCommand(`git tag ${tag}`);
+    await runCommand(`git tag ${shellQuote([tag])}`);
 
     tasksHelpers.log.successful(subTaskLabel, labelPrefix);
   } catch (error) {
@@ -875,10 +876,8 @@ async function mergeChangesIntoMajorBranch(
 
     tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
-    // FIXME: Shell injection.
-    await runCommand(`git checkout ${majorBranch} -b`);
-    // FIXME: Shell injection.
-    await runCommand(`git merge ${fromBranch}`);
+    await runCommand(`git checkout ${shellQuote([majorBranch])} -b`);
+    await runCommand(`git merge ${shellQuote([fromBranch])}`);
 
     tasksHelpers.log.successful(subTaskLabel, labelPrefix);
   } catch (error) {
@@ -922,9 +921,10 @@ async function releaseToNpm(
     const confirm = await promptUserConfirmPublish();
 
     if (confirm) {
-      // FIXME: Shell injection.
       await runCommand(
-        `npm publish ${normalizePath(`./${config.dist.path}`)} --tag ${npmTag}`
+        `npm publish ${shellQuote([
+          normalizePath(`./${config.dist.path}`)
+        ])} --tag ${shellQuote([npmTag])}`
       );
     } else {
       throw new Error('User aborted.');
@@ -959,8 +959,7 @@ async function restoreBranch(
 
     // No need to check the branch out if it is already checked out.
     if ((await runCommand('rev-parse --abbrev-ref HEAD')) !== branch) {
-      // FIXME: Shell injection.
-      await runCommand(`git checkout ${branch}`);
+      await runCommand(`git checkout ${shellQuote([branch])}`);
     }
 
     tasksHelpers.log.successful(subTaskLabel, labelPrefix);
@@ -1061,10 +1060,11 @@ async function doPushToGit(
     tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
     const branches =
-      majorBranch === null ? [currentBranch] : [currentBranch, majorBranch];
+      majorBranch === null
+        ? `${shellQuote([currentBranch])}`
+        : `${shellQuote([currentBranch])} ${shellQuote([majorBranch])}`;
 
-    // FIXME: Shell injection.
-    await runCommand(`git push origin ${branches.join(' ')}`);
+    await runCommand(`git push origin ${branches}`);
     await runCommand('git push origin --tags');
 
     tasksHelpers.log.successful(subTaskLabel, labelPrefix);

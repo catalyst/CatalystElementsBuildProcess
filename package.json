@@ -26,7 +26,6 @@
     "lint": "./node_modules/.bin/gulp lint"
   },
   "dependencies": {
-    "@types/shell-quote": "^1.6.0",
     "ansi-colors": "^1.1.0",
     "archiver": "^2.1.1",
     "cheerio": "^1.0.0-rc.2",
@@ -88,6 +87,7 @@
     "@types/deepmerge": "^2.1.0",
     "@types/del": "^3.0.1",
     "@types/escape-string-regexp": "0.0.32",
+    "@types/escodegen": "0.0.6",
     "@types/eslint": "^4.16.2",
     "@types/esprima": "^4.0.2",
     "@types/estree": "0.0.39",
@@ -98,6 +98,7 @@
     "@types/merge-stream": "^1.1.0",
     "@types/node": "^10.1.2",
     "@types/node-sass": "^3.10.32",
+    "@types/shell-quote": "^1.6.0",
     "@types/vinyl": "^2.0.2",
     "@types/webpack": "^4.4.0",
     "@types/webpack-sources": "^0.1.4",

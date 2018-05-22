@@ -10,7 +10,7 @@ import {
   writeFile as _writeFile
 } from 'fs';
 import { normalize as normalizePath } from 'path';
-import prompt from 'prompt';
+import _prompt from 'prompt';
 import _gitHubRelease, { PublishReleaseSettings } from 'publish-release';
 import { quote as shellQuote } from 'shell-quote';
 import { promisify } from 'util';
@@ -22,7 +22,7 @@ import { glob, runAllPromises, runCommand, tasksHelpers } from '../util';
 const readdir = promisify(_readdir);
 const readFile = promisify(_readFile);
 const writeFile = promisify(_writeFile);
-const promptGet = promisify(prompt.get);
+const promptGet = promisify(_prompt.get);
 const gitHubRelease = promisify(_gitHubRelease);
 
 const dryRunLabel = magenta(' - dry run');
@@ -49,7 +49,7 @@ export async function publish(
 
   const currentBranch = await runCommand('git rev-parse --abbrev-ref HEAD');
 
-  prompt.start();
+  _prompt.start();
 
   // Publish to npm.
   const publishedInfo = await (async () => {

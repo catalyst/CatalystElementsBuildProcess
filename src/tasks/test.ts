@@ -17,6 +17,10 @@ async function wctTests(config: IConfig, labelPrefix: string): Promise<void> {
   try {
     tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
+    if (config.tests.wctConfig === undefined) {
+      throw new Error(`No config for wct - cannot run wct tests.`);
+    }
+
     if (existsSync(`./${config.dist.path}`)) {
       await runTests(config.tests.wctConfig);
 

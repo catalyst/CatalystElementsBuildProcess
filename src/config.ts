@@ -24,6 +24,7 @@ import postcssImport from 'postcss-import';
 import postcssInitial from 'postcss-initial';
 import postcssPresetEnv from 'postcss-preset-env';
 import postcssReporter from 'postcss-reporter';
+import { Config as WCTConfig } from 'web-component-tester';
 
 // tslint:disable:no-reserved-keywords
 declare interface IConfig {
@@ -326,18 +327,7 @@ declare interface IConfig {
     /**
      * The config for Web Component Tester.
      */
-    readonly wctConfig?: {
-      readonly plugins?: {
-        readonly local?: {
-          readonly browsers?: ReadonlyArray<string>;
-          readonly browserOptions?: {
-            readonly chrome?: ReadonlyArray<string>;
-            readonly firefox?: ReadonlyArray<string>;
-          };
-        };
-      };
-      readonly npm?: boolean;
-    };
+    readonly wctConfig?: WCTConfig;
   };
 
   /**
@@ -489,7 +479,8 @@ const defaultConfig: IConfig = {
             chrome: ['headless', 'disable-gpu'],
             firefox: ['-headless']
           },
-          browsers: ['chrome', 'firefox']
+          browsers: ['chrome', 'firefox'],
+          disabled: false
         }
       }
     }

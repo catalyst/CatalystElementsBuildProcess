@@ -144,7 +144,7 @@ function printLintingErrors(
   labelPrefix: string
 ): void {
   tasksHelpers.log.info(
-    `Rule failures:\n${getLintingOutput(errorsByFile)}`,
+    `Rule warnings and errors:\n${getLintingOutput(errorsByFile)}`,
     labelPrefix,
     subTaskLabel
   );

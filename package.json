@@ -18,7 +18,7 @@
   },
   "homepage": "https://github.com/catalyst/CatalystElementsBuildProcess#readme",
   "scripts": {
-    "build": "./node_modules/.bin/gulp build; ./node_modules/.bin/prettier-eslint --write \"dist/**/*.{js,d.ts}\"",
+    "build": "./node_modules/.bin/gulp build && ./node_modules/.bin/prettier-eslint --write \"dist/**/*.{js,d.ts}\" || echo \"Failed to pretty all built files.\"",
     "do-publish": "npm run build && npm run lint && ./node_modules/.bin/gulp publish",
     "dry-publish": "npm run build && npm run lint && ./node_modules/.bin/gulp publishDry",
     "format": "./node_modules/.bin/prettier-eslint --write \"{{src,test,demo,tasks}/**/*.{ts,js,jsm,css,scss},./*.{ts,js,jsm,json,md}}\"",

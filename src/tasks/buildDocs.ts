@@ -14,6 +14,7 @@ import {
   writeFile as _writeFile
 } from 'fs';
 import flatmap from 'gulp-flatmap';
+import modifyFile from 'gulp-modify-file';
 import rename from 'gulp-rename';
 import mergeStream from 'merge-stream';
 import {
@@ -33,7 +34,7 @@ import {
 } from 'polymer-analyzer/lib/analysis-format/analysis-format';
 import { PolymerProject } from 'polymer-build';
 import promisePipe from 'promisepipe';
-import gitAbstract from 'simple-git';
+import getGitInstance from 'simple-git';
 import { Stream } from 'stream';
 import { promisify } from 'util';
 import VinylFile from 'vinyl';
@@ -96,7 +97,7 @@ async function cloneRepository(
   try {
     tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
-    const gitInstance = gitAbstract();
+    const gitInstance = getGitInstance();
     const clone = promisify(gitInstance.clone.bind(gitInstance));
     await clone(repoPath, dirPath, { '--quiet': null });
 
@@ -171,7 +172,7 @@ async function cloneRepositories(
         await cloneRepository(repositoryPath, clonePath, labelPrefix);
       }
 
-      const gitInstance = gitAbstract(clonePath);
+      const gitInstance = getGitInstance(clonePath);
       const checkout = promisify(gitInstance.checkout.bind(gitInstance));
       await checkout([`v${version}`, '--quiet']);
     })

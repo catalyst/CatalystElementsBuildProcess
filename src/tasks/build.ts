@@ -1,6 +1,6 @@
 // Libraries.
 import escodegen from 'escodegen';
-import esprima, { Program } from 'esprima';
+import { parseModule, parseScript, Program } from 'esprima';
 import {
   ClassDeclaration,
   ExportNamedDeclaration,
@@ -16,8 +16,7 @@ import {
 import {
   copyFile as _copyFile,
   readFile as _readFile,
-  symlink as _symlink,
-  writeFile as _writeFile
+  symlink as _symlink
 } from 'fs';
 import { minify as htmlMinifier } from 'html-minifier';
 import sass from 'node-sass';
@@ -34,18 +33,18 @@ import webpack from 'webpack';
 import { IConfig } from '../config';
 import {
   cleanDist,
+  copyFile,
   getInjectRegExp,
   getWebpackPlugIns,
   glob,
   runAllPromises,
-  tasksHelpers
+  tasksHelpers,
+  writeFile
 } from '../util';
 
 // Promisified functions.
-const copyFile = promisify(_copyFile);
 const readFile = promisify(_readFile);
 const symlink = promisify(_symlink);
-const writeFile = promisify(_writeFile);
 
 // The temp path.
 const tempSubpath = 'build';
@@ -57,7 +56,7 @@ const tempEntrypointFileBaseName = 'entrypoint';
  * @param javascript - The JavaScript
  */
 function getStaticImportLocalNames(javascript: string): ReadonlyArray<string> {
-  const program = esprima.parseModule(javascript);
+  const program = parseModule(javascript);
 
   return program.body.reduce(
     (imports, node) => {
@@ -109,7 +108,7 @@ async function checkSourceFiles(
         flag: 'r'
       }
     );
-    const program = esprima.parseModule(entrypoint);
+    const program = parseModule(entrypoint);
 
     const defaultExports = program.body.reduce((count, node) => {
       if (node.type === 'ExportDefaultDeclaration') {
@@ -353,14 +352,15 @@ async function compileSASS(
         file,
         outputStyle: 'expanded'
       })).css.toString('utf8');
-      const processedCss = await postcss(...postcssPlugins).process(
+      // tslint:disable-next-line:readonly-array
+      const processedCss = await postcss(postcssPlugins as postcss.AcceptedPlugin[]).process(
         css,
         postcssOptions
       );
       const finalizedCss = processedCss.css.replace(/\n/g, '');
 
       await writeFile(
-        `./${config.temp.path}/${tempSubpath}/${getFileBasename(file)}`,
+        `./${config.temp.path}/${tempSubpath}/${getFileBasename(file, getFileExtension(file))}.css`,
         finalizedCss
       );
     });
@@ -561,7 +561,7 @@ function processImports(
             );
           }
 
-          const insert = esprima.parseScript(
+          const insert = parseScript(
             `const ${localName} = window.CatalystElements.${importedName};`
           ).body;
           const offsetInsertIndex = insertIndex + reducedBodyInfo.offset;
@@ -619,7 +619,7 @@ function processExportWithSpecifiers(
       }
 
       // Generate insert.
-      const insert = esprima.parseScript(
+      const insert = parseScript(
         `window.CatalystElements.${exportedName} = ${localName};`
       ).body;
       const offsetInsertIndex = insertIndex + updateInfo.offset;
@@ -682,7 +682,7 @@ function processExportWithDeclaration(
       }
 
       // Generate insert.
-      const insert = esprima.parseScript(
+      const insert = parseScript(
         `window.CatalystElements.${dec.id.name} = ${dec.id.name};`
       ).body;
       const offsetInsertIndex = insertIndex + updateInfo.offset;
@@ -786,7 +786,7 @@ async function initializeScriptFile(
       flag: 'r'
     });
 
-    const program = esprima.parseModule(fileContent);
+    const program = parseModule(fileContent);
     const { strippedCode, esImports, esExports } = stripImportsAndExports(
       config,
       program
@@ -1041,7 +1041,7 @@ async function finalizeScript(
       target: 'web'
     } as any);
 
-    const runCompiler = promisify(compiler.run.bind(compiler));
+    const runCompiler = promisify(compiler.run.bind(compiler) as typeof compiler.run);
     const stats = await runCompiler();
 
     // tslint:disable-next-line:no-console
@@ -1072,7 +1072,7 @@ async function buildModule(
   const subTaskLabel = 'module';
 
   try {
-    if (!config.build.module.build) {
+    if (!config.build.module.create) {
       tasksHelpers.log.info(
         `skipping ${subTaskLabel} - turned off in config.`,
         labelPrefix
@@ -1110,7 +1110,7 @@ async function buildScript(
   const subTaskLabel = 'script';
 
   try {
-    if (!config.build.script.build) {
+    if (!config.build.script.create) {
       tasksHelpers.log.info(
         `skipping ${subTaskLabel} - turned off in config.`,
         labelPrefix
@@ -1190,7 +1190,7 @@ async function finalizePackageJson(
 
     const updatedContent = Object.keys(modifiedContent)
       .filter(key =>
-        ['scripts', 'directories', 'devDependencies', 'engines'].includes(key)
+        !['scripts', 'directories', 'devDependencies', 'engines'].includes(key)
       )
       .reduce(
         (content, key) => {
@@ -1260,7 +1260,7 @@ async function buildSymlinks(
       `./${config.dist.path}/${config.componenet.name}**.?(m)js`
     );
     // tslint:disable-next-line:promise-function-async
-    await Promise.all(files.map(file => symlink(file, './', 'file')));
+    await Promise.all(files.map(file => symlink(file, `./${getFileBasename(file)}`, 'file')));
 
     tasksHelpers.log.successful(subTaskLabel, labelPrefix);
   } catch (error) {

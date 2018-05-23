@@ -4,7 +4,17 @@ import del from 'del';
 import escapeStringRegexp from 'escape-string-regexp';
 import exec from 'exec-chainable';
 import log from 'fancy-log';
+import {
+  access as _access,
+  createReadStream,
+  createWriteStream,
+  existsSync,
+  mkdir as _mkdir,
+  writeFile as _nodeWriteFile
+} from 'fs';
 import nodeGlob from 'glob';
+import { dirname, join as joinPath, sep as pathSeperator } from 'path';
+import promisePipe from 'promisepipe';
 import stripColor from 'strip-color';
 import { promisify } from 'util';
 import { Plugin } from 'webpack';
@@ -15,6 +25,9 @@ import { PreWebpackClosureCompilerPlugin } from './classes/PreWebpackClosureComp
 import { IConfig } from './config';
 
 // Promisified functions.
+const access = promisify(_access);
+const mkdir = promisify(_mkdir);
+const nodeWriteFile = promisify(_nodeWriteFile);
 const nodeGlobPromise = promisify(nodeGlob);
 
 /**
@@ -194,6 +207,7 @@ export async function cleanDocs(
 export async function glob(
   pattern: string | ReadonlyArray<string>,
   options?: nodeGlob.IOptions
+
   // tslint:disable-next-line:readonly-array
 ): Promise<string[]> {
   if (Array.isArray(pattern)) {
@@ -213,6 +227,7 @@ export async function glob(
  */
 export function transpose<T>(
   array: ReadonlyArray<ReadonlyArray<T>>
+
   // tslint:disable-next-line:readonly-array
 ): T[][] {
   return array[0].map((_, index) => array.map(row => row[index]));
@@ -235,4 +250,59 @@ export function getInjectRegExp(keyword: string): RegExp {
  */
 export async function runCommand(command: string): Promise<string> {
   return (await exec(command)).replace(/\n$/, '');
+}
+
+/**
+ * Create the given directory (and parent directories if needed).
+ */
+export async function mkdirp(dirPath: string): Promise<void> {
+  const parts = dirPath.split(pathSeperator);
+  await Promise.all(
+    parts.map(async (_, i) => {
+      const subPath = joinPath(...parts.slice(0, i + 1));
+
+      if (!existsSync(subPath)) {
+        // tslint:disable-next-line:no-magic-numbers
+        mkdir(subPath, 0o777);
+      }
+    })
+  );
+}
+
+/**
+ * Write a file to disk. If the directory doesn't exist, create it first.
+ */
+export async function writeFile(
+  path: string,
+  data: any,
+  options?:
+    | string
+    | {
+        readonly encoding?: string | null | undefined;
+        readonly mode?: string | number | undefined;
+        readonly flag?: string | undefined;
+      }
+    | null
+    | undefined
+): Promise<void> {
+  const dir = dirname(path);
+  if (!(dir === '.' || dir.search(/^\.\.\/.*/) === 0)) {
+    await mkdirp(dir);
+  }
+  return nodeWriteFile(path, data, options);
+}
+
+/**
+ * Copy a file on disk. If the directory doesn't exist, create it first.
+ */
+export async function copyFile(src: string, dest: string): Promise<void> {
+  const dir = dirname(dest);
+
+  await access(src);
+
+  if (!(dir === '.' || dir.search(/^\.\.\/.*/) === 0)) {
+    await mkdirp(dir);
+  }
+
+  return promisePipe(createReadStream(src), createWriteStream(dest));
 }

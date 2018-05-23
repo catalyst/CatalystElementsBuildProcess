@@ -39,14 +39,17 @@ export async function getConfig(options?: Partial<IConfig>): Promise<IConfig> {
   }
 
   // Make sure the there is a name field.
-  if (projectPackage.name == null || typeof projectPackage.name !== 'string') {
+  if (
+    Object.prototype.hasOwnProperty(projectPackage.name) ||
+    typeof projectPackage.name !== 'string'
+  ) {
     throw new Error(
       'package.json does not contain a name property as a string'
     );
   }
 
   // Get the package scope of the component
-  const packageScope: string = projectPackage.name.substring(
+  const packageScope = projectPackage.name.substring(
     0,
     projectPackage.name.lastIndexOf('/')
   );
@@ -78,7 +81,7 @@ export async function getConfig(options?: Partial<IConfig>): Promise<IConfig> {
       : deepMerge.all<IConfig>([defaultConfig, autoLoadedConfig]);
 
   // Check the new config is all good.
-  if (!(config.build.script.build || config.build.module.build)) {
+  if (!(config.build.script.create || config.build.module.create)) {
     throw new Error(
       'Invalid config - Both building of the module and the script cannot be turned off.'
     );
@@ -98,41 +101,53 @@ export const tasks = {
   /**
    * Analyse the component.
    */
-  analyze: (taskName = 'analyze', config?: IConfig) => async () => {
+  analyze: (
+    taskName = 'analyze',
+    config?: Promise<IConfig> | IConfig
+  ) => async () => {
     if (config === undefined) {
       return analyze(taskName, await getConfig());
     }
-    return analyze(taskName, config);
+    return analyze(taskName, await config);
   },
 
   /**
    * Build the component.
    */
-  build: (taskName = 'build', config?: IConfig) => async () => {
+  build: (
+    taskName = 'build',
+    config?: Promise<IConfig> | IConfig
+  ) => async () => {
     if (config === undefined) {
       return build(taskName, await getConfig());
     }
-    return build(taskName, config);
+    return build(taskName, await config);
   },
 
   /**
    * Build the docs for the component.
    */
-  buildDocs: (taskName = 'docs', config?: IConfig) => async () => {
+  buildDocs: (
+    taskName = 'docs',
+    config?: Promise<IConfig> | IConfig
+  ) => async () => {
     if (config === undefined) {
       return buildDocs(taskName, await getConfig());
     }
-    return buildDocs(taskName, config);
+    return buildDocs(taskName, await config);
   },
 
   /**
    * Clean the temp folder.
    */
-  clean: (taskName = 'clean', config?: IConfig) => async () => {
+  clean: (
+    taskName = 'clean',
+    config?: Promise<IConfig> | IConfig
+  ) => async () => {
     if (config === undefined) {
       return cleanTemp(await getConfig(), taskName);
     }
-    return cleanTemp(config, taskName);
+    return cleanTemp(await config, taskName);
   },
 
   /**
@@ -140,32 +155,38 @@ export const tasks = {
    */
   fixDependencies: (
     taskName = 'fix dependencies',
-    config?: IConfig
+    config?: Promise<IConfig> | IConfig
   ) => async () => {
     if (config === undefined) {
       return fixDependencies(taskName, await getConfig());
     }
-    return fixDependencies(taskName, config);
+    return fixDependencies(taskName, await config);
   },
 
   /**
    * Lint the component's source code.
    */
-  lint: (taskName = 'lint', config?: IConfig) => async () => {
+  lint: (
+    taskName = 'lint',
+    config?: Promise<IConfig> | IConfig
+  ) => async () => {
     if (config === undefined) {
       return lint(taskName, await getConfig());
     }
-    return lint(taskName, config);
+    return lint(taskName, await config);
   },
 
   /**
    * Publish the component.
    */
-  publish: (taskName = 'publish', config?: IConfig) => async () => {
+  publish: (
+    taskName = 'publish',
+    config?: Promise<IConfig> | IConfig
+  ) => async () => {
     if (config === undefined) {
       return publish(taskName, await getConfig());
     }
-    return publish(taskName, config);
+    return publish(taskName, await config);
   },
 
   /**
@@ -173,21 +194,24 @@ export const tasks = {
    */
   publishDry: (
     taskName = 'publish (dry run), config',
-    config?: IConfig
+    config?: Promise<IConfig> | IConfig
   ) => async () => {
     if (config === undefined) {
       return publishDry(taskName, await getConfig());
     }
-    return publishDry(taskName, config);
+    return publishDry(taskName, await config);
   },
 
   /**
    * Test the component.
    */
-  test: (taskName = 'test', config?: IConfig) => async () => {
+  test: (
+    taskName = 'test',
+    config?: Promise<IConfig> | IConfig
+  ) => async () => {
     if (config === undefined) {
       return test(taskName, await getConfig());
     }
-    return test(taskName, config);
+    return test(taskName, await config);
   }
 };

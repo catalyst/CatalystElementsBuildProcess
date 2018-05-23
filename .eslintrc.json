@@ -38,6 +38,7 @@
         "ignoreTemplateLiterals": true,
         "ignoreRegExpLiterals": true
       }
-    ]
+    ],
+    "capitalized-comments": "off"
   }
 }

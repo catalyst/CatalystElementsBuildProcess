@@ -2,7 +2,7 @@
 import { cyan, green, magenta, red, yellow } from 'ansi-colors';
 import cheerio from 'cheerio';
 import eslint from 'eslint';
-import { access as _access, readFile as _readFile } from 'fs';
+import { access as _access, existsSync, readFile as _readFile } from 'fs';
 import {
   isAbsolute as isAbsolutePath,
   relative as relativePathBetween
@@ -107,7 +107,7 @@ function getLintingErrorsOutput(errors: ReadonlyArray<ILintingError>): string {
     .map(error =>
       getLintingErrorOutput(error, lineLength, colLength, ruleLength)
     )
-    .reduce((previous, current) => previous + '\n  ' + current, '');
+    .reduce((previous, current) => `${previous}\n  ${current}`, '');
 }
 
 /**
@@ -115,8 +115,11 @@ function getLintingErrorsOutput(errors: ReadonlyArray<ILintingError>): string {
  */
 function getFileLintingOutput(
   file: string,
-  errors: ReadonlyArray<ILintingError>
+  errors?: ReadonlyArray<ILintingError>
 ): string {
+  if (errors === undefined || errors.length === 0) {
+    return '';
+  }
   return `${getFilepathOutputForLintingJob(file)}\n  ${getLintingErrorsOutput(
     errors
   )}`;
@@ -126,11 +129,15 @@ function getFileLintingOutput(
  * Get the complete linting output for a task.
  */
 function getLintingOutput(errorsByFile: {
-  readonly [file: string]: ReadonlyArray<ILintingError>;
+  readonly [file: string]: ReadonlyArray<ILintingError> | undefined;
 }): string {
   return Object.entries(errorsByFile)
     .map(fileErrors => getFileLintingOutput(fileErrors[0], fileErrors[1]))
-    .reduce((previous, current) => previous + '\n\n' + current);
+    .reduce(
+      (previous, current) =>
+        current === '' ? previous : `${previous}\n\n${current}`,
+      ''
+    );
 }
 
 /**
@@ -138,7 +145,7 @@ function getLintingOutput(errorsByFile: {
  */
 function printLintingErrors(
   errorsByFile: {
-    readonly [file: string]: ReadonlyArray<ILintingError>;
+    readonly [file: string]: ReadonlyArray<ILintingError> | undefined;
   },
   subTaskLabel: string,
   labelPrefix: string
@@ -288,6 +295,10 @@ async function lintTS(labelPrefix: string): Promise<void> {
   const subTaskLabel = 'TypeScript';
 
   try {
+    if (!existsSync('./tsconfig.json')) {
+      return;
+    }
+
     tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
     await access('./tsconfig.json');
@@ -339,8 +350,6 @@ async function lintJSFiles(
   const subTaskLabel = 'Files';
 
   try {
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
-
     const linter = new eslint.CLIEngine({
       configFile: './.eslintrc.json'
     });
@@ -504,10 +513,16 @@ async function lintJS(config: IConfig, labelPrefix: string): Promise<void> {
   const subTaskLabel = 'JavaScript';
 
   try {
+    if (!existsSync('./.eslintrc.json')) {
+      return;
+    }
+
     const subTaskLabelPrefix = tasksHelpers.log.starting(
       subTaskLabel,
       labelPrefix
     );
+
+    await access('./.eslintrc.json');
 
     await runAllPromises([
       lintJSFiles(config, subTaskLabelPrefix),
@@ -531,7 +546,13 @@ async function lintSass(config: IConfig, labelPrefix: string): Promise<void> {
   const subTaskLabel = 'Sass';
 
   try {
+    if (!existsSync('./.sass-lint.yml')) {
+      return;
+    }
+
     tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+
+    await access('./.sass-lint.yml');
 
     const results: sassLintResults = sassLint.lintFiles(
       `./${config.src.path}/**/*.scss`,

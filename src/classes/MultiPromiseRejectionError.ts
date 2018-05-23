@@ -35,11 +35,15 @@ export class MultiPromiseRejectionError<T> extends Error {
    * Get the message for this error.
    */
   public get message(): string {
+    const errorsOutput = this.promiseErrors.reduce((stringOutput, error) => {
+      return `${stringOutput}\n  - ${
+        error.stack === undefined ? error.message : `${error.stack}\n`
+      }`;
+    }, '');
+
     return `${this.promiseErrors.length} out of ${
       this.promiseErrors.length
-    } promise were rejected.\nRejected errors:\n  - ${this.promiseErrors.join(
-      '\n  - '
-    )}`;
+    } promise were rejected.\nRejected errors:${errorsOutput}`;
   }
 
   /**

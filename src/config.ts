@@ -16,13 +16,9 @@ import cssMQPacker from 'css-mqpacker';
 import cssnano from 'cssnano';
 import { Options as htmlMinifierOptions } from 'html-minifier';
 import postcss from 'postcss';
-import postcssAutoReset from 'postcss-autoreset';
 import postcssCssNext from 'postcss-cssnext';
 import postcssFontMagician from 'postcss-font-magician';
-import postcssImageSet from 'postcss-image-set-polyfill';
 import postcssImport from 'postcss-import';
-import postcssInitial from 'postcss-initial';
-import postcssPresetEnv from 'postcss-preset-env';
 import postcssReporter from 'postcss-reporter';
 import { Config as WCTConfig } from 'web-component-tester';
 
@@ -37,9 +33,9 @@ declare interface IConfig {
      */
     readonly module: {
       /**
-       * Build the module?
+       * Create the module?
        */
-      readonly build: boolean;
+      readonly create: boolean;
 
       /**
        * Module extension
@@ -52,9 +48,9 @@ declare interface IConfig {
      */
     readonly script: {
       /**
-       * Build the script?
+       * Create the script?
        */
-      readonly build: boolean;
+      readonly create: boolean;
 
       /**
        * Script extension
@@ -340,14 +336,38 @@ declare interface IConfig {
 }
 // tslint:enable:no-reserved-keywords
 
+const postcssSettings = {
+  options: {},
+  plugins: [
+    postcssImport(),
+    postcssCqProlyfill(),
+    postcssFontMagician(),
+    postcssCssNext({
+      browsers: ['last 5 versions', '>= 1%', 'ie >= 11'],
+      features: {
+        customProperties: false
+      }
+    }),
+    cssMQPacker(),
+    colorGuard(),
+    cssnano({
+      autoprefixer: false,
+      discardComments: {
+        removeAll: true
+      }
+    }),
+    postcssReporter()
+  ]
+};
+
 const defaultConfig: IConfig = {
   build: {
     module: {
-      build: true,
+      create: true,
       extension: '.mjs'
     },
     script: {
-      build: true,
+      create: true,
       extension: '.min.js',
       bundleImports: false,
       exportAllStaticImports: false
@@ -360,13 +380,12 @@ const defaultConfig: IConfig = {
         ignoreCustomFragments: [/<demo-snippet>[\s\S]*<\/demo-snippet>/],
 
         // HtmlMinifier does not have support for async functions.
-        // minifyCSS: (css: string, type: string, cb: (result: string) => void ) => {
-        //   (async () => {
-        //     const { css: processedCss } = await postcss(postcssPlugins).process(
-        //       css
-        //     );
-        //     cb(processedCss);
-        //   })();
+        // minifyCSS: async (css: string, type: string, cb: (result: string) => void) => {
+        //   const { css: processedCss } = await postcss(postcssSettings.plugins).process(
+        //     css,
+        //     postcssSettings.options
+        //   );
+        //   cb(processedCss);
         // },
         minifyCSS: true,
         minifyJS: true,
@@ -379,33 +398,7 @@ const defaultConfig: IConfig = {
         trimCustomFragments: true,
         useShortDoctype: true
       },
-      postcss: {
-        options: {},
-        plugins: [
-          postcssImport(),
-          postcssAutoReset(),
-          postcssInitial(),
-          postcssPresetEnv(),
-          postcssCqProlyfill(),
-          postcssImageSet(),
-          postcssFontMagician(),
-          postcssCssNext({
-            browsers: ['last 5 versions', '>= 1%', 'ie >= 11'],
-            features: {
-              customProperties: false
-            }
-          }),
-          cssMQPacker(),
-          colorGuard(),
-          cssnano({
-            autoprefixer: false,
-            discardComments: {
-              removeAll: true
-            }
-          }),
-          postcssReporter()
-        ]
-      }
+      postcss: postcssSettings
     }
   },
   componenet: {},

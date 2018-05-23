@@ -525,7 +525,7 @@ async function fileCheckModule(
     const filename = `${config.componenet.name}${
       config.build.module.extension
     }`;
-    if (config.build.module.build && !distFiles.includes(filename)) {
+    if (config.build.module.create && !distFiles.includes(filename)) {
       throw new Error(
         `Module file missing ` +
           `(cannot find "./${config.dist.path}/${filename}").`
@@ -567,7 +567,7 @@ async function fileCheckScript(
     const filename = `${config.componenet.name}${
       config.build.script.extension
     }`;
-    if (config.build.script.build && !distFiles.includes(filename)) {
+    if (config.build.script.create && !distFiles.includes(filename)) {
       throw new Error(
         `Script file missing ` +
           `(cannot find "./${config.dist.path}/${filename}").`

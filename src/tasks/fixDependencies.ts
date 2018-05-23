@@ -117,7 +117,7 @@ async function fixAsync(config: IConfig, labelPrefix: string): Promise<void> {
     tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
     if (!existsSync(`./${config.nodeModulesPath}/async/lib/`)) {
-      await mkdir(`./${config.nodeModulesPath}/async/lib/`, 0o777); // tslint:disable-line:no-magic-numbers
+      await mkdir(`./${config.nodeModulesPath}/async/lib/`, 0o777); // Tslint:disable-line:no-magic-numbers
     }
 
     await symlink(
@@ -158,7 +158,7 @@ async function fixSinon(config: IConfig, labelPrefix: string): Promise<void> {
     tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
     if (!existsSync(`./${config.nodeModulesPath}/sinonjs`)) {
-      await mkdir(`./${config.nodeModulesPath}/sinonjs`, 0o777); // tslint:disable-line:no-magic-numbers
+      await mkdir(`./${config.nodeModulesPath}/sinonjs`, 0o777); // Tslint:disable-line:no-magic-numbers
     }
 
     await symlink(
@@ -190,6 +190,15 @@ async function fixIronScrollManager(
     const file = `./${
       config.nodeModulesPath
     }/@polymer/iron-overlay-behavior/iron-scroll-manager.js`;
+
+    if (!existsSync(file)) {
+      tasksHelpers.log.info(
+        `skipping "${subTaskLabel}" - file doesn't exist.`,
+        labelPrefix
+      );
+
+      return;
+    }
 
     const content = await readFile(file, 'utf8');
 

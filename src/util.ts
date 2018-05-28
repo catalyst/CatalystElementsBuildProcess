@@ -9,6 +9,7 @@ import {
   createReadStream,
   createWriteStream,
   existsSync,
+  lstat as _lstat,
   mkdir as _mkdir,
   writeFile as _nodeWriteFile
 } from 'fs';
@@ -26,6 +27,7 @@ import { IConfig } from './config';
 
 // Promisified functions.
 const access = promisify(_access);
+const lstat = promisify(_lstat);
 const mkdir = promisify(_mkdir);
 const nodeWriteFile = promisify(_nodeWriteFile);
 const nodeGlobPromise = promisify(nodeGlob);
@@ -298,6 +300,9 @@ export async function writeFile(
 export async function copyFile(src: string, dest: string): Promise<void> {
   const dir = dirname(dest);
 
+  if (!(await lstat(src)).isFile()) {
+    throw new InvalidFilePathError();
+  }
   await access(src);
 
   if (!(dir === '.' || dir.search(/^\.\.\/.*/) === 0)) {
@@ -305,4 +310,10 @@ export async function copyFile(src: string, dest: string): Promise<void> {
   }
 
   return promisePipe(createReadStream(src), createWriteStream(dest));
+}
+
+export class InvalidFilePathError extends Error {
+  public constructor() {
+    super('Invalid file given.');
+  }
 }

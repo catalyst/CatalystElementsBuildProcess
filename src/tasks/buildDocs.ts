@@ -5,13 +5,11 @@ import esprima from 'esprima';
 import {
   access as _access,
   constants,
-  copyFile as _copyFile,
   createReadStream,
   createWriteStream,
   existsSync,
   readdir as _readdir,
   readFile as _readFile,
-  writeFile as _writeFile
 } from 'fs';
 import flatmap from 'gulp-flatmap';
 import modifyFile from 'gulp-modify-file';
@@ -45,18 +43,18 @@ import webpackStream from 'webpack-stream';
 import { IConfig } from '../config';
 import {
   cleanDocs,
+  copyFile,
   getWebpackPlugIns,
   glob,
   runAllPromises,
-  tasksHelpers
+  tasksHelpers,
+  writeFile
 } from '../util';
 
 // Promisified functions.
 const access = promisify(_access);
-const copyFile = promisify(_copyFile);
 const readdir = promisify(_readdir);
 const readFile = promisify(_readFile);
-const writeFile = promisify(_writeFile);
 
 // The temp
 const tempSubpath = 'docs';

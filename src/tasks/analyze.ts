@@ -1,5 +1,4 @@
 // Libraries.
-import { copyFile as _copyFile, writeFile as _writeFile } from 'fs';
 import {
   basename as getFileBasename,
   extname as getFileExtension,
@@ -19,14 +18,15 @@ import {
   ElementMixin,
   Namespace
 } from 'polymer-analyzer/lib/analysis-format/analysis-format';
-import { promisify } from 'util';
 
 import { IConfig } from '../config';
-import { glob, runAllPromises, tasksHelpers } from '../util';
-
-// Promisified functions.
-const copyFile = promisify(_copyFile);
-const writeFile = promisify(_writeFile);
+import {
+  copyFile,
+  glob,
+  runAllPromises,
+  tasksHelpers,
+  writeFile
+} from '../util';
 
 // The temp path.
 const tempSubpath = 'analyze';
@@ -58,6 +58,7 @@ function fixAnalysis(
 function fixAnalysisElements(
   elements: ReadonlyArray<Element> | undefined,
   config: IConfig
+
   // tslint:disable-next-line:readonly-array
 ): Element[] | undefined {
   if (elements === undefined) {
@@ -79,6 +80,7 @@ function fixAnalysisElements(
 function fixAnalysisElementMixins(
   elementMixins: ReadonlyArray<ElementMixin> | undefined,
   config: IConfig
+
   // tslint:disable-next-line:readonly-array
 ): ElementMixin[] | undefined {
   if (elementMixins === undefined) {
@@ -100,6 +102,7 @@ function fixAnalysisElementMixins(
 function fixAnalysisNamespaces(
   namespaces: ReadonlyArray<Namespace> | undefined,
   config: IConfig
+
   // tslint:disable-next-line:readonly-array
 ): Namespace[] | undefined {
   if (namespaces === undefined) {
@@ -122,6 +125,7 @@ function fixAnalysisNamespaces(
 function fixAnalysisClasses(
   classes: ReadonlyArray<Class> | undefined,
   config: IConfig
+
   // tslint:disable-next-line:readonly-array
 ): Class[] | undefined {
   if (classes === undefined) {
@@ -165,6 +169,7 @@ function fixAnalysisComponentPath(
  */
 function fixAnalysisComponentDemos(
   component: Class
+
   // tslint:disable-next-line:readonly-array
 ): Demo[] {
   // No path? Don't change anything.
@@ -249,6 +254,7 @@ async function generateAnalysis(
         packageDir: './'
       })
     });
+
     // tslint:disable-next-line:readonly-array
     const analysis = await analyzer.analyze(files);
     const formattedAnalysis = processAnalysis(analysis, analyzer.urlResolver);

@@ -6,8 +6,7 @@ import escapeStringRegexp from 'escape-string-regexp';
 import {
   createWriteStream,
   readdir as _readdir,
-  readFile as _readFile,
-  writeFile as _writeFile
+  readFile as _readFile
 } from 'fs';
 import { normalize as normalizePath } from 'path';
 import _prompt from 'prompt';
@@ -16,12 +15,11 @@ import { quote as shellQuote } from 'shell-quote';
 import { promisify } from 'util';
 
 import { IConfig } from '../config';
-import { glob, runAllPromises, runCommand, tasksHelpers } from '../util';
+import { glob, runAllPromises, runCommand, tasksHelpers, writeFile } from '../util';
 
 // Promisified functions.
 const readdir = promisify(_readdir);
 const readFile = promisify(_readFile);
-const writeFile = promisify(_writeFile);
 const promptGet = promisify(_prompt.get);
 const gitHubRelease = promisify(_gitHubRelease);
 

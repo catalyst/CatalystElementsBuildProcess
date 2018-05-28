@@ -3,19 +3,17 @@ import {
   existsSync,
   mkdir as _mkdir,
   readFile as _readFile,
-  symlink as _symlink,
-  writeFile as _writeFile
+  symlink as _symlink
 } from 'fs';
 import { promisify } from 'util';
 
 import { IConfig } from '../config';
-import { runAllPromises, tasksHelpers } from '../util';
+import { runAllPromises, tasksHelpers, writeFile } from '../util';
 
 // Promisified functions.
 const mkdir = promisify(_mkdir);
 const readFile = promisify(_readFile);
 const symlink = promisify(_symlink);
-const writeFile = promisify(_writeFile);
 
 /**
  * Fix prismjs.

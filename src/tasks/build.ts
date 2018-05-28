@@ -1,4 +1,5 @@
 // Libraries.
+import del from 'del';
 import escodegen from 'escodegen';
 import { parseModule, parseScript, Program } from 'esprima';
 import {
@@ -14,7 +15,7 @@ import {
   // tslint:disable-next-line:no-implicit-dependencies
 } from 'estree';
 import {
-  copyFile as _copyFile,
+  existsSync,
   readFile as _readFile,
   symlink as _symlink
 } from 'fs';
@@ -1259,8 +1260,14 @@ async function buildSymlinks(
     const files = await glob(
       `./${config.dist.path}/${config.componenet.name}**.?(m)js`
     );
-    // tslint:disable-next-line:promise-function-async
-    await Promise.all(files.map(file => symlink(file, `./${getFileBasename(file)}`, 'file')));
+
+    await Promise.all(files.map(async file => {
+      const outFile = `./${getFileBasename(file)}`;
+      if (existsSync(outFile)) {
+        await del(outFile);
+      }
+      await symlink(file, outFile, 'file');
+    }));
 
     tasksHelpers.log.successful(subTaskLabel, labelPrefix);
   } catch (error) {

@@ -1,6 +1,6 @@
 // Libraries.
 import del from 'del';
-import escodegen from 'escodegen';
+import { generate as generateJS } from 'escodegen';
 import { parseModule, parseScript, Program } from 'esprima';
 import {
   ClassDeclaration,
@@ -60,14 +60,14 @@ function getStaticImportLocalNames(javascript: string): ReadonlyArray<string> {
   const program = parseModule(javascript);
 
   return program.body.reduce(
-    (imports, node) => {
+    (reducedImports, node) => {
       if (node.type !== 'ImportDeclaration') {
-        return imports;
+        return reducedImports;
       }
       return [
-        ...imports,
+        ...reducedImports,
         ...node.specifiers.reduce(
-          (specifierImports, specifier) => {
+          (reducedSpecifierImports, specifier) => {
             if (
               !(
                 specifier.type === 'ImportDefaultSpecifier' ||
@@ -75,9 +75,9 @@ function getStaticImportLocalNames(javascript: string): ReadonlyArray<string> {
               ) ||
               specifier.local.type !== 'Identifier'
             ) {
-              return specifierImports;
+              return reducedSpecifierImports;
             }
-            return [...specifierImports, specifier.local.name];
+            return [...reducedSpecifierImports, specifier.local.name];
           },
           [] as ReadonlyArray<string>
         )
@@ -111,11 +111,11 @@ async function checkSourceFiles(
     );
     const program = parseModule(entrypoint);
 
-    const defaultExports = program.body.reduce((count, node) => {
+    const defaultExports = program.body.reduce((reducedCount, node) => {
       if (node.type === 'ExportDefaultDeclaration') {
-        return count + 1;
+        return reducedCount + 1;
       }
-      return count;
+      return reducedCount;
     }, 0);
 
     if (defaultExports > 0) {
@@ -149,11 +149,11 @@ async function prepareEntrypoint(
       `./${config.temp.path}/${tempSubpath}`
     );
 
-    const depthChange = pathChange.split('/').reduce((change, segment) => {
+    const depthChange = pathChange.split('/').reduce((reducedChange, segment) => {
       if (segment === '' || segment === '.') {
-        return change;
+        return reducedChange;
       }
-      return change + (segment === '..' ? -1 : 1);
+      return reducedChange + (segment === '..' ? -1 : 1);
     }, 0);
 
     const fileContent = await readFile(
@@ -442,34 +442,32 @@ async function initializeModuleFile(
  *
  * @param program - The parsed code.
  */
-function stripImportsAndExports(
+function getImportsAndExports(
   config: IConfig,
   program: Program
 ): {
-  readonly strippedCode: Program;
-  readonly esImports: Map<number, ImportDeclaration>;
-  readonly esExports: Map<number, ExportNamedDeclaration>;
+  readonly esImports: ReadonlyArray<number>;
+  readonly esExports: ReadonlyArray<number>;
 } {
   type Wrapper = [
     ReadonlyArray<number>,
-    ReadonlyArray<[number, ImportDeclaration]>,
-    ReadonlyArray<[number, ExportNamedDeclaration]>
+    ReadonlyArray<number>
   ];
 
   // Get info about the code.
-  const [codeIndexesToRemove, esImports, esExports]: Wrapper = Array.from(
+  const [esImports, esExports]: Wrapper = Array.from(
     program.body.entries()
   ).reduce(
-    (reduced, nodeInfo) => {
+    (reducedDetails, nodeInfo) => {
       const [nodeIndex, node] = nodeInfo;
 
       if (node.type === 'ImportDeclaration') {
         // If bundling imports? Don't strip them.
         if (config.build.script.bundleImports) {
-          return reduced;
+          return reducedDetails;
         }
         return node.specifiers.reduce(
-          (reducedSpecifier, specifier) => {
+          (reducedSpecifierDetails, specifier) => {
             const importedName =
               specifier.type === 'ImportDefaultSpecifier'
                 ? specifier.local.name
@@ -486,38 +484,27 @@ function stripImportsAndExports(
             }
 
             return [
-              [...reducedSpecifier[0], nodeIndex],
-              [...reducedSpecifier[1], [nodeIndex, node]],
-              reducedSpecifier[2]
+              [...reducedSpecifierDetails[0], nodeIndex],
+              reducedSpecifierDetails[1]
             ] as Wrapper;
           },
-          [[], [], []] as Wrapper
+          reducedDetails
         );
       }
       if (node.type === 'ExportNamedDeclaration') {
         return [
-          [...reduced[0], nodeIndex],
-          reduced[1],
-          [...reduced[2], [nodeIndex, node]]
+          reducedDetails[0],
+          [...reducedDetails[1], nodeIndex]
         ] as Wrapper;
       }
-      return reduced;
+      return reducedDetails;
     },
-    [[], [], []] as Wrapper
+    [[], []] as Wrapper
   );
 
-  // Strip imports and exports.
-  const strippedCode = {
-    ...program,
-    body: program.body.filter(
-      (_: any, i: number) => !codeIndexesToRemove.includes(i)
-    )
-  };
-
   return {
-    strippedCode,
-    esImports: new Map(esImports),
-    esExports: new Map(esExports)
+    esImports,
+    esExports
   };
 }
 
@@ -525,18 +512,18 @@ function stripImportsAndExports(
  * Replace catalyst element's imports with globally accessible object import.
  *
  * @param program
- *   The parsed code with the imports already stripped out.
+ *   The parsed code
  * @param esImports
- *   The imports that have been stripped out of the parsed code.
+ *   Where the es imports are the parsed code's body.
  */
 function processImports(
   program: Program,
-  esImports: Map<number, ImportDeclaration>
+  esImports: ReadonlyArray<number>
 ): Program {
-  const updatedBody = Array.from(esImports.entries()).reduce(
-    (body, importDetail) => {
-      const [insertIndex, declaration] = importDetail;
-      const bodyReplacement = declaration.specifiers.reduce(
+  const updatedBody = esImports.reduce(
+    (reducedBody, index) => {
+      const declaration = reducedBody[index] as ImportDeclaration;
+      return declaration.specifiers.reduce(
         (reducedBodyInfo, specifier) => {
           if (specifier.type === 'ImportDefaultSpecifier') {
             throw new Error(
@@ -562,29 +549,27 @@ function processImports(
             );
           }
 
-          const insert = parseScript(
+          const importReplacement = parseScript(
             `const ${localName} = window.CatalystElements.${importedName};`
           ).body;
-          const offsetInsertIndex = insertIndex + reducedBodyInfo.offset;
+          const offsetIndex = index + reducedBodyInfo.offset;
 
           return {
-            offset: reducedBodyInfo.offset + insert.length,
+            offset: reducedBodyInfo.offset + importReplacement.length - 1,
             body: [
-              ...reducedBodyInfo.body.slice(0, offsetInsertIndex),
-              ...insert,
-              ...reducedBodyInfo.body.slice(offsetInsertIndex)
+              ...reducedBodyInfo.body.slice(0, offsetIndex),
+              ...importReplacement,
+              ...reducedBodyInfo.body.slice(offsetIndex + 1)
             ]
           };
         },
         {
           offset: 0,
-          body: program.body
+          body: reducedBody
         }
       ).body;
-
-      return [...body, ...bodyReplacement];
     },
-    [] as ReadonlyArray<Statement | ModuleDeclaration>
+    program.body
   );
 
   return {
@@ -607,35 +592,35 @@ function processExportWithSpecifiers(
   specifiers: ReadonlyArray<ExportSpecifier>,
   body: IExportDetails['body'],
   exportNamesProcessed: IExportDetails['exportNamesProcessed'],
-  insertIndex: number
+  index: number
 ): IExportDetails {
   return specifiers.reduce(
-    (updateInfo, specifier) => {
+    (reducedBody, specifier) => {
       const localName = specifier.local.name;
       const exportedName = specifier.exported.name;
 
       // Already processed? skip.
-      if (updateInfo.exportNamesProcessed[exportedName]) {
-        return updateInfo;
+      if (reducedBody.exportNamesProcessed[exportedName]) {
+        return reducedBody;
       }
 
-      // Generate insert.
-      const insert = parseScript(
+      // Generate replacement.
+      const exportReplacement = parseScript(
         `window.CatalystElements.${exportedName} = ${localName};`
       ).body;
-      const offsetInsertIndex = insertIndex + updateInfo.offset;
+      const offsetIndex = index + reducedBody.offset;
 
       // Update.
       return {
         exportNamesProcessed: {
-          ...updateInfo.exportNamesProcessed,
+          ...reducedBody.exportNamesProcessed,
           [exportedName]: true
         },
-        offset: updateInfo.offset + insert.length,
+        offset: reducedBody.offset + exportReplacement.length - 1,
         body: [
-          ...updateInfo.body.slice(0, offsetInsertIndex),
-          ...insert,
-          ...updateInfo.body.slice(offsetInsertIndex)
+          ...reducedBody.body.slice(0, offsetIndex),
+          ...exportReplacement,
+          ...reducedBody.body.slice(offsetIndex + 1)
         ]
       };
     },
@@ -657,15 +642,12 @@ function processExportWithDeclaration(
   insertIndex: number
 ): IExportDetails {
   const declarations =
-    declaration.type !== 'VariableDeclaration'
+    (declaration.type !== 'VariableDeclaration'
       ? [declaration]
-      : [...declaration.declarations];
+      : [...declaration.declarations]) as ReadonlyArray<(FunctionDeclaration | ClassDeclaration | VariableDeclarator)>;
 
-  return (declarations as any).reduce(
-    (
-      updateInfo: IExportDetails,
-      dec: FunctionDeclaration | ClassDeclaration | VariableDeclarator
-    ) => {
+  return declarations.reduce(
+    (reducedBody, dec) => {
       if (dec.id === null) {
         throw new Error(
           `Cannot automatically process declaration (no id pressent)`
@@ -678,27 +660,27 @@ function processExportWithDeclaration(
       }
 
       // Already processed? skip.
-      if (updateInfo.exportNamesProcessed[dec.id.name]) {
-        return updateInfo;
+      if (reducedBody.exportNamesProcessed[dec.id.name]) {
+        return reducedBody;
       }
 
-      // Generate insert.
-      const insert = parseScript(
+      // Generate replacement.
+      const exportReplacement = parseScript(
         `window.CatalystElements.${dec.id.name} = ${dec.id.name};`
       ).body;
-      const offsetInsertIndex = insertIndex + updateInfo.offset;
+      const offsetIndex = insertIndex + reducedBody.offset;
 
       // Update.
       return {
         exportNamesProcessed: {
-          ...updateInfo.exportNamesProcessed,
+          ...reducedBody.exportNamesProcessed,
           [dec.id.name]: true
         },
-        offset: updateInfo.offset + insert.length,
+        offset: reducedBody.offset + exportReplacement.length - 1,
         body: [
-          ...updateInfo.body.slice(0, offsetInsertIndex),
-          ...insert,
-          ...updateInfo.body.slice(offsetInsertIndex)
+          ...reducedBody.body.slice(0, offsetIndex),
+          ...exportReplacement,
+          ...reducedBody.body.slice(offsetIndex + 1)
         ]
       };
     },
@@ -714,32 +696,32 @@ function processExportWithDeclaration(
  * Insert globally accessible object exports where es exports once were.
  *
  * @param program
- *   The parsed code with the es exports already stripped out.
+ *   The parsed code.
  * @param esExports
- *   The exports that have been stripped out of the parsed code.
+ *   Where the es exports are in the parsed code's body.
  */
 function processExports(
   program: Program,
-  esExports: Map<number, ExportNamedDeclaration>
+  esExports: ReadonlyArray<number>
 ): Program {
-  const updatedBody = Array.from(esExports.entries()).reduce(
-    (exportDetails, exportDetail) => {
-      const [insertIndex, exportDef] = exportDetail;
-      const offsetInsertIndex = insertIndex + exportDetails.offset;
+  const updatedBody = esExports.reduce(
+    (reducedDetails, index) => {
+      const exportDef = reducedDetails.body[index] as ExportNamedDeclaration;
+      const offsetIndex = index + reducedDetails.offset;
 
       if (exportDef.declaration == null) {
         return processExportWithSpecifiers(
           exportDef.specifiers,
-          exportDetails.body,
-          exportDetails.exportNamesProcessed,
-          offsetInsertIndex
+          reducedDetails.body,
+          reducedDetails.exportNamesProcessed,
+          offsetIndex
         );
       }
       return processExportWithDeclaration(
         exportDef.declaration,
-        exportDetails.body,
-        exportDetails.exportNamesProcessed,
-        offsetInsertIndex
+        reducedDetails.body,
+        reducedDetails.exportNamesProcessed,
+        offsetIndex
       );
     },
     {
@@ -747,12 +729,12 @@ function processExports(
       offset: 0,
       body: program.body
     } as IExportDetails
-    // tslint:disable-next-line:readonly-array
-  ).body as (Statement | ModuleDeclaration)[];
+  ).body;
 
   return {
     ...program,
-    body: updatedBody
+    // tslint:disable-next-line:readonly-array
+    body: updatedBody as (Statement | ModuleDeclaration)[]
   };
 }
 
@@ -788,17 +770,17 @@ async function initializeScriptFile(
     });
 
     const program = parseModule(fileContent);
-    const { strippedCode, esImports, esExports } = stripImportsAndExports(
+    const { esImports, esExports } = getImportsAndExports(
       config,
       program
     );
-    const updatedprogram = processExports(
-      processImports(strippedCode, esImports),
+    const updatedProgram = processExports(
+      processImports(program, esImports),
       esExports
     );
     const updatedSourceCode =
       'window.CatalystElements = window.CatalystElements || {};\n' +
-      `${escodegen.generate(updatedprogram)}`;
+      `${generateJS(updatedProgram)}`;
 
     await writeFile(
       `./${config.temp.path}/${tempSubpath}/${config.componenet.name}${
@@ -1194,9 +1176,9 @@ async function finalizePackageJson(
         !['scripts', 'directories', 'devDependencies', 'engines'].includes(key)
       )
       .reduce(
-        (content, key) => {
+        (reducedContent, key) => {
           return {
-            ...content,
+            ...reducedContent,
             [key]: modifiedContent[key]
           };
         },

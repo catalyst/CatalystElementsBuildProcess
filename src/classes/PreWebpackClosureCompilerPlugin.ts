@@ -45,39 +45,26 @@ export class PreWebpackClosureCompilerPlugin {
           ) => {
             chunks.map(chunk => {
               chunk.files.map(file => {
-                const source: string = compilation.assets[file].source();
+                const source = compilation.assets[file].source() as string;
 
                 // Parse the source with the delegate to generate the replacement information.
                 parseScript(source, {}, this.processNode.bind(this));
 
-                // Update the file's source code with the code replacements in place.
-                // tslint:disable-next-line:no-object-mutation
-                compilation.assets[file] = new RawSource(
-                  this.codeReplacements.reduce(
-                    (result, replacement) => {
-                      const beforeReplacementCode = result.sourceCode.slice(
-                        0,
-                        result.offset + replacement.start
-                      );
-                      const afterReplacementCode = result.sourceCode.slice(
-                        result.offset + replacement.end
-                      );
-
-                      return {
-                        sourceCode:
-                          beforeReplacementCode +
-                          replacement.replacementCode +
-                          afterReplacementCode,
-                        offset:
-                          result.offset +
-                          replacement.replacementCode.length +
-                          replacement.start -
-                          replacement.end
-                      };
-                    },
-                    { sourceCode: '', offset: 0 }
-                  ).sourceCode
+                // Update the source code with the replacements.
+                const updatedSource = this.codeReplacements.reduce(
+                  (code, codeUpdate) => {
+                    return (
+                      code.slice(0, codeUpdate.start) +
+                      codeUpdate.replacementCode +
+                      code.slice(codeUpdate.end)
+                    );
+                  },
+                  source
                 );
+
+                // Replace the file's source code with the modified version.
+                // tslint:disable-next-line:no-object-mutation
+                compilation.assets[file] = new RawSource(updatedSource);
               });
             });
             done();

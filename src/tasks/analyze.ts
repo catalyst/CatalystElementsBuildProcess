@@ -268,7 +268,9 @@ async function generateAnalysis(
     const minifiedAnalysisFileContents = JSON.stringify(formattedfixedAnalysis);
 
     await runAllPromises([
-      writeFile(`./`, analysisFileContents, { encoding: 'utf8' }),
+      writeFile(`./${config.docs.analysisFilename}`, analysisFileContents, {
+        encoding: 'utf8'
+      }),
       writeFile(
         `./${config.docs.path}/${config.docs.analysisFilename}`,
         minifiedAnalysisFileContents,

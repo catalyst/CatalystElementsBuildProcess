@@ -5,21 +5,21 @@ import del from 'del';
 import escapeStringRegexp from 'escape-string-regexp';
 import {
   createWriteStream,
-  readdir as _readdir,
-  readFile as _readFile
-} from 'fs';
-import { normalize as normalizePath } from 'path';
+  ensureDir,
+  readdir,
+  readFile,
+  writeFile
+} from 'fs-extra';
+import { dirname as getDirName, normalize as normalizePath } from 'path';
 import _prompt from 'prompt';
 import _gitHubRelease, { PublishReleaseSettings } from 'publish-release';
 import { quote as shellQuote } from 'shell-quote';
 import { promisify } from 'util';
 
 import { IConfig } from '../config';
-import { glob, runAllPromises, runCommand, tasksHelpers, writeFile } from '../util';
+import { glob, runAllPromises, runCommand, tasksHelpers } from '../util';
 
 // Promisified functions.
-const readdir = promisify(_readdir);
-const readFile = promisify(_readFile);
 const promptGet = promisify(_prompt.get);
 const gitHubRelease = promisify(_gitHubRelease);
 
@@ -405,8 +405,7 @@ async function gitCheckGoodBranch(
     if (branch.search(branchMuchMatch) < 0) {
       throw new Error(
         prerelease
-          ? `Cannot publish - not on valid prerelease branch. Branch name much match this regex: ` +
-            config.publish.prereleaseBranchRegex.toString()
+          ? `Cannot publish - not on valid prerelease branch. Branch name much match this regex: ${config.publish.prereleaseBranchRegex.toString()}`
           : `Cannot publish - not on "${config.publish.masterBranch}" branch.`
       );
     }
@@ -712,7 +711,7 @@ async function fileChecks(config: IConfig, labelPrefix: string): Promise<void> {
     );
 
     // Read the files that will be published.
-    const distFiles = await readdir(config.dist.path, 'utf8');
+    const distFiles = await readdir(config.dist.path);
 
     // Make sure there are files.
     if (distFiles.length === 0) {
@@ -786,6 +785,7 @@ async function updateVersion(
           2
         )}\n`;
 
+        await ensureDir(getDirName(file));
         await writeFile(file, updatedPackageObject);
       })
     );
@@ -1129,6 +1129,7 @@ async function createArchivesForGitHubRelease(
   config: IConfig,
   version: string,
   labelPrefix: string
+
   // tslint:disable-next-line:readonly-array
 ): Promise<string[]> {
   const subTaskLabel = 'create archives';
@@ -1181,11 +1182,13 @@ async function createArchivesForGitHubRelease(
           ]
         };
       },
+
       // tslint:disable:readonly-array
       { assets: [], archivers: [] } as {
         readonly assets: string[];
         readonly archivers: Promise<void>[];
       }
+
       // tslint:enable:readonly-array
     );
 

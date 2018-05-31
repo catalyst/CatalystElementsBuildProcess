@@ -1,7 +1,6 @@
 // Libraries.
 import deepMerge from 'deepmerge';
-import { readFile as _readFile } from 'fs';
-import { promisify } from 'util';
+import { readFile } from 'fs-extra';
 
 // Config
 import { defaultConfig, IConfig } from './config';
@@ -15,9 +14,6 @@ import { lint } from './tasks/lint';
 import { publish, publishDry } from './tasks/publish';
 import { test } from './tasks/test';
 import { cleanTemp } from './util';
-
-// Promisified functions.
-const readFile = promisify(_readFile);
 
 /**
  * Get the config for the build process.
@@ -54,23 +50,11 @@ export async function getConfig(options?: Partial<IConfig>): Promise<IConfig> {
     projectPackage.name.lastIndexOf('/')
   );
 
-  // Get the location of the node modules.
-  const projectNodeModulesPath =
-    options !== undefined && options.nodeModulesPath !== undefined
-      ? options.nodeModulesPath
-      : defaultConfig.nodeModulesPath;
-
-  // Get the location in node modules the component fill be located once published.
-  const componentNodeModulesPath = `${projectNodeModulesPath}${
-    packageScope === '' ? '' : `/${packageScope}`
-  }`;
-
   // All the automatically set options in the config (can be overridden with `options`)
   const autoLoadedConfig: Partial<IConfig> = {
     package: projectPackage,
     componenet: {
-      scope: packageScope === '' ? null : packageScope,
-      nodeModulesPath: componentNodeModulesPath
+      scope: packageScope === '' ? null : packageScope
     }
   };
 

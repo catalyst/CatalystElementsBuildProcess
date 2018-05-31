@@ -2,7 +2,7 @@
 import { cyan, green, magenta, red, yellow } from 'ansi-colors';
 import cheerio from 'cheerio';
 import eslint from 'eslint';
-import { access as _access, existsSync, readFile as _readFile } from 'fs';
+import { access, existsSync, readFile } from 'fs-extra';
 import {
   isAbsolute as isAbsolutePath,
   relative as relativePathBetween
@@ -13,14 +13,9 @@ import {
   Linter as TsLinter,
   LintResult as TsLintResult
 } from 'tslint';
-import { promisify } from 'util';
 
 import { IConfig } from '../config';
 import { glob, runAllPromises, tasksHelpers, transpose } from '../util';
-
-// Promisified functions.
-const access = promisify(_access);
-const readFile = promisify(_readFile);
 
 /**
  * A linting error that can be displayed.
@@ -229,8 +224,8 @@ function printESLintResult(
       return {
         ...errors,
         [result.filePath]: result.messages.reduce(
-          (error, msg) => [
-            ...error,
+          (reducedError: ReadonlyArray<ILintingError>, msg) => [
+            ...reducedError,
             {
               column: msg.column,
               line: msg.line,
@@ -239,7 +234,7 @@ function printESLintResult(
               severity: getSeverity(msg.severity)
             }
           ],
-          [] as ReadonlyArray<ILintingError>
+          []
         )
       };
     },
@@ -264,8 +259,8 @@ function printSassLintResult(
       return {
         ...errors,
         [result.filePath]: result.messages.reduce(
-          (error, msg) => [
-            ...error,
+          (reducedError: ReadonlyArray<ILintingError>, msg) => [
+            ...reducedError,
             {
               column: msg.column,
               line: msg.line,
@@ -274,7 +269,7 @@ function printSassLintResult(
               severity: getSeverity(msg.severity)
             }
           ],
-          [] as ReadonlyArray<ILintingError>
+          []
         )
       };
     },
@@ -476,14 +471,17 @@ async function lintJSInHTML(
       return $(jsScriptsTags)
         .toArray()
         .reduce(
-          (a, elem) => {
-            const script = $(elem).html();
+          (
+            reducedReports: ReadonlyArray<eslint.CLIEngine.LintReport>,
+            element
+          ) => {
+            const script = $(element).html();
             if (script !== null && script.trim().length > 0) {
-              return [...a, linter.executeOnText(script, file)];
+              return [...reducedReports, linter.executeOnText(script, file)];
             }
-            return a;
+            return reducedReports;
           },
-          [] as ReadonlyArray<eslint.CLIEngine.LintReport>
+          []
         );
     });
 

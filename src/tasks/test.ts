@@ -1,5 +1,5 @@
 // Libraries.
-import { existsSync } from 'fs';
+import { existsSync } from 'fs-extra';
 import { test as runTests } from 'web-component-tester';
 
 import { IConfig } from '../config';

@@ -164,7 +164,7 @@
     "no-misused-new": true,
     "no-multiline-string": false,
     "no-namespace": true,
-    "no-non-null-assertion": true,
+    "no-non-null-assertion": false,
     "no-object-literal-type-assertion": false,
     "no-parameter-properties": true,
     "no-parameter-reassignment": true,

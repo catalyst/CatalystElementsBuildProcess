@@ -1,18 +1,18 @@
 // Libraries.
 import cheerio from 'cheerio';
 import escodegen from 'escodegen';
-import esprima from 'esprima';
+import { parseModule } from 'esprima';
 import {
-  access as _access,
+  access,
   constants,
-  createReadStream,
-  createWriteStream,
+  copy,
+  ensureDir,
   existsSync,
-  readdir as _readdir,
-  readFile as _readFile,
-} from 'fs';
-import flatmap from 'gulp-flatmap';
-import modifyFile from 'gulp-modify-file';
+  readdir,
+  readFile,
+  readJson,
+  writeFile
+} from 'fs-extra';
 import rename from 'gulp-rename';
 import mergeStream from 'merge-stream';
 import {
@@ -33,31 +33,25 @@ import {
 import { PolymerProject } from 'polymer-build';
 import promisePipe from 'promisepipe';
 import getGitInstance from 'simple-git';
-import { Stream } from 'stream';
 import { promisify } from 'util';
-import VinylFile from 'vinyl';
-import named from 'vinyl-named';
-import webpack, * as webpackNamespace from 'webpack';
-import webpackStream from 'webpack-stream';
+import { dest } from 'vinyl-fs';
+import webpack from 'webpack';
 
 import { IConfig } from '../config';
 import {
   cleanDocs,
-  copyFile,
   getWebpackPlugIns,
   glob,
   runAllPromises,
-  tasksHelpers,
-  writeFile
+  tasksHelpers
 } from '../util';
 
-// Promisified functions.
-const access = promisify(_access);
-const readdir = promisify(_readdir);
-const readFile = promisify(_readFile);
-
-// The temp
-const tempSubpath = 'docs';
+/**
+ * Get the temp path.
+ */
+function getTempPath(config: IConfig): string {
+  return `${config.temp.path}/docs`;
+}
 
 /**
  * Test if a directory is able to be cloned into.
@@ -65,14 +59,13 @@ const tempSubpath = 'docs';
  * @param dirPath - Path of the directory to check
  */
 async function directoryCanBeClonedInTo(dirPath: string): Promise<boolean> {
-  if (existsSync(dirPath)) {
-    await access(dirPath, constants.R_OK | constants.W_OK);
+  await ensureDir(dirPath);
+  await access(dirPath, constants.R_OK | constants.W_OK);
 
-    const files = await readdir(dirPath, 'utf8');
+  const files = await readdir(dirPath);
 
-    if (files.length !== 0) {
-      return false;
-    }
+  if (files.length !== 0) {
+    return false;
   }
 
   return true;
@@ -119,11 +112,15 @@ async function cloneRepositories(
   packageFilePaths: ReadonlyArray<string>,
   config: IConfig,
   labelPrefix: string
+
   // tslint:disable-next-line:readonly-array
 ): Promise<void> {
   await Promise.all(
     packageFilePaths.map(async packageFilePath => {
-      const data = await readFile(packageFilePath, 'utf8');
+      const data = await readFile(packageFilePath, {
+        encoding: 'utf8',
+        flag: 'r'
+      });
       const json = JSON.parse(data);
 
       const name = json.name;
@@ -155,9 +152,7 @@ async function cloneRepositories(
         'git://'
       );
 
-      const clonePath = `./${
-        config.temp.path
-      }/${tempSubpath}/demo-clones/${name}`;
+      const clonePath = `./${getTempPath(config)}/demo-clones/${name}`;
 
       const skipClone = !(await directoryCanBeClonedInTo(clonePath));
 
@@ -192,25 +187,10 @@ async function copyNodeModules(
   try {
     tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
-    const filesRootPath = `./${config.nodeModulesPath}`;
-    const files = await glob(`${filesRootPath}/**`, {
-      follow: true
-    });
-
-    await runAllPromises(
-      files.map(async file => {
-        if (config.package === undefined) {
-          throw new Error('No package data.');
-        }
-
-        const outDir = `./${config.temp.path}/${tempSubpath}/${
-          config.docs.nodeModulesPath
-        }`;
-        const basepath = getRelativePathBetween(filesRootPath, file);
-        const outFile = joinPaths(outDir, basepath);
-
-        await copyFile(file, outFile);
-      })
+    await copy(
+      `./node_modules`,
+      `./${getTempPath(config)}/${config.docs.nodeModulesPath}`,
+      { overwrite: true }
     );
 
     tasksHelpers.log.successful(subTaskLabel, labelPrefix);
@@ -235,17 +215,13 @@ async function copyDocsIndex(
   try {
     tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
-    if (config.package === undefined) {
-      throw new Error('No package data.');
-    }
+    const inDir = '.';
+    const filename = config.docs.indexPage;
+    const destDir = `./${getTempPath(config)}`;
 
-    const file = `./${config.docs.indexPage}`;
-
-    const outDir = `./${config.temp.path}/${tempSubpath}`;
-    const basepath = `index${getFileExtension(file)}`;
-    const outFile = joinPaths(outDir, basepath);
-
-    await copyFile(file, outFile);
+    await copy(`${inDir}/${filename}`, `${destDir}/${filename}`, {
+      overwrite: true
+    });
 
     tasksHelpers.log.successful(subTaskLabel, labelPrefix);
   } catch (error) {
@@ -269,24 +245,22 @@ async function copyExtraDocDependencies(
   try {
     tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
-    const filesRootPath = `.`;
+    const inDir = `.`;
+    const destDir = `./${getTempPath(config)}`;
     const files = await glob([
-      `${filesRootPath}/${config.docs.importsImporterFilename}`,
-      `${filesRootPath}/${config.docs.importsFilename}`,
-      `${filesRootPath}/${config.docs.analysisFilename}`
+      `${inDir}/${config.docs.importsImporterFilename}`,
+      `${inDir}/${config.docs.importsFilename}`,
+      `${inDir}/${config.docs.analysisFilename}`
     ]);
 
     await runAllPromises(
-      files.map(async file => {
-        if (config.package === undefined) {
-          throw new Error('No package data.');
-        }
+      files.map(async srcFilepath => {
+        const basepath = getRelativePathBetween(inDir, srcFilepath);
+        const destFilepath = joinPaths(destDir, basepath);
 
-        const outDir = `./${config.temp.path}/${tempSubpath}`;
-        const basepath = getRelativePathBetween(filesRootPath, file);
-        const outFile = joinPaths(outDir, basepath);
-
-        await copyFile(file, outFile);
+        return copy(srcFilepath, destFilepath, {
+          overwrite: true
+        });
       })
     );
 
@@ -312,26 +286,17 @@ async function copyDistributionFiles(
   try {
     tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
-    if (config.package === undefined) {
-      throw new Error('No package data.');
-    }
+    const inDir = `./${config.dist.path}`;
+    const destDir = `./${getTempPath(config)}/${config.docs.nodeModulesPath}/${
+      (config.package as any).name
+    }`;
 
-    const filesRootPath = `./${config.dist.path}`;
-    const files = await glob(`${filesRootPath}/**`);
     await runAllPromises(
-      files.map(async file => {
-        if (config.package === undefined) {
-          throw new Error('No package data.');
-        }
-
-        const outDir = `./${config.temp.path}/${tempSubpath}/${
-          config.docs.nodeModulesPath
-        }/${config.package.name}`;
-        const basepath = getRelativePathBetween(filesRootPath, file);
-        const outFile = joinPaths(outDir, basepath);
-
-        await copyFile(file, outFile);
-      })
+      (await readdir(inDir)).map(filename =>
+        copy(`${inDir}/${filename}`, `${destDir}/${filename}`, {
+          overwrite: true
+        })
+      )
     );
 
     tasksHelpers.log.successful(subTaskLabel, labelPrefix);
@@ -356,23 +321,20 @@ async function copyLocalDemos(
   try {
     tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
-    const filesRootPath = `./${config.demos.path}`;
-    const files = await glob(`${filesRootPath}/**`);
-    await runAllPromises(
-      files.map(async file => {
-        if (config.package === undefined) {
-          throw new Error('No package data.');
-        }
+    const srcDir = `./${config.demos.path}`;
+    const destDir = `./${getTempPath(config)}/${config.docs.nodeModulesPath}/${
+      (config.package as any).name
+    }/${config.demos.path}`;
 
-        const outDir = `./${config.temp.path}/${tempSubpath}/${
-          config.docs.nodeModulesPath
-        }/${config.package.name}`;
-        const basepath = getRelativePathBetween(filesRootPath, file);
-        const outFile = joinPaths(outDir, basepath);
-
-        await copyFile(file, outFile);
-      })
-    );
+    if (existsSync(srcDir)) {
+      await runAllPromises(
+        (await readdir(srcDir)).map(filename =>
+          copy(`${srcDir}/${filename}`, `${destDir}/${filename}`, {
+            overwrite: true
+          })
+        )
+      );
+    }
 
     tasksHelpers.log.successful(subTaskLabel, labelPrefix);
   } catch (error) {
@@ -382,16 +344,15 @@ async function copyLocalDemos(
 }
 
 /**
- * Copy all the dependencies so they can be edited without affecting anything else.
+ * Copy all the files needed.
+ *
+ * These file can then be modified without issue.
  *
  * @param config - Config settings
  * @param labelPrefix - A prefix to print before the label
  */
-async function copyDependencies(
-  config: IConfig,
-  labelPrefix: string
-): Promise<void> {
-  const subTaskLabel = 'copy dependencies';
+async function copyFiles(config: IConfig, labelPrefix: string): Promise<void> {
+  const subTaskLabel = 'copy files';
 
   try {
     const subTaskLabelPrefix = tasksHelpers.log.starting(
@@ -399,34 +360,14 @@ async function copyDependencies(
       labelPrefix
     );
 
-    const baseSubTasks: ReadonlyArray<Promise<void>> = [
+    await runAllPromises([
+      copyNodeModules(config, subTaskLabelPrefix),
       copyDocsIndex(config, subTaskLabelPrefix),
-      copyExtraDocDependencies(config, subTaskLabelPrefix),
-      copyDistributionFiles(config, subTaskLabelPrefix),
-      copyLocalDemos(config, subTaskLabelPrefix)
-    ];
+      copyExtraDocDependencies(config, subTaskLabelPrefix)
+    ]);
 
-    const nodeModulesInPlace = existsSync(
-      `./${config.temp.path}/${tempSubpath}/${config.docs.nodeModulesPath}`
-    );
-
-    if (nodeModulesInPlace) {
-      tasksHelpers.log.info(
-        'skipping copying of node modules - already in place.',
-        subTaskLabelPrefix
-      );
-    }
-
-    const copyNodeModulesTasks = nodeModulesInPlace
-      ? []
-      : [copyNodeModules(config, subTaskLabelPrefix)];
-
-    const subTasks: ReadonlyArray<Promise<void>> = [
-      ...baseSubTasks,
-      ...copyNodeModulesTasks
-    ];
-
-    await runAllPromises(subTasks);
+    await copyDistributionFiles(config, subTaskLabelPrefix);
+    await copyLocalDemos(config, subTaskLabelPrefix);
 
     tasksHelpers.log.successful(subTaskLabel, labelPrefix);
   } catch (error) {
@@ -441,6 +382,7 @@ async function copyDependencies(
 function updateAnalysisElements(
   elements: ReadonlyArray<Element> | undefined,
   config: IConfig
+
   // tslint:disable-next-line:readonly-array
 ): Element[] | undefined {
   if (elements === undefined) {
@@ -461,6 +403,7 @@ function updateAnalysisElements(
 function updateAnalysisElementMixins(
   elementMixins: ReadonlyArray<ElementMixin> | undefined,
   config: IConfig
+
   // tslint:disable-next-line:readonly-array
 ): ElementMixin[] | undefined {
   if (elementMixins === undefined) {
@@ -481,6 +424,7 @@ function updateAnalysisElementMixins(
 function updateAnalysisNamespaces(
   namespaces: ReadonlyArray<Namespace> | undefined,
   config: IConfig
+
   // tslint:disable-next-line:readonly-array
 ): Namespace[] | undefined {
   if (namespaces === undefined) {
@@ -503,6 +447,7 @@ function updateAnalysisNamespaces(
 function updateAnalysisClasses(
   classes: ReadonlyArray<Class> | undefined,
   config: IConfig
+
   // tslint:disable-next-line:readonly-array
 ): Class[] | undefined {
   if (classes === undefined) {
@@ -523,16 +468,15 @@ function updateAnalysisClasses(
 function updateAnalysisComponentDemos(
   component: Class,
   config: IConfig
+
   // tslint:disable-next-line:readonly-array
 ): Demo[] {
   return component.demos.map(demo => {
-    if (config.package === undefined) {
-      throw new Error('Package not set.');
-    }
-
     return {
       ...demo,
-      url: `${config.docs.nodeModulesPath}/${config.package.name}/${demo.url}`
+      url: `${config.docs.nodeModulesPath}/${(config.package as any).name}/${
+        demo.url
+      }`
     };
   });
 }
@@ -552,13 +496,7 @@ async function updateAnalysis(
   try {
     tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
-    if (config.package === undefined) {
-      throw new Error('Package not set.');
-    }
-
-    const file = `./${config.temp.path}/${tempSubpath}/${
-      config.docs.analysisFilename
-    }`;
+    const file = `./${getTempPath(config)}/${config.docs.analysisFilename}`;
     const fileContent = await readFile(file, { encoding: 'utf8', flag: 'r' });
     const analysis = JSON.parse(fileContent);
     const updatedAnalysis = {
@@ -572,6 +510,8 @@ async function updateAnalysis(
     };
 
     const updatedFileContent = JSON.stringify(updatedAnalysis);
+
+    await ensureDir(getDirName(file));
     await writeFile(file, updatedFileContent);
 
     tasksHelpers.log.successful(subTaskLabel, labelPrefix);
@@ -597,35 +537,33 @@ async function getDemos(config: IConfig, labelPrefix: string): Promise<void> {
     );
 
     const packageFiles = await glob(
-      `./${config.componenet.nodeModulesPath}/catalyst-*/package.json`
+      `./node_modules${
+        config.componenet.scope == null ? '' : `/${config.componenet.scope}`
+      }/catalyst-*/package.json`
     );
 
     if (packageFiles.length > 0) {
       await cloneRepositories(packageFiles, config, subTaskLabelPrefix);
 
       await runAllPromises(
-        packageFiles.map(async packageFile => {
-          const fileDirPath = getDirName(packageFile);
-          const name =
-            config.componenet.scope == null
-              ? fileDirPath.substring(fileDirPath.lastIndexOf('/') + 1)
-              : fileDirPath.substring(
-                  fileDirPath.lastIndexOf(config.componenet.scope)
-                );
-          const dir = `./${
-            config.temp.path
-          }/${tempSubpath}/demo-clones/${name}`;
+        packageFiles.map(async packageFilepath => {
+          const name = (await readJson(packageFilepath)).name;
+          const srcDir = `./${getTempPath(config)}/demo-clones/${name}/${
+            config.demos.path
+          }`;
+          const destDir = `./${getTempPath(config)}/${
+            config.docs.nodeModulesPath
+          }/${name}/${config.demos.path}`;
 
-          const demoFiles = await glob(`${dir}/${config.demos.path}/**`);
-          await runAllPromises(
-            demoFiles.map(async demoFile => {
-              const outDir = `./${config.temp.path}/${tempSubpath}/${
-                config.docs.nodeModulesPath
-              }`;
-              const filename = getFileBasename(demoFile);
-              await copyFile(demoFile, `${outDir}/${filename}`);
-            })
-          );
+          if (existsSync(srcDir)) {
+            await runAllPromises(
+              (await readdir(srcDir)).map(filename =>
+                copy(`${srcDir}/${filename}`, `${destDir}/${filename}`, {
+                  overwrite: true
+                })
+              )
+            );
+          }
         })
       );
     }
@@ -652,9 +590,10 @@ async function indexPageUpdateReferences(
   try {
     tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
-    const file = `./${config.temp.path}/${tempSubpath}/index.html`;
+    const file = `./${getTempPath(config)}/index.html`;
     const fileContent = await readFile(file, { encoding: 'utf8', flag: 'r' });
     const $ = cheerio.load(fileContent);
+
     // tslint:disable:no-delete no-object-mutation
     $('script').each((_index: number, element: CheerioElement) => {
       if (element.attribs.type === 'module') {
@@ -664,9 +603,12 @@ async function indexPageUpdateReferences(
         .replace(/^\.\.\/\.\.\//, `${config.docs.nodeModulesPath}/`)
         .replace(/.mjs$/, '.js');
     });
+
     // tslint:enable:no-delete no-object-mutation
 
     const updatedFileContent = $.html();
+
+    await ensureDir(getDirName(file));
     await writeFile(file, updatedFileContent);
 
     tasksHelpers.log.successful(subTaskLabel, labelPrefix);
@@ -692,8 +634,8 @@ async function demosPagesUpdateReferences(
     tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
     const files = await glob(
-      `./${config.temp.path}/${tempSubpath}/${config.docs.nodeModulesPath}/${
-        config.componenet.scope
+      `./${getTempPath(config)}/${config.docs.nodeModulesPath}${
+        config.componenet.scope == null ? '' : `/${config.componenet.scope}`
       }/*/${config.demos.path}/*.html`
     );
 
@@ -704,6 +646,7 @@ async function demosPagesUpdateReferences(
           flag: 'r'
         });
         const $ = cheerio.load(fileContent);
+
         // tslint:disable:no-delete no-object-mutation
         $('script[type="module"]').each(
           (_index: number, element: CheerioElement) => {
@@ -711,9 +654,12 @@ async function demosPagesUpdateReferences(
             element.attribs.src = element.attribs.src.replace(/.mjs$/, '.js');
           }
         );
+
         // tslint:enable:no-delete no-object-mutation
 
         const updatedFileContent = $.html();
+
+        await ensureDir(getDirName(file));
         await writeFile(file, updatedFileContent);
       })
     );
@@ -740,11 +686,9 @@ async function indexImportsUpdateReferences(
   try {
     tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
-    const file = `./${config.temp.path}/${tempSubpath}/${
-      config.docs.importsFilename
-    }`;
+    const file = `./${getTempPath(config)}/${config.docs.importsFilename}`;
     const fileContent = await readFile(file, { encoding: 'utf8', flag: 'r' });
-    const program = esprima.parseModule(fileContent);
+    const program = parseModule(fileContent);
     const updatedBody = program.body.map(node => {
       if (node.type === 'ImportDeclaration') {
         if (typeof node.source.value === 'string') {
@@ -768,6 +712,8 @@ async function indexImportsUpdateReferences(
       body: updatedBody
     };
     const updatedFileContent = escodegen.generate(updatedProgram);
+
+    await ensureDir(getDirName(file));
     await writeFile(file, updatedFileContent);
 
     tasksHelpers.log.successful(subTaskLabel, labelPrefix);
@@ -861,46 +807,61 @@ async function finalizeIndexPage(
       getFileExtension(config.docs.importsImporterFilename)
     );
 
-    const filePath = `./${config.temp.path}/${tempSubpath}/${
+    const filepath = `./${getTempPath(config)}/${
       config.docs.importsImporterFilename
     }`;
 
-    await promisePipe(
-      createReadStream(filePath),
-      named(),
-      webpackStream(
-        {
-          mode: 'none',
-          output: {
-            chunkFilename: `${docsImportsBaseName}.[id].js`,
-            filename: `${docsImportsImporterBaseName}.js`
-          },
-          plugins: getWebpackPlugIns(),
-          target: 'web'
-        },
-        webpackNamespace
-      ),
-      flatmap((stream: Stream, file: VinylFile) => {
-        return stream
-          .pipe(
-            modifyFile((content: string) => {
-              return content.replace(/\\\\\$/g, '$');
-            })
-          )
-          .pipe(
-            rename({
-              basename: getFileBasename(file.path, getFileExtension(file.path))
-            })
-          )
-          .pipe(
-            createWriteStream(
-              `./${config.temp.path}/${tempSubpath}/${
-                config.docs.importsImporterFilename
-              }`
-            )
-          );
+    const compiler: webpack.Compiler = webpack({
+      mode: 'none',
+      entry: filepath,
+      output: {
+        path: joinPaths(process.cwd(), `${getTempPath(config)}`),
+        chunkFilename: `${docsImportsBaseName}.[id].js`,
+        filename: `${docsImportsImporterBaseName}.js`
+      },
+      resolve: {
+        extensions: ['.js', '.mjs']
+      },
+      plugins: getWebpackPlugIns(),
+      target: 'web'
+    } as any);
+
+    const runCompiler = promisify(compiler.run.bind(
+      compiler
+    ) as typeof compiler.run);
+    const stats = await runCompiler();
+
+    // tslint:disable-next-line:no-console
+    console.log(
+      stats.toString({
+        chunks: false,
+        colors: true
       })
     );
+
+    const statsDetails = stats.toJson({
+      assets: true
+    }) as WebpackStats;
+    const webpackEmittedFiles = statsDetails.assets.reduce(
+      (reducedFiles: ReadonlyArray<string>, asset) => {
+        if (asset.emitted) {
+          return [
+            ...reducedFiles,
+            joinPaths(statsDetails.outputPath, asset.name)
+          ];
+        }
+        return reducedFiles;
+      },
+      []
+    );
+
+    webpackEmittedFiles.map(async file => {
+      const fileContent = await readFile(file, { encoding: 'utf8', flag: 'r' });
+      const updatedFileContent = fileContent.replace(/\\\\\$/g, '$');
+
+      await ensureDir(getDirName(file));
+      await writeFile(file, updatedFileContent);
+    });
 
     tasksHelpers.log.successful(subTaskLabel, labelPrefix);
   } catch (error) {
@@ -935,41 +896,49 @@ async function finalizeDemos(
     );
 
     const sourceFiles = await glob(
-      `${config.temp.path}/${tempSubpath}/${config.docs.nodeModulesPath}/${
-        config.componenet.scope
+      `${getTempPath(config)}/${config.docs.nodeModulesPath}${
+        config.componenet.scope == null ? '' : `/${config.componenet.scope}`
       }/*/${config.demos.path}/${config.demos.importsImporterFilename}`
     );
 
     const webpackResults = await runAllPromises(
       sourceFiles.map(async file => {
-        const outDir = getDirName(file);
+        const destDir = getDirName(file);
         const compiler: webpack.Compiler = webpack({
           mode: 'none',
           entry: file,
           output: {
-            path: outDir,
+            path: joinPaths(process.cwd(), destDir),
             chunkFilename: `${demoImportsBaseName}.[id].js`,
             filename: `${docsImportsImporterBaseName}.js`
           },
+          resolve: {
+            extensions: ['.js', '.mjs']
+          },
           plugins: getWebpackPlugIns(),
           target: 'web'
-        } as any);
+        });
 
         const runCompiler: () => Promise<webpack.Stats> = promisify(
           compiler.run.bind(compiler)
         );
         const stats = await runCompiler();
 
-        const assets: ReadonlyArray<{ readonly name: string }> = stats.toJson({
-          assets: true,
-          cachedAssets: false
-        }).assets;
+        const statsDetails = stats.toJson({
+          assets: true
+        }) as WebpackStats;
 
-        const filesOutput = assets.reduce(
-          (files, asset) => {
-            return [...files, joinPaths(outDir, asset.name)];
+        const webpackEmittedFiles = statsDetails.assets.reduce(
+          (reducedFiles: ReadonlyArray<string>, asset) => {
+            if (asset.emitted) {
+              return [
+                ...reducedFiles,
+                joinPaths(statsDetails.outputPath, asset.name)
+              ];
+            }
+            return reducedFiles;
           },
-          [] as ReadonlyArray<string>
+          []
         );
 
         return {
@@ -977,19 +946,19 @@ async function finalizeDemos(
             chunks: false,
             colors: true
           }),
-          filesOutput
+          webpackEmittedFiles
         };
       })
     );
 
     const outFiles = webpackResults.reduce(
-      (files, result) => {
+      (reducedFiles: ReadonlyArray<string>, result) => {
         // tslint:disable-next-line:no-console
         console.log(result.log);
 
-        return [...files, ...result.filesOutput];
+        return [...reducedFiles, ...result.webpackEmittedFiles];
       },
-      [] as ReadonlyArray<string>
+      []
     );
 
     await runAllPromises(
@@ -999,6 +968,8 @@ async function finalizeDemos(
           flag: 'r'
         });
         const updatedFileContent = fileContent.replace(/\\\\\$/g, '$');
+
+        await ensureDir(getDirName(file));
         await writeFile(file, updatedFileContent);
       })
     );
@@ -1111,12 +1082,12 @@ async function generate(config: IConfig, labelPrefix: string): Promise<void> {
     );
 
     const buildConfig = {
-      root: `${config.temp.path}/${tempSubpath}/`,
+      root: `${getTempPath(config)}/`,
       entrypoint: `index${getFileExtension(config.docs.indexPage)}`,
       fragments: [],
       sources: [
-        `${config.docs.nodeModulesPath}/${
-          config.componenet.scope
+        `${config.docs.nodeModulesPath}${
+          config.componenet.scope == null ? '' : `/${config.componenet.scope}`
         }/catalyst-*/**/*`
       ],
       extraDependencies: [
@@ -1152,7 +1123,7 @@ async function generate(config: IConfig, labelPrefix: string): Promise<void> {
       mergeStream(docBuilder.sources(), docBuilder.dependencies()),
       docBuilder.addCustomElementsEs5Adapter(),
       rename(path => {
-        const prefix = getNormalizedPath(`${config.temp.path}/${tempSubpath}`);
+        const prefix = getNormalizedPath(`${getTempPath(config)}`);
         if (path.dirname !== undefined && path.dirname.indexOf(prefix) === 0) {
           // tslint:disable-next-line:no-object-mutation
           path.dirname = getNormalizedPath(
@@ -1160,7 +1131,7 @@ async function generate(config: IConfig, labelPrefix: string): Promise<void> {
           );
         }
       }),
-      createWriteStream(`./${config.docs.path}`)
+      dest(`./${config.docs.path}`)
     );
 
     tasksHelpers.log.successful(subTaskLabel, labelPrefix);
@@ -1177,7 +1148,7 @@ export async function buildDocs(
   taskName: string,
   config: IConfig
 ): Promise<void> {
-  await copyDependencies(config, taskName);
+  await copyFiles(config, taskName);
   await updateAnalysis(config, taskName);
   await getDemos(config, taskName);
   await build(config, taskName);

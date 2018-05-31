@@ -1,4 +1,5 @@
 // Libraries.
+import { copy, ensureDir, writeFile } from 'fs-extra';
 import {
   basename as getFileBasename,
   extname as getFileExtension,
@@ -20,13 +21,7 @@ import {
 } from 'polymer-analyzer/lib/analysis-format/analysis-format';
 
 import { IConfig } from '../config';
-import {
-  copyFile,
-  glob,
-  runAllPromises,
-  tasksHelpers,
-  writeFile
-} from '../util';
+import { glob, runAllPromises, tasksHelpers } from '../util';
 
 // The temp path.
 const tempSubpath = 'analyze';
@@ -157,11 +152,11 @@ function fixAnalysisComponentPath(
     getFileExtension(component.path)
   );
 
-  return component.path.indexOf(`${config.temp.path}/${tempSubpath}/`) !== 0
-    ? component.path
-    : `${config.nodeModulesPath}/${
-        config.componenet.scope
-      }/${pathBase}/${pathBase}${config.build.module.extension}`;
+  return component.path.indexOf(`${config.temp.path}/${tempSubpath}/`) === 0
+    ? `node_modules${
+        config.componenet.scope == null ? '' : `/${config.componenet.scope}`
+      }/${pathBase}/${pathBase}${config.build.module.extension}`
+    : component.path;
 }
 
 /**
@@ -207,9 +202,7 @@ async function copyElementsForAnalysis(
 
     const filepaths = await glob([
       `./${config.dist.path}/**/*${config.build.module.extension}`,
-      `./${config.componenet.nodeModulesPath}/catalyst-*/**/*${
-        config.build.module.extension
-      }`
+      `./node_modules/catalyst-*/**/*${config.build.module.extension}`
     ]);
 
     await Promise.all(
@@ -223,9 +216,11 @@ async function copyElementsForAnalysis(
           ext
         )}.js`;
 
-        await copyFile(filepath, outpath);
+        await copy(filepath, outpath);
       })
     );
+
+    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
   } catch (error) {
     tasksHelpers.log.failed(subTaskLabel, labelPrefix);
     throw error;
@@ -268,14 +263,24 @@ async function generateAnalysis(
     const minifiedAnalysisFileContents = JSON.stringify(formattedfixedAnalysis);
 
     await runAllPromises([
-      writeFile(`./${config.docs.analysisFilename}`, analysisFileContents, {
-        encoding: 'utf8'
-      }),
-      writeFile(
-        `./${config.docs.path}/${config.docs.analysisFilename}`,
-        minifiedAnalysisFileContents,
-        { encoding: 'utf8' }
-      )
+      (async () => {
+        await ensureDir(`.`);
+        await writeFile(
+          `./${config.docs.analysisFilename}`,
+          analysisFileContents,
+          {
+            encoding: 'utf8'
+          }
+        );
+      })(),
+      (async () => {
+        await ensureDir(`./${config.docs.path}`);
+        await writeFile(
+          `./${config.docs.path}/${config.docs.analysisFilename}`,
+          minifiedAnalysisFileContents,
+          { encoding: 'utf8' }
+        );
+      })()
     ]);
 
     tasksHelpers.log.successful(subTaskLabel, labelPrefix);

@@ -12,17 +12,22 @@ import {
   Statement,
   VariableDeclaration,
   VariableDeclarator
+
   // tslint:disable-next-line:no-implicit-dependencies
 } from 'estree';
 import {
+  copy,
+  ensureDir,
   existsSync,
-  readFile as _readFile,
-  symlink as _symlink
-} from 'fs';
+  readFile,
+  symlink,
+  writeFile
+} from 'fs-extra';
 import { minify as htmlMinifier } from 'html-minifier';
 import sass from 'node-sass';
 import {
   basename as getFileBasename,
+  dirname as getDirName,
   extname as getFileExtension,
   join as joinPaths,
   relative as getRelativePathBetween
@@ -34,22 +39,19 @@ import webpack from 'webpack';
 import { IConfig } from '../config';
 import {
   cleanDist,
-  copyFile,
   getInjectRegExp,
   getWebpackPlugIns,
   glob,
   runAllPromises,
-  tasksHelpers,
-  writeFile
+  tasksHelpers
 } from '../util';
-
-// Promisified functions.
-const readFile = promisify(_readFile);
-const symlink = promisify(_symlink);
 
 // The temp path.
 const tempSubpath = 'build';
 const tempEntrypointFileBaseName = 'entrypoint';
+
+const validMarkupFileTypes: ReadonlyArray<string> = ['.html', '.htm'];
+const validStyleFileTypes: ReadonlyArray<string> = ['.css', '.sass', '.scss'];
 
 /**
  * Get the local names of all the static imports in the given a JavaScript.
@@ -59,32 +61,29 @@ const tempEntrypointFileBaseName = 'entrypoint';
 function getStaticImportLocalNames(javascript: string): ReadonlyArray<string> {
   const program = parseModule(javascript);
 
-  return program.body.reduce(
-    (reducedImports, node) => {
-      if (node.type !== 'ImportDeclaration') {
-        return reducedImports;
-      }
-      return [
-        ...reducedImports,
-        ...node.specifiers.reduce(
-          (reducedSpecifierImports, specifier) => {
-            if (
-              !(
-                specifier.type === 'ImportDefaultSpecifier' ||
-                specifier.type === 'ImportSpecifier'
-              ) ||
-              specifier.local.type !== 'Identifier'
-            ) {
-              return reducedSpecifierImports;
-            }
-            return [...reducedSpecifierImports, specifier.local.name];
-          },
-          [] as ReadonlyArray<string>
-        )
-      ];
-    },
-    [] as ReadonlyArray<string>
-  );
+  return program.body.reduce((reducedImports: ReadonlyArray<string>, node) => {
+    if (node.type !== 'ImportDeclaration') {
+      return reducedImports;
+    }
+    return [
+      ...reducedImports,
+      ...node.specifiers.reduce(
+        (reducedSpecifierImports: ReadonlyArray<string>, specifier) => {
+          if (
+            !(
+              specifier.type === 'ImportDefaultSpecifier' ||
+              specifier.type === 'ImportSpecifier'
+            ) ||
+            specifier.local.type !== 'Identifier'
+          ) {
+            return reducedSpecifierImports;
+          }
+          return [...reducedSpecifierImports, specifier.local.name];
+        },
+        []
+      )
+    ];
+  }, []);
 }
 
 /**
@@ -149,12 +148,14 @@ async function prepareEntrypoint(
       `./${config.temp.path}/${tempSubpath}`
     );
 
-    const depthChange = pathChange.split('/').reduce((reducedChange, segment) => {
-      if (segment === '' || segment === '.') {
-        return reducedChange;
-      }
-      return reducedChange + (segment === '..' ? -1 : 1);
-    }, 0);
+    const depthChange = pathChange
+      .split('/')
+      .reduce((reducedChange, segment) => {
+        if (segment === '' || segment === '.') {
+          return reducedChange;
+        }
+        return reducedChange + (segment === '..' ? -1 : 1);
+      }, 0);
 
     const fileContent = await readFile(
       `./${config.src.path}/${config.src.entrypoint}`,
@@ -168,15 +169,15 @@ async function prepareEntrypoint(
       depthChange <= 0
         ? fileContent
         : fileContent.replace(
-            new RegExp(`\\.\\./${config.nodeModulesPath}/`, 'g'),
-            `${'../'.repeat(depthChange + 1)}${config.nodeModulesPath}/`
+            new RegExp(`\\.\\./node_modules/`, 'g'),
+            `${'../'.repeat(depthChange + 1)}node_modules/`
           );
 
+    const destDir = `./${config.temp.path}/${tempSubpath}`;
+    await ensureDir(destDir);
     await writeFile(
-      `./${
-        config.temp.path
-      }/${tempSubpath}/${tempEntrypointFileBaseName}${getFileExtension(config
-        .src.entrypoint as string)}`,
+      `${destDir}/${tempEntrypointFileBaseName}${getFileExtension(config.src
+        .entrypoint as string)}`,
       updatedFileContent
     );
 
@@ -233,6 +234,7 @@ async function exportStaticImports(
 // Export all the imports.
 export {\n  ${staticImports.join(',\n  ')}\n};\n`;
 
+    await ensureDir(getDirName(file));
     await writeFile(file, updatedFileContent);
 
     tasksHelpers.log.successful(subTaskLabel, labelPrefix);
@@ -299,10 +301,9 @@ async function minifyHTML(config: IConfig, labelPrefix: string): Promise<void> {
         config.build.tools.htmlMinifier
       ).replace(/\n/g, '');
 
-      await writeFile(
-        `./${config.temp.path}/${tempSubpath}/${getFileBasename(file)}`,
-        minified
-      );
+      const destDir = `./${config.temp.path}/${tempSubpath}`;
+      await ensureDir(destDir);
+      await writeFile(`${destDir}/${getFileBasename(file)}`, minified);
     });
 
     tasksHelpers.log.successful(subTaskLabel, labelPrefix);
@@ -313,18 +314,29 @@ async function minifyHTML(config: IConfig, labelPrefix: string): Promise<void> {
 }
 
 /**
- * Compile Sass.
+ * Compile CSS.
  *
  * @param config - Config settings
  * @param labelPrefix - A prefix to print before the label
  */
-async function compileSASS(
+async function compileCSS(
   config: IConfig,
   labelPrefix: string
 ): Promise<void> {
-  const subTaskLabel = 'compile SASS';
+  const subTaskLabel = 'compile CSS';
 
   try {
+    if (
+      config.src.template === undefined ||
+      config.src.template.style === undefined
+    ) {
+      tasksHelpers.log.info(
+        `skipping ${subTaskLabel} - no styles to compile.`,
+        labelPrefix
+      );
+      return;
+    }
+
     tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
     const postcssPlugins =
@@ -338,39 +350,44 @@ async function compileSASS(
         ? undefined
         : config.build.tools.postcss.options;
 
-    const files = await glob(`./${config.src.path}/**/*.scss`);
-    if (files.length === 0) {
-      tasksHelpers.log.info(`no sass files.`, labelPrefix);
-      tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-      return;
-    }
+    const styleFile = `${config.src.path}/${config.src.template.style}`;
+    const fileExtension = getFileExtension(styleFile);
 
-    files.map(async file => {
-      const renderSass: (
-        options: sass.Options
-      ) => Promise<sass.Result> = promisify(sass.render.bind(sass));
-      const css = (await renderSass({
-        file,
-        outputStyle: 'expanded'
-      })).css.toString('utf8');
+    const css = (fileExtension === '.sass' || fileExtension === '.scss')
+      ? await compileSass(styleFile)
+      : await readFile(styleFile);
+
+    const processedCss = await postcss(
       // tslint:disable-next-line:readonly-array
-      const processedCss = await postcss(postcssPlugins as postcss.AcceptedPlugin[]).process(
-        css,
-        postcssOptions
-      );
-      const finalizedCss = processedCss.css.replace(/\n/g, '');
+      postcssPlugins as postcss.AcceptedPlugin[]
+    ).process(css, postcssOptions);
 
-      await writeFile(
-        `./${config.temp.path}/${tempSubpath}/${getFileBasename(file, getFileExtension(file))}.css`,
-        finalizedCss
-      );
-    });
+    const finalizedCss = processedCss.css.replace(/\n/g, '');
+
+    const destDir = `./${config.temp.path}/${tempSubpath}`;
+    const destFilename = `${getFileBasename(config.src.template.style, getFileExtension(config.src.template.style))}.css`;
+
+    await ensureDir(destDir);
+    await writeFile(`${destDir}/${destFilename}`, finalizedCss);
 
     tasksHelpers.log.successful(subTaskLabel, labelPrefix);
   } catch (error) {
     tasksHelpers.log.failed(subTaskLabel, labelPrefix);
     throw error;
   }
+}
+
+/**
+ * Compile a sass file.
+ *
+ * @returns The compiled css.
+ */
+async function compileSass(file: string): Promise<string> {
+  const renderSass: (options: sass.Options) => Promise<sass.Result> = promisify(sass.render.bind(sass));
+  return (await renderSass({
+    file,
+    outputStyle: 'expanded'
+  })).css.toString('utf8');
 }
 
 /**
@@ -404,29 +421,29 @@ async function initializeModuleFile(
       flag: 'r'
     });
 
-    const updatedFileContent =
-      fileContent
-        // Strip eslint and tslint comments.
-        .replace(/^\s*\/\*+[\s\n\*]*eslint[ -]\S*\s*\*+\/\s*$/gm, '') // eslint multiline.
-        .replace(/^\s*\/\/\s*tslint:.*$/gm, '') // tslint inline.
+    const updatedFileContent = `${fileContent
 
-        // Correct `node_modules` links.
-        .replace(
-          new RegExp(
-            `(../)*${config.nodeModulesPath}/${config.componenet.scope}/`,
-            'g'
-          ),
-          '../'
-        )
-        .replace(new RegExp(`(../)*${config.nodeModulesPath}/`, 'g'), '../../')
+      // Strip eslint and tslint comments.
+      .replace(/^\s*\/\*+[\s\n\*]*eslint[ -]\S*\s*\*+\/\s*$/gm, '') // eslint multiline.
+      .replace(/^\s*\/\/\s*tslint:.*$/gm, '') // tslint inline.
 
-        // Trim extra white space but end with a newline.
-        .trim() + '\n';
+      // Correct `node_modules` links.
+      .replace(
+        new RegExp(
+          `(../)*node_modules/${config.componenet.scope}/`,
+          'g'
+        ),
+        '../'
+      )
+      .replace(new RegExp(`(../)*node_modules/`, 'g'), '../../')
 
+      // Trim extra white space but end with a newline.
+      .trim()}\n`;
+
+    const destDir = `./${config.temp.path}/${tempSubpath}`;
+    await ensureDir(destDir);
     await writeFile(
-      `./${config.temp.path}/${tempSubpath}/${config.componenet.name}${
-        config.build.module.extension
-      }`,
+      `${destDir}/${config.componenet.name}${config.build.module.extension}`,
       updatedFileContent
     );
 
@@ -449,10 +466,7 @@ function getImportsAndExports(
   readonly esImports: ReadonlyArray<number>;
   readonly esExports: ReadonlyArray<number>;
 } {
-  type Wrapper = [
-    ReadonlyArray<number>,
-    ReadonlyArray<number>
-  ];
+  type Wrapper = [ReadonlyArray<number>, ReadonlyArray<number>];
 
   // Get info about the code.
   const [esImports, esExports]: Wrapper = Array.from(
@@ -466,30 +480,27 @@ function getImportsAndExports(
         if (config.build.script.bundleImports) {
           return reducedDetails;
         }
-        return node.specifiers.reduce(
-          (reducedSpecifierDetails, specifier) => {
-            const importedName =
-              specifier.type === 'ImportDefaultSpecifier'
-                ? specifier.local.name
-                : specifier.type === 'ImportSpecifier'
-                  ? specifier.imported.name
-                  : null;
-            if (
-              importedName === null ||
-              !importedName.toLowerCase().startsWith('catalyst')
-            ) {
-              throw new Error(
-                `Cannot automatically process import "${importedName}."`
-              );
-            }
+        return node.specifiers.reduce((reducedSpecifierDetails, specifier) => {
+          const importedName =
+            specifier.type === 'ImportDefaultSpecifier'
+              ? specifier.local.name
+              : specifier.type === 'ImportSpecifier'
+                ? specifier.imported.name
+                : null;
+          if (
+            importedName === null ||
+            !importedName.toLowerCase().startsWith('catalyst')
+          ) {
+            throw new Error(
+              `Cannot automatically process import "${importedName}."`
+            );
+          }
 
-            return [
-              [...reducedSpecifierDetails[0], nodeIndex],
-              reducedSpecifierDetails[1]
-            ] as Wrapper;
-          },
-          reducedDetails
-        );
+          return [
+            [...reducedSpecifierDetails[0], nodeIndex],
+            reducedSpecifierDetails[1]
+          ] as Wrapper;
+        }, reducedDetails);
       }
       if (node.type === 'ExportNamedDeclaration') {
         return [
@@ -520,60 +531,58 @@ function processImports(
   program: Program,
   esImports: ReadonlyArray<number>
 ): Program {
-  const updatedBody = esImports.reduce(
-    (reducedBody, index) => {
-      const declaration = reducedBody[index] as ImportDeclaration;
-      return declaration.specifiers.reduce(
-        (reducedBodyInfo, specifier) => {
-          if (specifier.type === 'ImportDefaultSpecifier') {
-            throw new Error(
-              `Cannot automatically process default imports - "${
-                specifier.local.name
-              }."`
-            );
-          }
-          if (specifier.type === 'ImportNamespaceSpecifier') {
-            throw new Error(
-              `Cannot automatically process namespace imports - "${
-                specifier.local.name
-              }."`
-            );
-          }
-
-          const localName = specifier.local.name;
-          const importedName = specifier.imported.name;
-
-          if (!importedName.toLowerCase().startsWith('catalyst')) {
-            throw new Error(
-              `Cannot automatically process import "${importedName}."`
-            );
-          }
-
-          const importReplacement = parseScript(
-            `const ${localName} = window.CatalystElements.${importedName};`
-          ).body;
-          const offsetIndex = index + reducedBodyInfo.offset;
-
-          return {
-            offset: reducedBodyInfo.offset + importReplacement.length - 1,
-            body: [
-              ...reducedBodyInfo.body.slice(0, offsetIndex),
-              ...importReplacement,
-              ...reducedBodyInfo.body.slice(offsetIndex + 1)
-            ]
-          };
-        },
-        {
-          offset: 0,
-          body: reducedBody
+  const updatedBody = esImports.reduce((reducedBody, index) => {
+    const declaration = reducedBody[index] as ImportDeclaration;
+    return declaration.specifiers.reduce(
+      (reducedBodyInfo, specifier) => {
+        if (specifier.type === 'ImportDefaultSpecifier') {
+          throw new Error(
+            `Cannot automatically process default imports - "${
+              specifier.local.name
+            }."`
+          );
         }
-      ).body;
-    },
-    program.body
-  );
+        if (specifier.type === 'ImportNamespaceSpecifier') {
+          throw new Error(
+            `Cannot automatically process namespace imports - "${
+              specifier.local.name
+            }."`
+          );
+        }
+
+        const localName = specifier.local.name;
+        const importedName = specifier.imported.name;
+
+        if (!importedName.toLowerCase().startsWith('catalyst')) {
+          throw new Error(
+            `Cannot automatically process import "${importedName}."`
+          );
+        }
+
+        const importReplacement = parseScript(
+          `const ${localName} = window.CatalystElements.${importedName};`
+        ).body;
+        const offsetIndex = index + reducedBodyInfo.offset;
+
+        return {
+          offset: reducedBodyInfo.offset + importReplacement.length - 1,
+          body: [
+            ...reducedBodyInfo.body.slice(0, offsetIndex),
+            ...importReplacement,
+            ...reducedBodyInfo.body.slice(offsetIndex + 1)
+          ]
+        };
+      },
+      {
+        offset: 0,
+        body: reducedBody
+      }
+    ).body;
+  }, program.body);
 
   return {
     ...program,
+
     // tslint:disable-next-line:readonly-array
     body: updatedBody as (Statement | ModuleDeclaration)[]
   };
@@ -641,10 +650,11 @@ function processExportWithDeclaration(
   exportNamesProcessed: IExportDetails['exportNamesProcessed'],
   insertIndex: number
 ): IExportDetails {
-  const declarations =
-    (declaration.type !== 'VariableDeclaration'
-      ? [declaration]
-      : [...declaration.declarations]) as ReadonlyArray<(FunctionDeclaration | ClassDeclaration | VariableDeclarator)>;
+  const declarations = (declaration.type !== 'VariableDeclaration'
+    ? [declaration]
+    : [...declaration.declarations]) as ReadonlyArray<
+    FunctionDeclaration | ClassDeclaration | VariableDeclarator
+  >;
 
   return declarations.reduce(
     (reducedBody, dec) => {
@@ -733,6 +743,7 @@ function processExports(
 
   return {
     ...program,
+
     // tslint:disable-next-line:readonly-array
     body: updatedBody as (Statement | ModuleDeclaration)[]
   };
@@ -770,10 +781,7 @@ async function initializeScriptFile(
     });
 
     const program = parseModule(fileContent);
-    const { esImports, esExports } = getImportsAndExports(
-      config,
-      program
-    );
+    const { esImports, esExports } = getImportsAndExports(config, program);
     const updatedProgram = processExports(
       processImports(program, esImports),
       esExports
@@ -782,10 +790,10 @@ async function initializeScriptFile(
       'window.CatalystElements = window.CatalystElements || {};\n' +
       `${generateJS(updatedProgram)}`;
 
+    const destDir = `./${config.temp.path}/${tempSubpath}`;
+    await ensureDir(destDir);
     await writeFile(
-      `./${config.temp.path}/${tempSubpath}/${config.componenet.name}${
-        config.build.script.extension
-      }`,
+      `${destDir}/${config.componenet.name}${config.build.script.extension}`,
       updatedSourceCode
     );
 
@@ -797,86 +805,118 @@ async function initializeScriptFile(
 }
 
 /**
- * Pipe the task to inject the template html into the given stream.
+ * Inject the template markup.
  *
  * @param config - Config settings
  * @param file - The file to inject into
  * @param labelPrefix - A prefix to print before the label
  */
-async function injectTemplateHTML(
+async function injectTemplateMarkup(
   config: IConfig,
   file: string,
   labelPrefix: string
 ): Promise<void> {
-  const subTaskLabel = 'html';
+  const subTaskLabel = 'markup';
 
   if (
     config.src.template === undefined ||
-    config.src.template.html === undefined
+    config.src.template.markup === undefined
   ) {
     tasksHelpers.log.info(
-      `skipping ${subTaskLabel} - no html to inject.`,
+      `skipping ${subTaskLabel} - no markup to inject.`,
       labelPrefix
     );
     return;
   }
 
+  const fileExtension = getFileExtension(config.src.template.markup);
+  if (!validMarkupFileTypes.includes(fileExtension)) {
+    throw new Error(`Cannot process markup files of type "${fileExtension}"`);
+  }
+
+  return injectTemplateHTML(config, file, labelPrefix);
+}
+
+/**
+ * Inject the template html.
+ *
+ * @param config - Config settings
+ * @param file - The file to inject into
+ * @param labelPrefix - A prefix to print before the label
+ */
+async function injectTemplateHTML(config: IConfig, file: string, labelPrefix: string): Promise<void> {
+  const subTaskLabel = 'html';
+
   tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
-  const htmlFile = `./${config.temp.path}/${tempSubpath}/${
-    config.src.template.html
-  }`;
+  const htmlFile = `./${config.temp.path}/${tempSubpath}/${config.src.template!.markup}`;
+
   const [element, html] = await Promise.all(
-    // tslint:disable-next-line:promise-function-async
-    [file, htmlFile].map(filepath =>
-      readFile(filepath, {
-        encoding: 'utf8',
-        flag: 'r'
-      })
-    )
-  );
+    [file, htmlFile].map(filepath => readFile(filepath, {
+      encoding: 'utf8',
+      flag: 'r'
+    })));
 
-  const injectedElement = element.replace(
-    getInjectRegExp('template'),
-    html.replace(/`/g, '\\`')
-  );
+  const injectedElement = element.replace(getInjectRegExp('html'), html.replace(/`/g, '\\`'));
 
+  await ensureDir(getDirName(file));
   await writeFile(file, injectedElement);
+
   tasksHelpers.log.successful(subTaskLabel, labelPrefix);
 }
 
 /**
- * Pipe the task to inject the template css into the given stream.
+ * Inject the template style.
  *
  * @param config - Config settings
  * @param file - The file to inject into
  * @param labelPrefix - A prefix to print before the label
  */
-async function injectTemplateCSS(
+async function injectTemplateStyle(
   config: IConfig,
   file: string,
   labelPrefix: string
 ): Promise<void> {
-  const subTaskLabel = 'css';
+  const subTaskLabel = 'style';
 
   if (
     config.src.template === undefined ||
-    config.src.template.css === undefined
+    config.src.template.style === undefined
   ) {
     tasksHelpers.log.info(
-      `skipping ${subTaskLabel} - no css to inject.`,
+      `skipping ${subTaskLabel} - no styles to inject.`,
       labelPrefix
     );
     return;
   }
 
+  const fileExtension = getFileExtension(config.src.template.style);
+  if (!validStyleFileTypes.includes(fileExtension)) {
+    throw new Error(`Cannot process style files of type "${fileExtension}"`);
+  }
+
+  return injectTemplateCSS(config, file, labelPrefix);
+}
+
+/**
+ * Inject the template css.
+ *
+ * @param config - Config settings
+ * @param file - The file to inject into
+ * @param labelPrefix - A prefix to print before the label
+ */
+async function injectTemplateCSS(config: IConfig, file: string, labelPrefix: string): Promise<void> {
+  const subTaskLabel = 'css';
+
   tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
   const cssFile = `./${config.temp.path}/${tempSubpath}/${
-    config.src.template.css
-  }`;
+    config.src.template!.style!.substring(
+      0,
+      config.src.template!.style!.length - getFileExtension(config.src.template!.style!).length
+    )}.css`;
+
   const [element, css] = await Promise.all(
-    // tslint:disable-next-line:promise-function-async
     [file, cssFile].map(filepath =>
       readFile(filepath, {
         encoding: 'utf8',
@@ -886,10 +926,11 @@ async function injectTemplateCSS(
   );
 
   const injectedElement = element.replace(
-    getInjectRegExp('style'),
+    getInjectRegExp('css'),
     css.replace(/`/g, '\\`')
   );
 
+  await ensureDir(getDirName(file));
   await writeFile(file, injectedElement);
   tasksHelpers.log.successful(subTaskLabel, labelPrefix);
 }
@@ -914,8 +955,8 @@ async function injectTemplate(
       labelPrefix
     );
 
-    await injectTemplateHTML(config, file, subTaskLabelPrefix);
-    await injectTemplateCSS(config, file, subTaskLabelPrefix);
+    await injectTemplateMarkup(config, file, subTaskLabelPrefix);
+    await injectTemplateStyle(config, file, subTaskLabelPrefix);
 
     tasksHelpers.log.successful(subTaskLabel, labelPrefix);
   } catch (error) {
@@ -977,7 +1018,7 @@ async function finalizeModule(
   try {
     tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
-    await copyFile(
+    await copy(
       `./${config.temp.path}/${tempSubpath}/${config.componenet.name}${
         config.build.module.extension
       }`,
@@ -1020,11 +1061,16 @@ async function finalizeScript(
         }`,
         filename: `${config.componenet.name}${config.build.script.extension}`
       },
+      resolve: {
+        extensions: ['.js', '.mjs']
+      },
       plugins: getWebpackPlugIns(),
       target: 'web'
     } as any);
 
-    const runCompiler = promisify(compiler.run.bind(compiler) as typeof compiler.run);
+    const runCompiler = promisify(compiler.run.bind(
+      compiler
+    ) as typeof compiler.run);
     const stats = await runCompiler();
 
     // tslint:disable-next-line:no-console
@@ -1136,7 +1182,7 @@ async function finalizeCopyFiles(
     const files = await glob(['./README.md', './LICENSE']);
     await Promise.all(
       // tslint:disable-next-line:promise-function-async
-      files.map(file => copyFile(file, `./${config.dist.path}/${file}`))
+      files.map(file => copy(file, `./${config.dist.path}/${file}`))
     );
 
     tasksHelpers.log.successful(subTaskLabel, labelPrefix);
@@ -1172,8 +1218,11 @@ async function finalizePackageJson(
     };
 
     const updatedContent = Object.keys(modifiedContent)
-      .filter(key =>
-        !['scripts', 'directories', 'devDependencies', 'engines'].includes(key)
+      .filter(
+        key =>
+          !['scripts', 'directories', 'devDependencies', 'engines'].includes(
+            key
+          )
       )
       .reduce(
         (reducedContent, key) => {
@@ -1185,8 +1234,10 @@ async function finalizePackageJson(
         {} as { readonly [key: string]: any }
       );
 
+    const destDir = `./${config.dist.path}`;
+    await ensureDir(destDir);
     await writeFile(
-      `./${config.dist.path}/package.json`,
+      `${destDir}/package.json`,
       JSON.stringify(updatedContent, null, 2)
     );
 
@@ -1243,13 +1294,15 @@ async function buildSymlinks(
       `./${config.dist.path}/${config.componenet.name}**.?(m)js`
     );
 
-    await Promise.all(files.map(async file => {
-      const outFile = `./${getFileBasename(file)}`;
-      if (existsSync(outFile)) {
-        await del(outFile);
-      }
-      await symlink(file, outFile, 'file');
-    }));
+    await Promise.all(
+      files.map(async file => {
+        const outFile = `./${getFileBasename(file)}`;
+        if (existsSync(outFile)) {
+          await del(outFile);
+        }
+        await symlink(file, outFile, 'file');
+      })
+    );
 
     tasksHelpers.log.successful(subTaskLabel, labelPrefix);
   } catch (error) {
@@ -1273,7 +1326,7 @@ export async function build(taskName: string, config: IConfig): Promise<void> {
   await preprocessSourceFiles(config, taskName);
   await runAllPromises([
     minifyHTML(config, taskName),
-    compileSASS(config, taskName)
+    compileCSS(config, taskName)
   ]);
   await runAllPromises([
     buildModule(config, taskName),

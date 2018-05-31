@@ -1,19 +1,16 @@
 // Libraries.
 import {
+  ensureDir,
   existsSync,
-  mkdir as _mkdir,
-  readFile as _readFile,
-  symlink as _symlink
-} from 'fs';
-import { promisify } from 'util';
+  mkdir,
+  readFile,
+  symlink,
+  writeFile
+} from 'fs-extra';
+import { dirname as getDirName } from 'path';
 
 import { IConfig } from '../config';
-import { runAllPromises, tasksHelpers, writeFile } from '../util';
-
-// Promisified functions.
-const mkdir = promisify(_mkdir);
-const readFile = promisify(_readFile);
-const symlink = promisify(_symlink);
+import { runAllPromises, tasksHelpers } from '../util';
 
 /**
  * Fix prismjs.
@@ -25,8 +22,8 @@ async function fixPrismjs(config: IConfig, labelPrefix: string): Promise<void> {
   const subTaskLabel = `prismjs`;
 
   try {
-    const good = existsSync(`./${config.nodeModulesPath}/prismjs`);
-    const bad = existsSync(`./${config.nodeModulesPath}/prism`);
+    const good = existsSync(`./node_modules/prismjs`);
+    const bad = existsSync(`./node_modules/prism`);
 
     if (!good || bad) {
       tasksHelpers.log.info(
@@ -39,7 +36,7 @@ async function fixPrismjs(config: IConfig, labelPrefix: string): Promise<void> {
 
     tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
-    await symlink('./prismjs', `./${config.nodeModulesPath}/prism`, 'dir');
+    await symlink('./prismjs', `./node_modules/prism`, 'dir');
 
     tasksHelpers.log.successful(subTaskLabel, labelPrefix);
   } catch (error) {
@@ -62,9 +59,9 @@ async function fixTestFixture(
 
   try {
     const good = existsSync(
-      `./${config.nodeModulesPath}/@polymer/test-fixture`
+      `./node_modules/@polymer/test-fixture`
     );
-    const bad = existsSync(`./${config.nodeModulesPath}/test-fixture`);
+    const bad = existsSync(`./node_modules/test-fixture`);
 
     if (!good || bad) {
       tasksHelpers.log.info(
@@ -79,7 +76,7 @@ async function fixTestFixture(
 
     await symlink(
       './@polymer/test-fixture',
-      `./${config.nodeModulesPath}/test-fixture`,
+      `./node_modules/test-fixture`,
       'dir'
     );
 
@@ -100,8 +97,8 @@ async function fixAsync(config: IConfig, labelPrefix: string): Promise<void> {
   const subTaskLabel = `async`;
 
   try {
-    const good = existsSync(`./${config.nodeModulesPath}/async/dist/async.js`);
-    const bad = existsSync(`./${config.nodeModulesPath}/async/lib/async.js`);
+    const good = existsSync(`./node_modules/async/dist/async.js`);
+    const bad = existsSync(`./node_modules/async/lib/async.js`);
 
     if (!good || bad) {
       tasksHelpers.log.info(
@@ -114,13 +111,13 @@ async function fixAsync(config: IConfig, labelPrefix: string): Promise<void> {
 
     tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
-    if (!existsSync(`./${config.nodeModulesPath}/async/lib/`)) {
-      await mkdir(`./${config.nodeModulesPath}/async/lib/`, 0o777); // Tslint:disable-line:no-magic-numbers
+    if (!existsSync(`./node_modules/async/lib/`)) {
+      await mkdir(`./node_modules/async/lib/`);
     }
 
     await symlink(
       '../dist/async.js',
-      `./${config.nodeModulesPath}/async/lib/async.js`,
+      `./node_modules/async/lib/async.js`,
       'file'
     );
 
@@ -141,8 +138,8 @@ async function fixSinon(config: IConfig, labelPrefix: string): Promise<void> {
   const subTaskLabel = `sinon`;
 
   try {
-    const good = existsSync(`./${config.nodeModulesPath}/sinon/pkg/sinon.js`);
-    const bad = existsSync(`./${config.nodeModulesPath}/sinonjs/sinon.js`);
+    const good = existsSync(`./node_modules/sinon/pkg/sinon.js`);
+    const bad = existsSync(`./node_modules/sinonjs/sinon.js`);
 
     if (!good || bad) {
       tasksHelpers.log.info(
@@ -155,13 +152,13 @@ async function fixSinon(config: IConfig, labelPrefix: string): Promise<void> {
 
     tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
-    if (!existsSync(`./${config.nodeModulesPath}/sinonjs`)) {
-      await mkdir(`./${config.nodeModulesPath}/sinonjs`, 0o777); // Tslint:disable-line:no-magic-numbers
+    if (!existsSync(`./node_modules/sinonjs`)) {
+      await mkdir(`./node_modules/sinonjs`);
     }
 
     await symlink(
       '../sinon/pkg/sinon.js',
-      `./${config.nodeModulesPath}/sinonjs/sinon.js`,
+      `./node_modules/sinonjs/sinon.js`,
       'file'
     );
 
@@ -198,7 +195,7 @@ async function fixIronScrollManager(
       return;
     }
 
-    const content = await readFile(file, 'utf8');
+    const content = await readFile(file, { encoding: 'utf8', flag: 'r' });
 
     const updatedContent = content
       .replace(
@@ -221,6 +218,7 @@ async function fixIronScrollManager(
 
     tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
+    await ensureDir(getDirName(file));
     await writeFile(file, updatedContent, 'utf8');
 
     tasksHelpers.log.successful(subTaskLabel, labelPrefix);

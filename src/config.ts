@@ -100,11 +100,6 @@ declare interface IConfig {
      * The npm scope of the component
      */
     readonly scope?: string | null;
-
-    /**
-     * The path to the component when it is in node modules.
-     */
-    readonly nodeModulesPath?: string;
   };
 
   /**
@@ -171,11 +166,6 @@ declare interface IConfig {
      */
     readonly path: string;
   };
-
-  /**
-   * Where the node module files are relative to the component's project root.
-   */
-  readonly nodeModulesPath: string;
 
   /**
    * Publish settings.
@@ -296,8 +286,8 @@ declare interface IConfig {
      * The templates to be injected.
      */
     readonly template?: {
-      readonly css?: string;
-      readonly html?: string;
+      readonly style?: string;
+      readonly markup?: string;
     };
   };
 
@@ -334,6 +324,7 @@ declare interface IConfig {
   };
   readonly [key: string]: any;
 }
+
 // tslint:enable:no-reserved-keywords
 
 const postcssSettings = {
@@ -418,7 +409,6 @@ const defaultConfig: IConfig = {
     nodeModulesPath: 'scripts',
     path: 'docs'
   },
-  nodeModulesPath: 'node_modules',
   publish: {
     archiveFormats: {
       tar: {

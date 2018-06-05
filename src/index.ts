@@ -90,9 +90,10 @@ export const tasks = {
     config?: Promise<IConfig> | IConfig
   ) => async () => {
     if (config === undefined) {
-      return analyze(taskName, await getConfig());
+      await analyze(taskName, await getConfig());
+    } else {
+      await analyze(taskName, await config);
     }
-    return analyze(taskName, await config);
   },
 
   /**
@@ -103,9 +104,10 @@ export const tasks = {
     config?: Promise<IConfig> | IConfig
   ) => async () => {
     if (config === undefined) {
-      return build(taskName, await getConfig());
+      await build(taskName, await getConfig());
+    } else {
+      await build(taskName, await config);
     }
-    return build(taskName, await config);
   },
 
   /**
@@ -116,9 +118,10 @@ export const tasks = {
     config?: Promise<IConfig> | IConfig
   ) => async () => {
     if (config === undefined) {
-      return buildDocs(taskName, await getConfig());
+      await buildDocs(taskName, await getConfig());
+    } else {
+      await buildDocs(taskName, await config);
     }
-    return buildDocs(taskName, await config);
   },
 
   /**
@@ -129,9 +132,10 @@ export const tasks = {
     config?: Promise<IConfig> | IConfig
   ) => async () => {
     if (config === undefined) {
-      return cleanTemp(await getConfig(), taskName);
+      await cleanTemp(await getConfig(), taskName);
+    } else {
+      await cleanTemp(await config, taskName);
     }
-    return cleanTemp(await config, taskName);
   },
 
   /**
@@ -142,9 +146,10 @@ export const tasks = {
     config?: Promise<IConfig> | IConfig
   ) => async () => {
     if (config === undefined) {
-      return fixDependencies(taskName, await getConfig());
+      await fixDependencies(taskName, await getConfig());
+    } else {
+      await fixDependencies(taskName, await config);
     }
-    return fixDependencies(taskName, await config);
   },
 
   /**
@@ -155,9 +160,10 @@ export const tasks = {
     config?: Promise<IConfig> | IConfig
   ) => async () => {
     if (config === undefined) {
-      return lint(taskName, await getConfig());
+      await lint(taskName, await getConfig());
+    } else {
+      await lint(taskName, await config);
     }
-    return lint(taskName, await config);
   },
 
   /**
@@ -168,9 +174,10 @@ export const tasks = {
     config?: Promise<IConfig> | IConfig
   ) => async () => {
     if (config === undefined) {
-      return publish(taskName, await getConfig());
+      await publish(taskName, await getConfig());
+    } else {
+      await publish(taskName, await config);
     }
-    return publish(taskName, await config);
   },
 
   /**
@@ -181,9 +188,10 @@ export const tasks = {
     config?: Promise<IConfig> | IConfig
   ) => async () => {
     if (config === undefined) {
-      return publishDry(taskName, await getConfig());
+      await publishDry(taskName, await getConfig());
+    } else {
+      await publishDry(taskName, await config);
     }
-    return publishDry(taskName, await config);
   },
 
   /**
@@ -194,8 +202,9 @@ export const tasks = {
     config?: Promise<IConfig> | IConfig
   ) => async () => {
     if (config === undefined) {
-      return test(taskName, await getConfig());
+      await test(taskName, await getConfig());
+    } else {
+      await test(taskName, await config);
     }
-    return test(taskName, await config);
   }
 };

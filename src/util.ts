@@ -214,6 +214,9 @@ export function transpose<T>(
 
   // tslint:disable-next-line:readonly-array
 ): T[][] {
+  if (array.length === 0) {
+    return [];
+  }
   return array[0].map((_, index) => array.map(row => row[index]));
 }
 

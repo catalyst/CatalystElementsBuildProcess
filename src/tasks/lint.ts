@@ -43,6 +43,13 @@ interface IEslintReportDetails {
 }
 
 /**
+ * Returns true if the given error is a valid rule vialation.
+ */
+function isRuleVialationError(error: ILintingError): boolean {
+  return error.rule !== undefined && error.severity !== 'off';
+}
+
+/**
  * Get the filepath output for a linting job.
  */
 function getFilepathOutputForLintingJob(filepath: string): string {
@@ -61,7 +68,7 @@ function getLintingErrorOutput(
   colLength: number,
   ruleLength: number
 ): string {
-  if (error.severity === 'off') {
+  if (!isRuleVialationError(error)) {
     return '';
   }
 
@@ -88,35 +95,52 @@ function getLintingErrorOutput(
 function getLintingErrorsOutput(errors: ReadonlyArray<ILintingError>): string {
   const [lineLength, colLength, ruleLength] = (() =>
     transpose(
-      errors.map(
-        error =>
-          [
+      errors
+        .filter(isRuleVialationError)
+        .map(
+          (error): ReadonlyArray<number> => [
             `${error.line}`.length,
             `${error.column}`.length,
             error.rule.length
-          ] as ReadonlyArray<number>
-      )
-    ).map(length => Math.max(...length)))();
+          ]
+        )
+    )
+    .map(lengths => Math.max(...lengths)))();
 
   return errors
     .map(error =>
       getLintingErrorOutput(error, lineLength, colLength, ruleLength)
     )
-    .reduce((previous, current) => `${previous}\n  ${current}`, '');
+    .reduce((previous, current) => {
+      if (current === '') {
+        return previous;
+      }
+      return `${previous}  ${current}\n`;
+    }, '');
 }
 
 /**
- * Get the linging output for a file.
+ * Get the linting output for a file.
  */
 function getFileLintingOutput(
   file: string,
   errors?: ReadonlyArray<ILintingError>
 ): string {
-  if (errors === undefined || errors.length === 0) {
+  const hasRuleVialationError =
+    errors !== undefined &&
+    errors.length > 0 &&
+    errors
+      .map(isRuleVialationError)
+      .reduce((reducedResult, ruleValidity) => {
+        return reducedResult || ruleValidity;
+      }, false);
+
+  if (!hasRuleVialationError) {
     return '';
   }
-  return `${getFilepathOutputForLintingJob(file)}\n  ${getLintingErrorsOutput(
-    errors
+
+  return `${getFilepathOutputForLintingJob(file)}\n${getLintingErrorsOutput(
+    errors!
   )}`;
 }
 
@@ -130,9 +154,9 @@ function getLintingOutput(errorsByFile: {
     .map(fileErrors => getFileLintingOutput(fileErrors[0], fileErrors[1]))
     .reduce(
       (previous, current) =>
-        current === '' ? previous : `${previous}\n\n${current}`,
+        current === '' ? previous : `${previous}${current}\n`,
       ''
-    );
+    ).trimRight() + '\n';
 }
 
 /**
@@ -187,9 +211,9 @@ function printTSLintResult(
         line,
         character
       }: {
-        readonly line: number;
-        readonly character: number;
-      } = failure.getStartPosition().getLineAndCharacter();
+          readonly line: number;
+          readonly character: number;
+        } = failure.getStartPosition().getLineAndCharacter();
 
       return {
         ...errors,
@@ -448,42 +472,42 @@ async function lintJSInHTML(
 
     const lintPromises: ReadonlyArray<
       Promise<ReadonlyArray<eslint.CLIEngine.LintReport>>
-    > = files.map(async file => {
-      const fileContent = await readFile(file, {
-        encoding: 'utf8',
-        flag: 'r'
-      });
-      const jsScriptTypes: ReadonlyArray<string> = [
-        '',
-        'application/javascript',
-        'application/ecmascript',
-        'text/javascript',
-        'module'
-      ];
-      const jsScriptsTags: ReadonlyArray<string> = jsScriptTypes.reduce(
-        (scripts, t) => {
-          return [...scripts, `script[type^="${t}"]`];
-        },
-        ['script:not([type])']
-      );
-
-      const $ = cheerio.load(fileContent);
-      return $(jsScriptsTags)
-        .toArray()
-        .reduce(
-          (
-            reducedReports: ReadonlyArray<eslint.CLIEngine.LintReport>,
-            element
-          ) => {
-            const script = $(element).html();
-            if (script !== null && script.trim().length > 0) {
-              return [...reducedReports, linter.executeOnText(script, file)];
-            }
-            return reducedReports;
+      > = files.map(async file => {
+        const fileContent = await readFile(file, {
+          encoding: 'utf8',
+          flag: 'r'
+        });
+        const jsScriptTypes: ReadonlyArray<string> = [
+          '',
+          'application/javascript',
+          'application/ecmascript',
+          'text/javascript',
+          'module'
+        ];
+        const jsScriptsTags: ReadonlyArray<string> = jsScriptTypes.reduce(
+          (scripts, t) => {
+            return [...scripts, `script[type^="${t}"]`];
           },
-          []
+          ['script:not([type])']
         );
-    });
+
+        const $ = cheerio.load(fileContent);
+        return $(jsScriptsTags)
+          .toArray()
+          .reduce(
+            (
+              reducedReports: ReadonlyArray<eslint.CLIEngine.LintReport>,
+              element
+            ) => {
+              const script = $(element).html();
+              if (script !== null && script.trim().length > 0) {
+                return [...reducedReports, linter.executeOnText(script, file)];
+              }
+              return reducedReports;
+            },
+            []
+          );
+      });
 
     const { results, errorCount, warningCount } = getEslintResultsFromReports(
       await Promise.all(lintPromises)

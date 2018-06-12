@@ -29,7 +29,7 @@
     "lint": "node ./dist/bin/runner.js lint"
   },
   "dependencies": {
-    "ansi-colors": "^1.1.0",
+    "ansi-colors": "^2.0.1",
     "archiver": "^2.1.1",
     "cheerio": "^1.0.0-rc.2",
     "colorguard": "^1.2.1",

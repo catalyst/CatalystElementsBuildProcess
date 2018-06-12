@@ -319,10 +319,7 @@ async function minifyHTML(config: IConfig, labelPrefix: string): Promise<void> {
  * @param config - Config settings
  * @param labelPrefix - A prefix to print before the label
  */
-async function compileCSS(
-  config: IConfig,
-  labelPrefix: string
-): Promise<void> {
+async function compileCSS(config: IConfig, labelPrefix: string): Promise<void> {
   const subTaskLabel = 'compile CSS';
 
   try {
@@ -353,9 +350,10 @@ async function compileCSS(
     const styleFile = `${config.src.path}/${config.src.template.style}`;
     const fileExtension = getFileExtension(styleFile);
 
-    const css = (fileExtension === '.sass' || fileExtension === '.scss')
-      ? await compileSass(styleFile)
-      : await readFile(styleFile);
+    const css =
+      fileExtension === '.sass' || fileExtension === '.scss'
+        ? await compileSass(styleFile)
+        : await readFile(styleFile);
 
     const processedCss = await postcss(
       // tslint:disable-next-line:readonly-array
@@ -365,7 +363,10 @@ async function compileCSS(
     const finalizedCss = processedCss.css.replace(/\n/g, '');
 
     const destDir = `./${config.temp.path}/${tempSubpath}`;
-    const destFilename = `${getFileBasename(config.src.template.style, getFileExtension(config.src.template.style))}.css`;
+    const destFilename = `${getFileBasename(
+      config.src.template.style,
+      getFileExtension(config.src.template.style)
+    )}.css`;
 
     await ensureDir(destDir);
     await writeFile(`${destDir}/${destFilename}`, finalizedCss);
@@ -383,7 +384,9 @@ async function compileCSS(
  * @returns The compiled css.
  */
 async function compileSass(file: string): Promise<string> {
-  const renderSass: (options: sass.Options) => Promise<sass.Result> = promisify(sass.render.bind(sass));
+  const renderSass: (options: sass.Options) => Promise<sass.Result> = promisify(
+    sass.render.bind(sass)
+  );
   return (await renderSass({
     file,
     outputStyle: 'expanded'
@@ -429,10 +432,7 @@ async function initializeModuleFile(
 
       // Correct `node_modules` links.
       .replace(
-        new RegExp(
-          `(../)*node_modules/${config.componenet.scope}/`,
-          'g'
-        ),
+        new RegExp(`(../)*node_modules/${config.componenet.scope}/`, 'g'),
         '../'
       )
       .replace(new RegExp(`(../)*node_modules/`, 'g'), '../../')
@@ -582,9 +582,7 @@ function processImports(
 
   return {
     ...program,
-
-    // tslint:disable-next-line:readonly-array
-    body: updatedBody as (Statement | ModuleDeclaration)[]
+    body: updatedBody
   };
 }
 
@@ -844,20 +842,32 @@ async function injectTemplateMarkup(
  * @param file - The file to inject into
  * @param labelPrefix - A prefix to print before the label
  */
-async function injectTemplateHTML(config: IConfig, file: string, labelPrefix: string): Promise<void> {
+async function injectTemplateHTML(
+  config: IConfig,
+  file: string,
+  labelPrefix: string
+): Promise<void> {
   const subTaskLabel = 'html';
 
   tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
-  const htmlFile = `./${config.temp.path}/${tempSubpath}/${config.src.template!.markup}`;
+  const htmlFile = `./${config.temp.path}/${tempSubpath}/${
+    config.src.template!.markup
+  }`;
 
   const [element, html] = await Promise.all(
-    [file, htmlFile].map(filepath => readFile(filepath, {
-      encoding: 'utf8',
-      flag: 'r'
-    })));
+    [file, htmlFile].map(async filepath =>
+      readFile(filepath, {
+        encoding: 'utf8',
+        flag: 'r'
+      })
+    )
+  );
 
-  const injectedElement = element.replace(getInjectRegExp('html'), html.replace(/`/g, '\\`'));
+  const injectedElement = element.replace(
+    getInjectRegExp('html'),
+    html.replace(/`/g, '\\`')
+  );
 
   await ensureDir(getDirName(file));
   await writeFile(file, injectedElement);
@@ -905,19 +915,25 @@ async function injectTemplateStyle(
  * @param file - The file to inject into
  * @param labelPrefix - A prefix to print before the label
  */
-async function injectTemplateCSS(config: IConfig, file: string, labelPrefix: string): Promise<void> {
+async function injectTemplateCSS(
+  config: IConfig,
+  file: string,
+  labelPrefix: string
+): Promise<void> {
   const subTaskLabel = 'css';
 
   tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
-  const cssFile = `./${config.temp.path}/${tempSubpath}/${
-    config.src.template!.style!.substring(
-      0,
-      config.src.template!.style!.length - getFileExtension(config.src.template!.style!).length
-    )}.css`;
+  const cssFile = `./${
+    config.temp.path
+  }/${tempSubpath}/${config.src.template!.style!.substring(
+    0,
+    config.src.template!.style!.length -
+      getFileExtension(config.src.template!.style!).length
+  )}.css`;
 
   const [element, css] = await Promise.all(
-    [file, cssFile].map(filepath =>
+    [file, cssFile].map(async filepath =>
       readFile(filepath, {
         encoding: 'utf8',
         flag: 'r'

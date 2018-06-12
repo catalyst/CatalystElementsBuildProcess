@@ -238,3 +238,21 @@ export function getInjectRegExp(keyword: string): RegExp {
 export async function runCommand(command: string): Promise<string> {
   return (await exec(command)).replace(/\n$/, '');
 }
+
+/**
+ * An error caused by something external.
+ */
+export class ExternalError extends Error {
+  public constructor(message: string) {
+    super(message);
+  }
+}
+
+/**
+ * An error caused by an invalid config.
+ */
+export class ConfigError extends Error {
+  public constructor(message: string) {
+    super(message);
+  }
+}

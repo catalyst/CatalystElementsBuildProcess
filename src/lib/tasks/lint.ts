@@ -15,7 +15,13 @@ import {
 } from 'tslint';
 
 import { IConfig } from '../config';
-import { glob, runAllPromises, tasksHelpers, transpose } from '../util';
+import {
+  ExternalError,
+  glob,
+  runAllPromises,
+  tasksHelpers,
+  transpose
+} from '../util';
 
 /**
  * A linting error that can be displayed.
@@ -24,8 +30,15 @@ interface ILintingError {
   readonly column: number;
   readonly line: number;
   readonly message: string;
-  readonly rule: string;
+  readonly rule?: string;
   readonly severity: 'warning' | 'error' | 'off';
+}
+
+/**
+ * A linting error that can be displayed.
+ */
+interface IValidLintingError extends ILintingError {
+  readonly rule: string;
 }
 
 /**
@@ -45,7 +58,9 @@ interface IEslintReportDetails {
 /**
  * Returns true if the given error is a valid rule vialation.
  */
-function isRuleVialationError(error: ILintingError): boolean {
+function isRuleVialationError(
+  error: ILintingError
+): error is IValidLintingError {
   return error.rule !== undefined && error.severity !== 'off';
 }
 
@@ -104,8 +119,7 @@ function getLintingErrorsOutput(errors: ReadonlyArray<ILintingError>): string {
             error.rule.length
           ]
         )
-    )
-    .map(lengths => Math.max(...lengths)))();
+    ).map(lengths => Math.max(...lengths)))();
 
   return errors
     .map(error =>
@@ -129,11 +143,9 @@ function getFileLintingOutput(
   const hasRuleVialationError =
     errors !== undefined &&
     errors.length > 0 &&
-    errors
-      .map(isRuleVialationError)
-      .reduce((reducedResult, ruleValidity) => {
-        return reducedResult || ruleValidity;
-      }, false);
+    errors.map(isRuleVialationError).reduce((reducedResult, ruleValidity) => {
+      return reducedResult || ruleValidity;
+    }, false);
 
   if (!hasRuleVialationError) {
     return '';
@@ -150,13 +162,14 @@ function getFileLintingOutput(
 function getLintingOutput(errorsByFile: {
   readonly [file: string]: ReadonlyArray<ILintingError> | undefined;
 }): string {
-  return Object.entries(errorsByFile)
+  return `${Object.entries(errorsByFile)
     .map(fileErrors => getFileLintingOutput(fileErrors[0], fileErrors[1]))
     .reduce(
       (previous, current) =>
         current === '' ? previous : `${previous}${current}\n`,
       ''
-    ).trimRight() + '\n';
+    )
+    .trimRight()}\n`;
 }
 
 /**
@@ -211,9 +224,9 @@ function printTSLintResult(
         line,
         character
       }: {
-          readonly line: number;
-          readonly character: number;
-        } = failure.getStartPosition().getLineAndCharacter();
+        readonly line: number;
+        readonly character: number;
+      } = failure.getStartPosition().getLineAndCharacter();
 
       return {
         ...errors,
@@ -346,7 +359,7 @@ async function lintTS(labelPrefix: string): Promise<void> {
     }
 
     if (result.errorCount > 0) {
-      throw new Error('tslint failed.');
+      throw new ExternalError('tslint failed.');
     }
 
     tasksHelpers.log.successful(subTaskLabel, labelPrefix);
@@ -389,7 +402,7 @@ async function lintJSFiles(
       }
 
       if (report.errorCount > 0) {
-        throw new Error('eslint failed.');
+        throw new ExternalError('eslint failed.');
       }
     }
 
@@ -472,42 +485,42 @@ async function lintJSInHTML(
 
     const lintPromises: ReadonlyArray<
       Promise<ReadonlyArray<eslint.CLIEngine.LintReport>>
-      > = files.map(async file => {
-        const fileContent = await readFile(file, {
-          encoding: 'utf8',
-          flag: 'r'
-        });
-        const jsScriptTypes: ReadonlyArray<string> = [
-          '',
-          'application/javascript',
-          'application/ecmascript',
-          'text/javascript',
-          'module'
-        ];
-        const jsScriptsTags: ReadonlyArray<string> = jsScriptTypes.reduce(
-          (scripts, t) => {
-            return [...scripts, `script[type^="${t}"]`];
-          },
-          ['script:not([type])']
-        );
-
-        const $ = cheerio.load(fileContent);
-        return $(jsScriptsTags)
-          .toArray()
-          .reduce(
-            (
-              reducedReports: ReadonlyArray<eslint.CLIEngine.LintReport>,
-              element
-            ) => {
-              const script = $(element).html();
-              if (script !== null && script.trim().length > 0) {
-                return [...reducedReports, linter.executeOnText(script, file)];
-              }
-              return reducedReports;
-            },
-            []
-          );
+    > = files.map(async file => {
+      const fileContent = await readFile(file, {
+        encoding: 'utf8',
+        flag: 'r'
       });
+      const jsScriptTypes: ReadonlyArray<string> = [
+        '',
+        'application/javascript',
+        'application/ecmascript',
+        'text/javascript',
+        'module'
+      ];
+      const jsScriptsTags: ReadonlyArray<string> = jsScriptTypes.reduce(
+        (scripts, t) => {
+          return [...scripts, `script[type^="${t}"]`];
+        },
+        ['script:not([type])']
+      );
+
+      const $ = cheerio.load(fileContent);
+      return $(jsScriptsTags)
+        .toArray()
+        .reduce(
+          (
+            reducedReports: ReadonlyArray<eslint.CLIEngine.LintReport>,
+            element
+          ) => {
+            const script = $(element).html();
+            if (script !== null && script.trim().length > 0) {
+              return [...reducedReports, linter.executeOnText(script, file)];
+            }
+            return reducedReports;
+          },
+          []
+        );
+    });
 
     const { results, errorCount, warningCount } = getEslintResultsFromReports(
       await Promise.all(lintPromises)
@@ -518,7 +531,7 @@ async function lintJSInHTML(
     }
 
     if (errorCount > 0) {
-      throw new Error('eslint failed.');
+      throw new ExternalError('eslint failed.');
     }
 
     tasksHelpers.log.successful(subTaskLabel, labelPrefix);
@@ -592,7 +605,7 @@ async function lintSass(config: IConfig, labelPrefix: string): Promise<void> {
       }
 
       if (hasErrors) {
-        throw new Error('sass lint failed.');
+        throw new ExternalError('sass lint failed.');
       }
     }
 

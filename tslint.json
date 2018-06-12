@@ -73,7 +73,6 @@
       true,
       "always-prefix"
     ],
-    "interface-over-type-literal": true,
     "jsdoc-format": [
       true,
       "check-multiline-start"
@@ -368,10 +367,10 @@
     ],
 
     // tslint-immutable
-    "readonly-keyword": true,
-    "readonly-array": true,
+    "readonly-keyword": [true, { "ignore-prefix": "mutable" }],
+    "readonly-array": [true, { "ignore-prefix": "mutable" }],
     "no-let": true,
-    "no-object-mutation": true,
+    "no-object-mutation": [true, { "ignore-prefix": "mutable" }],
     "no-delete": true,
     "no-method-signature": true,
     "no-loop-statement": true

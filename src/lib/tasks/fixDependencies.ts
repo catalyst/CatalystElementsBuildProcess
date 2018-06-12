@@ -15,10 +15,9 @@ import { runAllPromises, tasksHelpers } from '../util';
 /**
  * Fix prismjs.
  *
- * @param Config config - Config settings
  * @param labelPrefix - A prefix to print before the label
  */
-async function fixPrismjs(config: IConfig, labelPrefix: string): Promise<void> {
+async function fixPrismjs(labelPrefix: string): Promise<void> {
   const subTaskLabel = `prismjs`;
 
   try {
@@ -48,19 +47,13 @@ async function fixPrismjs(config: IConfig, labelPrefix: string): Promise<void> {
 /**
  * Fix test-fixture.
  *
- * @param config - Config settings
  * @param labelPrefix - A prefix to print before the label
  */
-async function fixTestFixture(
-  config: IConfig,
-  labelPrefix: string
-): Promise<void> {
+async function fixTestFixture(labelPrefix: string): Promise<void> {
   const subTaskLabel = `test-fixture`;
 
   try {
-    const good = existsSync(
-      `./node_modules/@polymer/test-fixture`
-    );
+    const good = existsSync(`./node_modules/@polymer/test-fixture`);
     const bad = existsSync(`./node_modules/test-fixture`);
 
     if (!good || bad) {
@@ -90,10 +83,9 @@ async function fixTestFixture(
 /**
  * Fix async.
  *
- * @param config - Config settings
  * @param labelPrefix - A prefix to print before the label
  */
-async function fixAsync(config: IConfig, labelPrefix: string): Promise<void> {
+async function fixAsync(labelPrefix: string): Promise<void> {
   const subTaskLabel = `async`;
 
   try {
@@ -131,10 +123,9 @@ async function fixAsync(config: IConfig, labelPrefix: string): Promise<void> {
 /**
  * Fix sinon.
  *
- * @param config - Config settings
  * @param labelPrefix - A prefix to print before the label
  */
-async function fixSinon(config: IConfig, labelPrefix: string): Promise<void> {
+async function fixSinon(labelPrefix: string): Promise<void> {
   const subTaskLabel = `sinon`;
 
   try {
@@ -238,10 +229,10 @@ export async function fixDependencies(
   config: IConfig
 ): Promise<void> {
   await runAllPromises([
-    fixPrismjs(config, taskName),
-    fixTestFixture(config, taskName),
-    fixAsync(config, taskName),
-    fixSinon(config, taskName),
+    fixPrismjs(taskName),
+    fixTestFixture(taskName),
+    fixAsync(taskName),
+    fixSinon(taskName),
     fixIronScrollManager(config, taskName)
   ]);
 }

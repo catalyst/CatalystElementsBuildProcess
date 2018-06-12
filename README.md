@@ -25,36 +25,23 @@ yarn add --dev @catalyst-elements/build-process
 
 The tasks provided by this project are designed to be used with [NodeJs](http://nodejs.org).
 
-Below is an example using [Gulp](https://gulpjs.com/):
+### Step 1. Create a build-config.json file
 
-### Step 1. Configure your gulpfile.js
+Example `build-config.json` file:
 
-Example `gulpfile.js` file:
-
-```js
-const gulp = require('gulp');
-const buildProcess = require('@catalyst-elements/build-process');
-
-// Get the config for the tasks.
-const config = buildProcess.getConfig({
-  componenet: {
-    // The name of the component
-    name: 'catalyst-componenet'
+```json
+{
+  "componenet": {
+    "name": "my-element"
   },
 
-  src: {
-    // Paths are relative to src.path
-    entrypoint: 'componenet.js',
-    template: {
-      html: 'template.html',
-      css: 'style.css'
+  "src": {
+    "entrypoint": "element.mjs",
+    "template": {
+      "markup": "markup.html",
+      "style": "style.scss"
     }
   }
-});
-
-// Register all the exported tasks.
-for (const [name, func] of Object.entries(buildProcess.tasks)) {
-  gulp.task(name, func(name, config));
 }
 ```
 
@@ -66,16 +53,16 @@ Example `package.json` file:
 {
   "name": "my-element",
   "scripts": {
-    "analyze": "./node_modules/.bin/gulp analyze",
-    "build-docs": "./node_modules/.bin/gulp build-docs",
-    "build": "./node_modules/.bin/gulp build",
-    "clean": "./node_modules/.bin/gulp clean",
-    "do-dry-publish": "./node_modules/.bin/gulp lint && ./node_modules/.bin/gulp build && ./node_modules/.bin/gulp test && ./node_modules/.bin/gulp publishDry",
-    "do-publish": "./node_modules/.bin/gulp lint && ./node_modules/.bin/gulp build && ./node_modules/.bin/gulp test && ./node_modules/.bin/gulp publish",
-    "lint": "./node_modules/.bin/gulp lint",
-    "postinstall": "./node_modules/.bin/gulp fix-dependencies",
-    "prepublishOnly": "echo \"Error: use the 'do-publish' script to publish.\" && exit 1",
-    "test": "./node_modules/.bin/gulp test"
+    "analyze": "catalyst-elements analyze",
+    "build": "catalyst-elements build",
+    "build-docs": "catalyst-elements buildDocs",
+    "clean": "catalyst-elements clean",
+    "lint": "catalyst-elements lint",
+    "test": "catalyst-elements test",
+    "dry-publish": "npm run lint && npm run build && npm run test && catalyst-elements publishDry",
+    "do-publish": "npm run lint && npm run build && npm run test && catalyst-elements publish",
+    "postinstall": "catalyst-elements fixDependencies",
+    "prepublishOnly": "echo \"Error: use the 'do-publish' script to publish.\"; exit 1"
   },
   "devDependencies": {
     "@polymer/test-fixture": "^3.0.0-pre.1",

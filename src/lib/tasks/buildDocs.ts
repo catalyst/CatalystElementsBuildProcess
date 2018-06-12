@@ -292,7 +292,7 @@ async function copyDistributionFiles(
     }`;
 
     await runAllPromises(
-      (await readdir(inDir)).map(filename =>
+      (await readdir(inDir)).map(async filename =>
         copy(`${inDir}/${filename}`, `${destDir}/${filename}`, {
           overwrite: true
         })
@@ -328,7 +328,7 @@ async function copyLocalDemos(
 
     if (existsSync(srcDir)) {
       await runAllPromises(
-        (await readdir(srcDir)).map(filename =>
+        (await readdir(srcDir)).map(async filename =>
           copy(`${srcDir}/${filename}`, `${destDir}/${filename}`, {
             overwrite: true
           })
@@ -557,7 +557,7 @@ async function getDemos(config: IConfig, labelPrefix: string): Promise<void> {
 
           if (existsSync(srcDir)) {
             await runAllPromises(
-              (await readdir(srcDir)).map(filename =>
+              (await readdir(srcDir)).map(async filename =>
                 copy(`${srcDir}/${filename}`, `${destDir}/${filename}`, {
                   overwrite: true
                 })

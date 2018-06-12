@@ -250,7 +250,6 @@ async function generateAnalysis(
       })
     });
 
-    // tslint:disable-next-line:readonly-array
     const analysis = await analyzer.analyze(files);
     const formattedAnalysis = processAnalysis(analysis, analyzer.urlResolver);
     const formattedfixedAnalysis = fixAnalysis(formattedAnalysis, config);

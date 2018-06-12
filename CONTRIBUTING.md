@@ -16,6 +16,6 @@ How to:
 
 Please ensure that:
 
-* your pull request is associated with at least one issue.
-* all tests are passing.
-* your code is compliant with our code linters.
+- your pull request is associated with at least one issue.
+- all tests are passing.
+- your code is compliant with our code linters.

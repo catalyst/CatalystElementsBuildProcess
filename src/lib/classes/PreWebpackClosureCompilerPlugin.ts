@@ -14,8 +14,7 @@ export class PreWebpackClosureCompilerPlugin {
    *
    * Can't be done without a mutable array due to the implementation of `parseScript`
    */
-  // tslint:disable-next-line:readonly-array
-  private readonly codeReplacements: {
+  private readonly mutableCodeReplacements: {
     readonly start: number;
     readonly end: number;
     readonly replacementCode: string;
@@ -25,7 +24,7 @@ export class PreWebpackClosureCompilerPlugin {
    * Construct this plugin.
    */
   public constructor() {
-    this.codeReplacements = [];
+    this.mutableCodeReplacements = [];
   }
 
   /**
@@ -51,7 +50,7 @@ export class PreWebpackClosureCompilerPlugin {
                 parseScript(source, {}, this.processNode.bind(this));
 
                 // Update the source code with the replacements.
-                const updatedSource = this.codeReplacements.reduce(
+                const updatedSource = this.mutableCodeReplacements.reduce(
                   (code, codeUpdate) => {
                     return (
                       code.slice(0, codeUpdate.start) +
@@ -103,7 +102,7 @@ export class PreWebpackClosureCompilerPlugin {
                   : null;
 
             if (property !== null) {
-              this.codeReplacements.push({
+              this.mutableCodeReplacements.push({
                 start: meta.start.offset,
                 end: meta.end.offset,
                 replacementCode:

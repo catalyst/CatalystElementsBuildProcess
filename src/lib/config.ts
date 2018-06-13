@@ -81,7 +81,7 @@ declare interface IConfig {
        * PostCSS settings
        */
       readonly postcss?: {
-        readonly plugins?: ReadonlyArray<postcss.AcceptedPlugin>;
+        readonly plugins?: Array<postcss.AcceptedPlugin>;
         readonly options?: postcss.ProcessOptions;
       };
     };

@@ -356,8 +356,7 @@ async function compileCSS(config: IConfig, labelPrefix: string): Promise<void> {
         : await readFile(styleFile);
 
     const processedCss = await postcss(
-      // tslint:disable-next-line:readonly-array
-      postcssPlugins as postcss.AcceptedPlugin[]
+      postcssPlugins as Array<postcss.AcceptedPlugin>
     ).process(css, postcssOptions);
 
     const finalizedCss = processedCss.css.replace(/\n/g, '');
@@ -741,9 +740,7 @@ function processExports(
 
   return {
     ...program,
-
-    // tslint:disable-next-line:readonly-array
-    body: updatedBody as (Statement | ModuleDeclaration)[]
+    body: updatedBody as Array<Statement | ModuleDeclaration>
   };
 }
 

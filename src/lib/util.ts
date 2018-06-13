@@ -34,9 +34,11 @@ function getFullFormattedPrefix(prefixes: ReadonlyArray<string>): string {
  */
 export const tasksHelpers = {
   log: {
-    // See: https://github.com/jonaskello/tslint-immutable/issues/73
-    // tslint:disable-next-line:readonly-array
-    failed: (label: string, ...prefixes: string[]) => {
+
+    /**
+     * Log a task failed.
+     */
+    failed: (label: string, ...prefixes: Array<string>) => {
       const fullLabel = `${getFullFormattedPrefix(prefixes)} ${blue(
         '→'
       )} ${cyan(label)}`;
@@ -45,9 +47,10 @@ export const tasksHelpers = {
       return fullLabel;
     },
 
-    // See: https://github.com/jonaskello/tslint-immutable/issues/73
-    // tslint:disable-next-line:readonly-array
-    info: (label: string, ...prefixes: string[]) => {
+    /**
+     * Log info from a task message.
+     */
+    info: (label: string, ...prefixes: Array<string>) => {
       const fullLabel = `${getFullFormattedPrefix(prefixes)} ${blue(
         '→'
       )} ${magenta(label)}`;
@@ -56,9 +59,10 @@ export const tasksHelpers = {
       return label;
     },
 
-    // See: https://github.com/jonaskello/tslint-immutable/issues/73
-    // tslint:disable-next-line:readonly-array
-    starting: (label: string, ...prefixes: string[]) => {
+    /**
+     * Log that a task has started.
+     */
+    starting: (label: string, ...prefixes: Array<string>) => {
       const fullLabel = `${getFullFormattedPrefix(prefixes)} ${blue(
         '→'
       )} ${cyan(label)}`;
@@ -67,9 +71,10 @@ export const tasksHelpers = {
       return fullLabel;
     },
 
-    // See: https://github.com/jonaskello/tslint-immutable/issues/73
-    // tslint:disable-next-line:readonly-array
-    successful: (label: string, ...prefixes: string[]) => {
+    /**
+     * Log a that a task finished successfully.
+     */
+    successful: (label: string, ...prefixes: Array<string>) => {
       const fullLabel = `${getFullFormattedPrefix(prefixes)} ${blue(
         '→'
       )} ${cyan(label)}`;
@@ -139,8 +144,7 @@ export async function runAllPromises<T>(
 /**
  * Get the webpack plugins.
  */
-// tslint:disable-next-line:readonly-array
-export function getWebpackPlugIns(): Plugin[] {
+export function getWebpackPlugIns(): Array<Plugin> {
   return [
     new PreWebpackClosureCompilerPlugin(),
     new WebpackClosureCompilerPlugin({
@@ -191,9 +195,7 @@ export async function cleanDocs(
 export async function glob(
   pattern: string | ReadonlyArray<string>,
   options?: nodeGlob.IOptions
-
-  // tslint:disable-next-line:readonly-array
-): Promise<string[]> {
+): Promise<Array<string>> {
   if (Array.isArray(pattern)) {
     if (pattern.length === 0) {
       throw new Error('No glob patterns given.');
@@ -211,9 +213,7 @@ export async function glob(
  */
 export function transpose<T>(
   array: ReadonlyArray<ReadonlyArray<T>>
-
-  // tslint:disable-next-line:readonly-array
-): T[][] {
+): Array<Array<T>> {
   if (array.length === 0) {
     return [];
   }

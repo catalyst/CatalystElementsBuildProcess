@@ -17,7 +17,7 @@
     "adjacent-overload-signatures": true,
     "array-type": [
       true,
-      "array"
+      "generic"
     ],
     "arrow-parens": [
       true,
@@ -255,6 +255,7 @@
         "module-source-path": "full"
       }
     ],
+    "prefer-array-literal": false,
     "prefer-conditional-expression": [
       true,
       "check-else-if"
@@ -367,10 +368,11 @@
     ],
 
     // tslint-immutable
-    "readonly-keyword": [true, { "ignore-prefix": "mutable" }],
-    "readonly-array": [true, { "ignore-prefix": "mutable" }],
+    "readonly-keyword": [true, { "ignore-prefix": ["mutable", "this.mutable"] }],
+    "readonly-array": false,
     "no-let": true,
-    "no-object-mutation": [true, { "ignore-prefix": "mutable" }],
+    "no-array-mutation": [true, { "ignore-prefix": ["mutable", "this.mutable"] }],
+    "no-object-mutation": [true, { "ignore-prefix": ["mutable", "this.mutable"] }],
     "no-delete": true,
     "no-method-signature": true,
     "no-loop-statement": true

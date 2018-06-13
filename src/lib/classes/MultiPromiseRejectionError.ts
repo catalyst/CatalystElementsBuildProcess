@@ -21,14 +21,16 @@ export class MultiPromiseRejectionError<T> extends Error {
 
     // Extract out the errors.
     this.promiseErrors = multiPromiseResults.reduce(
-      (previous, current) => {
+      (previous: ReadonlyArray<Error>, current) => {
         if ((current as any).error != null) {
           return [...previous, (current as { readonly error: Error }).error];
         }
         return previous;
       },
-      [] as ReadonlyArray<Error>
+      []
     );
+
+    Object.freeze(this.promiseErrors);
   }
 
   /**

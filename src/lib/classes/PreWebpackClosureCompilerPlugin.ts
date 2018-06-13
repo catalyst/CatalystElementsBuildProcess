@@ -14,11 +14,11 @@ export class PreWebpackClosureCompilerPlugin {
    *
    * Can't be done without a mutable array due to the implementation of `parseScript`
    */
-  private readonly mutableCodeReplacements: {
+  private readonly mutableCodeReplacements: Array<{
     readonly start: number;
     readonly end: number;
     readonly replacementCode: string;
-  }[];
+  }>;
 
   /**
    * Construct this plugin.

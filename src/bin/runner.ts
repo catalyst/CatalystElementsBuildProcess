@@ -85,11 +85,6 @@ function getFlag(value: string): keyof typeof flags | false {
   if (flags.hasOwnProperty(value)) {
     return value as keyof typeof flags;
   }
-
-  // tslint:disable-next-line:strict-type-predicates
-  if (flagMap[value] !== undefined) {
-    return flagMap[value];
-  }
   throw new ExternalError(`Unknown flag "${value}".`);
 }
 
@@ -107,7 +102,7 @@ function run(args: ReadonlyArray<string>): void {
         case '-c':
           return {
             ...reduced,
-            config: ''
+            config: ''  // FIXME: set value.
           };
 
         case '-h':
@@ -156,7 +151,6 @@ function run(args: ReadonlyArray<string>): void {
   } else {
     throw new ExternalError('Nothing specified.');
   }
-
   // tslint:enable:no-floating-promises
 }
 

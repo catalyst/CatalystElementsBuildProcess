@@ -53,9 +53,7 @@ function fixAnalysis(
 function fixAnalysisElements(
   elements: ReadonlyArray<Element> | undefined,
   config: IConfig
-
-  // tslint:disable-next-line:readonly-array
-): Element[] | undefined {
+): Array<Element> | undefined {
   if (elements === undefined) {
     return undefined;
   }
@@ -75,9 +73,7 @@ function fixAnalysisElements(
 function fixAnalysisElementMixins(
   elementMixins: ReadonlyArray<ElementMixin> | undefined,
   config: IConfig
-
-  // tslint:disable-next-line:readonly-array
-): ElementMixin[] | undefined {
+): Array<ElementMixin> | undefined {
   if (elementMixins === undefined) {
     return undefined;
   }
@@ -97,9 +93,7 @@ function fixAnalysisElementMixins(
 function fixAnalysisNamespaces(
   namespaces: ReadonlyArray<Namespace> | undefined,
   config: IConfig
-
-  // tslint:disable-next-line:readonly-array
-): Namespace[] | undefined {
+): Array<Namespace> | undefined {
   if (namespaces === undefined) {
     return undefined;
   }
@@ -120,9 +114,7 @@ function fixAnalysisNamespaces(
 function fixAnalysisClasses(
   classes: ReadonlyArray<Class> | undefined,
   config: IConfig
-
-  // tslint:disable-next-line:readonly-array
-): Class[] | undefined {
+): Array<Class> | undefined {
   if (classes === undefined) {
     return undefined;
   }
@@ -164,9 +156,7 @@ function fixAnalysisComponentPath(
  */
 function fixAnalysisComponentDemos(
   component: Class
-
-  // tslint:disable-next-line:readonly-array
-): Demo[] {
+): Array<Demo> {
   // No path? Don't change anything.
   if (component.path === undefined) {
     return component.demos;

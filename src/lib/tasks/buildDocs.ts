@@ -112,8 +112,6 @@ async function cloneRepositories(
   packageFilePaths: ReadonlyArray<string>,
   config: IConfig,
   labelPrefix: string
-
-  // tslint:disable-next-line:readonly-array
 ): Promise<void> {
   await Promise.all(
     packageFilePaths.map(async packageFilePath => {
@@ -382,9 +380,7 @@ async function copyFiles(config: IConfig, labelPrefix: string): Promise<void> {
 function updateAnalysisElements(
   elements: ReadonlyArray<Element> | undefined,
   config: IConfig
-
-  // tslint:disable-next-line:readonly-array
-): Element[] | undefined {
+): Array<Element> | undefined {
   if (elements === undefined) {
     return undefined;
   }
@@ -403,9 +399,7 @@ function updateAnalysisElements(
 function updateAnalysisElementMixins(
   elementMixins: ReadonlyArray<ElementMixin> | undefined,
   config: IConfig
-
-  // tslint:disable-next-line:readonly-array
-): ElementMixin[] | undefined {
+): Array<ElementMixin> | undefined {
   if (elementMixins === undefined) {
     return undefined;
   }
@@ -424,9 +418,7 @@ function updateAnalysisElementMixins(
 function updateAnalysisNamespaces(
   namespaces: ReadonlyArray<Namespace> | undefined,
   config: IConfig
-
-  // tslint:disable-next-line:readonly-array
-): Namespace[] | undefined {
+): Array<Namespace> | undefined {
   if (namespaces === undefined) {
     return undefined;
   }
@@ -447,9 +439,7 @@ function updateAnalysisNamespaces(
 function updateAnalysisClasses(
   classes: ReadonlyArray<Class> | undefined,
   config: IConfig
-
-  // tslint:disable-next-line:readonly-array
-): Class[] | undefined {
+): Array<Class> | undefined {
   if (classes === undefined) {
     return undefined;
   }
@@ -468,9 +458,7 @@ function updateAnalysisClasses(
 function updateAnalysisComponentDemos(
   component: Class,
   config: IConfig
-
-  // tslint:disable-next-line:readonly-array
-): Demo[] {
+): Array<Demo> {
   return component.demos.map(demo => {
     return {
       ...demo,

@@ -1129,9 +1129,7 @@ async function createArchivesForGitHubRelease(
   config: IConfig,
   version: string,
   labelPrefix: string
-
-  // tslint:disable-next-line:readonly-array
-): Promise<string[]> {
+): Promise<Array<string>> {
   const subTaskLabel = 'create archives';
 
   try {
@@ -1185,8 +1183,8 @@ async function createArchivesForGitHubRelease(
 
       // tslint:disable:readonly-array
       { assets: [], archivers: [] } as {
-        readonly assets: string[];
-        readonly archivers: Promise<void>[];
+        readonly assets: Array<string>;
+        readonly archivers: Array<Promise<void>>;
       }
 
       // tslint:enable:readonly-array

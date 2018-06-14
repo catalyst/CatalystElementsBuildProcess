@@ -134,7 +134,7 @@ export async function runAllPromises<T>(
   );
 
   return promiseResults.reduce((reducedValues: ReadonlyArray<T>, result) => {
-    if ((result as any).error != null) {
+    if ((result as any).error != undefined) {
       throw new MultiPromiseRejectionError<T>(promiseResults);
     }
     return [...reducedValues, (result as { readonly value: T }).value];
@@ -217,7 +217,7 @@ export function transpose<T>(
   if (array.length === 0) {
     return [];
   }
-  return array[0].map((_, index) => array.map(row => row[index]));
+  return array[0].map((_, index) => array.map((row) => row[index]));
 }
 
 /**

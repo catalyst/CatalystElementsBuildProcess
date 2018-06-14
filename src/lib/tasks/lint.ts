@@ -41,6 +41,10 @@ interface IValidLintingError extends ILintingError {
   readonly rule: string;
 }
 
+interface IErrorsByFile {
+  readonly [file: string]: ReadonlyArray<ILintingError>;
+}
+
 /**
  * The maximum length a severity string can be.
  */
@@ -91,9 +95,17 @@ function getLintingErrorOutput(
 
   const severity = (() => {
     if (error.severity === 'error') {
-      return red(error.severity.toUpperCase().padEnd(severityMaxLength));
+      return red(
+        error.severity
+          .toUpperCase()
+          .padEnd(severityMaxLength)
+      );
     }
-    return green(error.severity.toUpperCase().padEnd(severityMaxLength));
+    return green(
+      error.severity
+        .toUpperCase()
+        .padEnd(severityMaxLength)
+    );
   })();
   const line = magenta(`${error.line}`.padStart(lineLength));
   const column = magenta(`${error.column}`.padStart(colLength));
@@ -119,10 +131,11 @@ function getLintingErrorsOutput(errors: ReadonlyArray<ILintingError>): string {
             error.rule.length
           ]
         )
-    ).map(lengths => Math.max(...lengths)))();
+    )
+      .map((lengths) => Math.max(...lengths)))();
 
   return errors
-    .map(error =>
+    .map((error) =>
       getLintingErrorOutput(error, lineLength, colLength, ruleLength)
     )
     .reduce((previous, current) => {
@@ -140,45 +153,39 @@ function getFileLintingOutput(
   file: string,
   errors?: ReadonlyArray<ILintingError>
 ): string {
-  const hasRuleVialationError =
-    errors !== undefined &&
-    errors.length > 0 &&
-    errors.map(isRuleVialationError).reduce((reducedResult, ruleValidity) => {
-      return reducedResult || ruleValidity;
-    }, false);
 
-  if (!hasRuleVialationError) {
+  if (
+    errors === undefined ||
+    errors.length === 0 ||
+    errors.some(isRuleVialationError)
+  ) {
     return '';
   }
 
-  return `${getFilepathOutputForLintingJob(file)}\n${getLintingErrorsOutput(
-    errors!
-  )}`;
+  return `${getFilepathOutputForLintingJob(file)}
+${getLintingErrorsOutput(errors)}`;
 }
 
 /**
  * Get the complete linting output for a task.
  */
-function getLintingOutput(errorsByFile: {
-  readonly [file: string]: ReadonlyArray<ILintingError> | undefined;
-}): string {
-  return `${Object.entries(errorsByFile)
-    .map(fileErrors => getFileLintingOutput(fileErrors[0], fileErrors[1]))
+function getLintingOutput(errorsByFile: IErrorsByFile): string {
+  const output = Object.entries(errorsByFile)
+    .map((fileErrors) => getFileLintingOutput(fileErrors[0], fileErrors[1]))
     .reduce(
       (previous, current) =>
         current === '' ? previous : `${previous}${current}\n`,
       ''
     )
-    .trimRight()}\n`;
+    .trimRight();
+  return `${output}\n`;
 }
 
 /**
  * Print the linting errors.
  */
 function printLintingErrors(
-  errorsByFile: {
-    readonly [file: string]: ReadonlyArray<ILintingError> | undefined;
-  },
+  errorsByFile: IErrorsByFile,
   subTaskLabel: string,
   labelPrefix: string
 ): void {
@@ -215,7 +222,7 @@ function printTSLintResult(
   subTaskLabel: string,
   labelPrefix: string
 ): void {
-  const errorsByFile = result.failures.reduce(
+  const errorsByFile = result.failures.reduce<IErrorsByFile>(
     (errors, failure) => {
       const filename = failure.getFileName();
       const existingFileErrors =
@@ -226,7 +233,9 @@ function printTSLintResult(
       }: {
         readonly line: number;
         readonly character: number;
-      } = failure.getStartPosition().getLineAndCharacter();
+      } = failure
+          .getStartPosition()
+          .getLineAndCharacter();
 
       return {
         ...errors,
@@ -242,7 +251,7 @@ function printTSLintResult(
         ]
       };
     },
-    {} as { readonly [key: string]: ReadonlyArray<ILintingError> }
+    {}
   );
 
   printLintingErrors(errorsByFile, subTaskLabel, labelPrefix);
@@ -256,12 +265,12 @@ function printESLintResult(
   subTaskLabel: string,
   labelPrefix: string
 ): void {
-  const errorsByFile = results.reduce(
+  const errorsByFile = results.reduce<IErrorsByFile>(
     (errors, result) => {
       return {
         ...errors,
-        [result.filePath]: result.messages.reduce(
-          (reducedError: ReadonlyArray<ILintingError>, msg) => [
+        [result.filePath]: result.messages.reduce<ReadonlyArray<ILintingError>>(
+          (reducedError, msg) => [
             ...reducedError,
             {
               column: msg.column,
@@ -275,9 +284,7 @@ function printESLintResult(
         )
       };
     },
-    {} as {
-      readonly [key: string]: ReadonlyArray<ILintingError>;
-    }
+    {}
   );
 
   printLintingErrors(errorsByFile, subTaskLabel, labelPrefix);
@@ -291,7 +298,7 @@ function printSassLintResult(
   subTaskLabel: string,
   labelPrefix: string
 ): void {
-  const errorsByFile = results.reduce(
+  const errorsByFile = results.reduce<IErrorsByFile>(
     (errors, result) => {
       return {
         ...errors,
@@ -310,9 +317,7 @@ function printSassLintResult(
         )
       };
     },
-    {} as {
-      readonly [key: string]: ReadonlyArray<ILintingError>;
-    }
+    {}
   );
 
   printLintingErrors(errorsByFile, subTaskLabel, labelPrefix);
@@ -339,9 +344,9 @@ async function lintTS(labelPrefix: string): Promise<void> {
     const files = TsLinter.getFileNames(program);
     const linter = new TsLinter({ fix: false }, program);
 
-    files.map(file => {
+    files.map((file) => {
       const sourceFile = program.getSourceFile(file);
-      if (sourceFile == null) {
+      if (sourceFile === undefined) {
         throw new Error(`Failed to get source file for "${file}"`);
       }
       const fileContents = sourceFile.getFullText();
@@ -395,7 +400,7 @@ async function lintJSFiles(
     ]);
 
     if (files.length > 0) {
-      const report: eslint.CLIEngine.LintReport = linter.executeOnFiles(files);
+      const report = linter.executeOnFiles(files);
 
       if (report.errorCount > 0 || report.warningCount > 0) {
         printESLintResult(report.results, subTaskLabel, labelPrefix);
@@ -443,14 +448,14 @@ function getEslintResultsFromReports(
   // Join all the reports together.
   // Gather and return the total results, error count and warning count.
   return fileReports
-    .map(fileReport =>
+    .map((fileReport) =>
       fileReport
-        .map(report => {
+        .map((report) => {
           return {
             results: report.results,
             errorCount: report.errorCount,
             warningCount: report.warningCount
-          } as IEslintReportDetails;
+          };
         })
         .reduce(reduce, emptyResults)
     )
@@ -485,7 +490,7 @@ async function lintJSInHTML(
 
     const lintPromises: ReadonlyArray<
       Promise<ReadonlyArray<eslint.CLIEngine.LintReport>>
-    > = files.map(async file => {
+    > = files.map(async (file) => {
       const fileContent = await readFile(file, {
         encoding: 'utf8',
         flag: 'r'
@@ -512,7 +517,9 @@ async function lintJSInHTML(
             reducedReports: ReadonlyArray<eslint.CLIEngine.LintReport>,
             element
           ) => {
-            const script = $(element).html();
+            const script =
+              $(element)
+              .html();
             if (script !== null && script.trim().length > 0) {
               return [...reducedReports, linter.executeOnText(script, file)];
             }
@@ -589,7 +596,7 @@ async function lintSass(config: IConfig, labelPrefix: string): Promise<void> {
 
     await access('./.sass-lint.yml');
 
-    const results: sassLintResults = sassLint.lintFiles(
+    const results = sassLint.lintFiles(
       `./${config.src.path}/**/*.scss`,
       {},
       './.sass-lint.yml'
@@ -597,8 +604,8 @@ async function lintSass(config: IConfig, labelPrefix: string): Promise<void> {
 
     if (results.length > 0) {
       const [hasWarningsOrErrors, hasErrors] = results
-        .map(result => [result.warningCount > 0, result.errorCount > 0])
-        .map(array => array.reduce((previous, current) => previous || current));
+        .map((result) => [result.warningCount > 0, result.errorCount > 0])
+        .map((array) => array.reduce((previous, current) => previous || current));
 
       if (hasWarningsOrErrors) {
         printSassLintResult(results, subTaskLabel, labelPrefix);

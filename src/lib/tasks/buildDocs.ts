@@ -60,6 +60,7 @@ function getTempPath(config: IConfig): string {
  */
 async function directoryCanBeClonedInTo(dirPath: string): Promise<boolean> {
   await ensureDir(dirPath);
+  // tslint:disable-next-line:no-bitwise
   await access(dirPath, constants.R_OK | constants.W_OK);
 
   const files = await readdir(dirPath);
@@ -90,7 +91,7 @@ async function cloneRepository(
 
     const gitInstance = getGitInstance();
     const clone = promisify(gitInstance.clone.bind(gitInstance));
-    await clone(repoPath, dirPath, { '--quiet': null });
+    await clone(repoPath, dirPath, { '--quiet': undefined });
 
     tasksHelpers.log.successful(subTaskLabel, labelPrefix);
   } catch (error) {
@@ -114,7 +115,7 @@ async function cloneRepositories(
   labelPrefix: string
 ): Promise<void> {
   await Promise.all(
-    packageFilePaths.map(async packageFilePath => {
+    packageFilePaths.map(async (packageFilePath) => {
       const data = await readFile(packageFilePath, {
         encoding: 'utf8',
         flag: 'r'
@@ -122,19 +123,19 @@ async function cloneRepositories(
       const json = JSON.parse(data);
 
       const name = json.name;
-      if (name == null) {
+      if (name == undefined) {
         throw new Error(
           `Name not set in the package.json file "${packageFilePath}".`
         );
       }
 
       const version = json.version;
-      if (version == null) {
+      if (version == undefined) {
         throw new Error(`Version not set in ${name}'s package.json file.`);
       }
 
       const repository = json.repository;
-      if (repository == null) {
+      if (repository == undefined) {
         throw new Error(`Repository not set in ${name}'s package.json file.`);
       }
 
@@ -252,7 +253,7 @@ async function copyExtraDocDependencies(
     ]);
 
     await runAllPromises(
-      files.map(async srcFilepath => {
+      files.map(async (srcFilepath) => {
         const basepath = getRelativePathBetween(inDir, srcFilepath);
         const destFilepath = joinPaths(destDir, basepath);
 
@@ -290,7 +291,7 @@ async function copyDistributionFiles(
     }`;
 
     await runAllPromises(
-      (await readdir(inDir)).map(async filename =>
+      (await readdir(inDir)).map(async (filename) =>
         copy(`${inDir}/${filename}`, `${destDir}/${filename}`, {
           overwrite: true
         })
@@ -326,7 +327,7 @@ async function copyLocalDemos(
 
     if (existsSync(srcDir)) {
       await runAllPromises(
-        (await readdir(srcDir)).map(async filename =>
+        (await readdir(srcDir)).map(async (filename) =>
           copy(`${srcDir}/${filename}`, `${destDir}/${filename}`, {
             overwrite: true
           })
@@ -385,7 +386,7 @@ function updateAnalysisElements(
     return undefined;
   }
 
-  return elements.map(element => {
+  return elements.map((element) => {
     return {
       ...element,
       demos: updateAnalysisComponentDemos(element, config)
@@ -404,7 +405,7 @@ function updateAnalysisElementMixins(
     return undefined;
   }
 
-  return elementMixins.map(mixin => {
+  return elementMixins.map((mixin) => {
     return {
       ...mixin,
       demos: updateAnalysisComponentDemos(mixin, config)
@@ -423,7 +424,7 @@ function updateAnalysisNamespaces(
     return undefined;
   }
 
-  return namespaces.map(namespace => {
+  return namespaces.map((namespace) => {
     return {
       ...namespace,
       elements: updateAnalysisElements(namespace.elements, config),
@@ -444,7 +445,7 @@ function updateAnalysisClasses(
     return undefined;
   }
 
-  return classes.map(classComponent => {
+  return classes.map((classComponent) => {
     return {
       ...classComponent,
       demos: updateAnalysisComponentDemos(classComponent, config)
@@ -459,7 +460,7 @@ function updateAnalysisComponentDemos(
   component: Class,
   config: IConfig
 ): Array<Demo> {
-  return component.demos.map(demo => {
+  return component.demos.map((demo) => {
     return {
       ...demo,
       url: `${config.docs.nodeModulesPath}/${(config.package as any).name}/${
@@ -526,7 +527,7 @@ async function getDemos(config: IConfig, labelPrefix: string): Promise<void> {
 
     const packageFiles = await glob(
       `./node_modules${
-        config.componenet.scope == null ? '' : `/${config.componenet.scope}`
+        config.componenet.scope === undefined ? '' : `/${config.componenet.scope}`
       }/catalyst-*/package.json`
     );
 
@@ -534,7 +535,7 @@ async function getDemos(config: IConfig, labelPrefix: string): Promise<void> {
       await cloneRepositories(packageFiles, config, subTaskLabelPrefix);
 
       await runAllPromises(
-        packageFiles.map(async packageFilepath => {
+        packageFiles.map(async (packageFilepath) => {
           const name = (await readJson(packageFilepath)).name;
           const srcDir = `./${getTempPath(config)}/demo-clones/${name}/${
             config.demos.path
@@ -543,15 +544,17 @@ async function getDemos(config: IConfig, labelPrefix: string): Promise<void> {
             config.docs.nodeModulesPath
           }/${name}/${config.demos.path}`;
 
-          if (existsSync(srcDir)) {
-            await runAllPromises(
-              (await readdir(srcDir)).map(async filename =>
-                copy(`${srcDir}/${filename}`, `${destDir}/${filename}`, {
-                  overwrite: true
-                })
-              )
-            );
+          if (!existsSync(srcDir)) {
+            return;
           }
+
+          await runAllPromises(
+            (await readdir(srcDir)).map(async (filename) =>
+              copy(`${srcDir}/${filename}`, `${destDir}/${filename}`, {
+                overwrite: true
+              })
+            )
+          );
         })
       );
     }
@@ -583,7 +586,7 @@ async function indexPageUpdateReferences(
     const $ = cheerio.load(fileContent);
 
     // tslint:disable:no-delete no-object-mutation
-    $('script').each((_index: number, element: CheerioElement) => {
+    $('script').each((_index, element) => {
       if (element.attribs.type === 'module') {
         delete element.attribs.type;
       }
@@ -623,12 +626,12 @@ async function demosPagesUpdateReferences(
 
     const files = await glob(
       `./${getTempPath(config)}/${config.docs.nodeModulesPath}${
-        config.componenet.scope == null ? '' : `/${config.componenet.scope}`
+        config.componenet.scope === undefined ? '' : `/${config.componenet.scope}`
       }/*/${config.demos.path}/*.html`
     );
 
     await runAllPromises(
-      files.map(async file => {
+      files.map(async (file) => {
         const fileContent = await readFile(file, {
           encoding: 'utf8',
           flag: 'r'
@@ -637,7 +640,7 @@ async function demosPagesUpdateReferences(
 
         // tslint:disable:no-delete no-object-mutation
         $('script[type="module"]').each(
-          (_index: number, element: CheerioElement) => {
+          (_index, element) => {
             delete element.attribs.type;
             element.attribs.src = element.attribs.src.replace(/.mjs$/, '.js');
           }
@@ -677,21 +680,22 @@ async function indexImportsUpdateReferences(
     const file = `./${getTempPath(config)}/${config.docs.importsFilename}`;
     const fileContent = await readFile(file, { encoding: 'utf8', flag: 'r' });
     const program = parseModule(fileContent);
-    const updatedBody = program.body.map(node => {
-      if (node.type === 'ImportDeclaration') {
-        if (typeof node.source.value === 'string') {
-          return {
-            ...node,
-            source: {
-              ...node.source,
-              value: node.source.value.replace(
-                /\.\.\/\.\.\//g,
-                `./${config.docs.nodeModulesPath}/`
-              ),
-              raw: `'${node.source.value}'`
-            }
-          };
-        }
+    const updatedBody = program.body.map((node) => {
+      if (
+        node.type === 'ImportDeclaration' &&
+        typeof node.source.value === 'string'
+      ) {
+        return {
+          ...node,
+          source: {
+            ...node.source,
+            value: node.source.value.replace(
+              /\.\.\/\.\.\//g,
+              `./${config.docs.nodeModulesPath}/`
+            ),
+            raw: `'${node.source.value}'`
+          }
+        };
       }
       return node;
     });
@@ -799,7 +803,7 @@ async function finalizeIndexPage(
       config.docs.importsImporterFilename
     }`;
 
-    const compiler: webpack.Compiler = webpack({
+    const compiler = webpack({
       mode: 'none',
       entry: filepath,
       output: {
@@ -843,7 +847,7 @@ async function finalizeIndexPage(
       []
     );
 
-    webpackEmittedFiles.map(async file => {
+    webpackEmittedFiles.map(async (file) => {
       const fileContent = await readFile(file, { encoding: 'utf8', flag: 'r' });
       const updatedFileContent = fileContent.replace(/\\\\\$/g, '$');
 
@@ -885,14 +889,14 @@ async function finalizeDemos(
 
     const sourceFiles = await glob(
       `${getTempPath(config)}/${config.docs.nodeModulesPath}${
-        config.componenet.scope == null ? '' : `/${config.componenet.scope}`
+        config.componenet.scope === undefined ? '' : `/${config.componenet.scope}`
       }/*/${config.demos.path}/${config.demos.importsImporterFilename}`
     );
 
     const webpackResults = await runAllPromises(
-      sourceFiles.map(async file => {
+      sourceFiles.map(async (file) => {
         const destDir = getDirName(file);
-        const compiler: webpack.Compiler = webpack({
+        const compiler = webpack({
           mode: 'none',
           entry: file,
           output: {
@@ -907,8 +911,8 @@ async function finalizeDemos(
           target: 'web'
         });
 
-        const runCompiler: () => Promise<webpack.Stats> = promisify(
-          compiler.run.bind(compiler)
+        const runCompiler = promisify<() => Promise<webpack.Stats>>(
+          (compiler.run.bind(compiler))
         );
         const stats = await runCompiler();
 
@@ -950,7 +954,7 @@ async function finalizeDemos(
     );
 
     await runAllPromises(
-      outFiles.map(async file => {
+      outFiles.map(async (file) => {
         const fileContent = await readFile(file, {
           encoding: 'utf8',
           flag: 'r'
@@ -1075,7 +1079,7 @@ async function generate(config: IConfig, labelPrefix: string): Promise<void> {
       fragments: [],
       sources: [
         `${config.docs.nodeModulesPath}${
-          config.componenet.scope == null ? '' : `/${config.componenet.scope}`
+          config.componenet.scope === undefined ? '' : `/${config.componenet.scope}`
         }/catalyst-*/**/*`
       ],
       extraDependencies: [
@@ -1110,14 +1114,15 @@ async function generate(config: IConfig, labelPrefix: string): Promise<void> {
     await promisePipe(
       mergeStream(docBuilder.sources(), docBuilder.dependencies()),
       docBuilder.addCustomElementsEs5Adapter(),
-      rename(path => {
+      rename((path) => {
         const prefix = getNormalizedPath(`${getTempPath(config)}`);
-        if (path.dirname !== undefined && path.dirname.indexOf(prefix) === 0) {
-          // tslint:disable-next-line:no-object-mutation
-          path.dirname = getNormalizedPath(
-            path.dirname.substring(prefix.length)
-          );
+        if (path.dirname === undefined || path.dirname.indexOf(prefix) !== 0) {
+          return;
         }
+        // tslint:disable-next-line:no-object-mutation
+        path.dirname = getNormalizedPath(
+          path.dirname.substring(prefix.length)
+        );
       }),
       dest(`./${config.docs.path}`)
     );

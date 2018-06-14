@@ -781,7 +781,7 @@ async function updateVersion(
         const packageObject = JSON.parse(fileContent);
         const updatedPackageObject = `${JSON.stringify(
           { ...packageObject, version: newVersion },
-          null,
+          undefined,
           2
         )}\n`;
 
@@ -851,14 +851,14 @@ async function createTag(
  */
 async function mergeChangesIntoMajorBranch(
   config: IConfig,
-  majorBranch: string | null,
+  majorBranch: string | undefined,
   fromBranch: string,
   labelPrefix: string
 ): Promise<void> {
   const subTaskLabel = 'merge into major branch';
 
   try {
-    if (majorBranch === null) {
+    if (majorBranch == undefined) {
       tasksHelpers.log.info(`skipping ${subTaskLabel}`, labelPrefix);
       return;
     }
@@ -1040,7 +1040,7 @@ async function printNpmReleaseInfo(
 async function doPushToGit(
   config: IConfig,
   currentBranch: string,
-  majorBranch: string | null,
+  majorBranch: string | undefined,
   labelPrefix: string
 ): Promise<void> {
   const subTaskLabel = 'git push';
@@ -1058,7 +1058,7 @@ async function doPushToGit(
     tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
     const branches =
-      majorBranch === null
+      majorBranch == undefined
         ? `${shellQuote([currentBranch])}`
         : `${shellQuote([currentBranch])} ${shellQuote([majorBranch])}`;
 
@@ -1325,7 +1325,7 @@ async function getPublishSettings(
         Number.parseInt(input.symver.split('.')[0], 10) !== 0 &&
         !input.isPrerelease
           ? `${input.symver.split('.')[0]}.x`
-          : null
+          : undefined
     }
   };
 }
@@ -1333,7 +1333,7 @@ async function getPublishSettings(
 interface IPublishSettings {
   readonly git: {
     readonly currentBranch: string;
-    readonly majorBranch: string | null;
+    readonly majorBranch: string | undefined;
     readonly tag: string;
   };
   readonly releaseInfo: {

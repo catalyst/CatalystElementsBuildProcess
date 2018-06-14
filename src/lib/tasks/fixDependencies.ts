@@ -13,6 +13,24 @@ import { IConfig } from '../config';
 import { runAllPromises, tasksHelpers } from '../util';
 
 /**
+ * Fix dependencies.
+ *
+ * @param config - Config settings
+ */
+export async function fixDependencies(
+  taskName: string,
+  config: IConfig
+): Promise<void> {
+  await runAllPromises([
+    fixPrismjs(taskName),
+    fixTestFixture(taskName),
+    fixAsync(taskName),
+    fixSinon(taskName),
+    fixIronScrollManager(config, taskName)
+  ]);
+}
+
+/**
  * Fix prismjs.
  *
  * @param labelPrefix - A prefix to print before the label
@@ -36,42 +54,6 @@ async function fixPrismjs(labelPrefix: string): Promise<void> {
     tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
     await symlink('./prismjs', `./node_modules/prism`, 'dir');
-
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-  } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
-    throw error;
-  }
-}
-
-/**
- * Fix test-fixture.
- *
- * @param labelPrefix - A prefix to print before the label
- */
-async function fixTestFixture(labelPrefix: string): Promise<void> {
-  const subTaskLabel = `test-fixture`;
-
-  try {
-    const good = existsSync(`./node_modules/@polymer/test-fixture`);
-    const bad = existsSync(`./node_modules/test-fixture`);
-
-    if (!good || bad) {
-      tasksHelpers.log.info(
-        `skipping "${subTaskLabel}" - seems ok.`,
-        labelPrefix
-      );
-
-      return;
-    }
-
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
-
-    await symlink(
-      './@polymer/test-fixture',
-      `./node_modules/test-fixture`,
-      'dir'
-    );
 
     tasksHelpers.log.successful(subTaskLabel, labelPrefix);
   } catch (error) {
@@ -190,12 +172,12 @@ async function fixIronScrollManager(
 
     const updatedContent = content
       .replace(
-        /export const _lockedElementCache = null;/g,
-        'export let _lockedElementCache = null;'
+        /export const _lockedElementCache = undefined;/g,
+        'export let _lockedElementCache = undefined;'
       )
       .replace(
-        /export const _unlockedElementCache = null;/g,
-        'export let _unlockedElementCache = null;'
+        /export const _unlockedElementCache = undefined;/g,
+        'export let _unlockedElementCache = undefined;'
       );
 
     if (updatedContent === content) {
@@ -220,19 +202,37 @@ async function fixIronScrollManager(
 }
 
 /**
- * Fix dependencies.
+ * Fix test-fixture.
  *
- * @param config - Config settings
+ * @param labelPrefix - A prefix to print before the label
  */
-export async function fixDependencies(
-  taskName: string,
-  config: IConfig
-): Promise<void> {
-  await runAllPromises([
-    fixPrismjs(taskName),
-    fixTestFixture(taskName),
-    fixAsync(taskName),
-    fixSinon(taskName),
-    fixIronScrollManager(config, taskName)
-  ]);
+async function fixTestFixture(labelPrefix: string): Promise<void> {
+  const subTaskLabel = `test-fixture`;
+
+  try {
+    const good = existsSync(`./node_modules/@polymer/test-fixture`);
+    const bad = existsSync(`./node_modules/test-fixture`);
+
+    if (!good || bad) {
+      tasksHelpers.log.info(
+        `skipping "${subTaskLabel}" - seems ok.`,
+        labelPrefix
+      );
+
+      return;
+    }
+
+    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+
+    await symlink(
+      './@polymer/test-fixture',
+      `./node_modules/test-fixture`,
+      'dir'
+    );
+
+    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+  } catch (error) {
+    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    throw error;
+  }
 }

@@ -23,11 +23,10 @@ import { cleanTemp, ConfigError } from './util';
  */
 export async function getConfig(options?: Partial<IConfig>): Promise<IConfig> {
   // Read and save the package.json file.
-  const projectPackage:
-    | { readonly [key: string]: any }
-    | undefined = JSON.parse(
+  const projectPackage = JSON.parse(
     await readFile('./package.json', { encoding: 'utf8', flag: 'r' })
-  );
+  // tslint:disable-next-line:no-any
+  ) as { readonly [key: string]: any } | undefined;
 
   // Make sure the file was successfully loaded.
   if (projectPackage === undefined) {
@@ -35,10 +34,7 @@ export async function getConfig(options?: Partial<IConfig>): Promise<IConfig> {
   }
 
   // Make sure the there is a name field.
-  if (
-    Object.prototype.hasOwnProperty(projectPackage.name) ||
-    typeof projectPackage.name !== 'string'
-  ) {
+  if (typeof projectPackage.name !== 'string') {
     throw new Error(
       'package.json does not contain a name property as a string'
     );
@@ -54,7 +50,7 @@ export async function getConfig(options?: Partial<IConfig>): Promise<IConfig> {
   const autoLoadedConfig: Partial<IConfig> = {
     package: projectPackage,
     componenet: {
-      scope: packageScope === '' ? null : packageScope
+      scope: packageScope === '' ? undefined : packageScope
     }
   };
 
@@ -106,7 +102,7 @@ const tasksByName = {
 /**
  * The tasks.
  */
-export const tasks = new Map(
+export const TASKS = new Map(
   (Object.entries(tasksByName) as ReadonlyArray<
     [
       keyof typeof tasksByName,
@@ -120,7 +116,7 @@ export const tasks = new Map(
       ...reducedTasks,
       [
         taskName,
-        async (taskLabel = taskName, config?: Promise<IConfig> | IConfig) => {
+        async (taskLabel = taskName, config) => {
           if (config === undefined) {
             await taskFunc(taskLabel, await getConfig());
           } else {

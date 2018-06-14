@@ -58,17 +58,17 @@ const validStyleFileTypes: ReadonlyArray<string> = ['.css', '.sass', '.scss'];
  *
  * @param javascript - The JavaScript
  */
-function getStaticImportLocalNames(javascript: string): ReadonlyArray<string> {
+function getStaticImportLocalNames(javascript: string): Array<string> {
   const program = parseModule(javascript);
 
-  return program.body.reduce((reducedImports: ReadonlyArray<string>, node) => {
+  return program.body.reduce<Array<string>>((reducedImports, node) => {
     if (node.type !== 'ImportDeclaration') {
       return reducedImports;
     }
     return [
       ...reducedImports,
-      ...node.specifiers.reduce(
-        (reducedSpecifierImports: ReadonlyArray<string>, specifier) => {
+      ...node.specifiers.reduce<Array<string>>(
+        (reducedSpecifierImports, specifier) => {
           if (
             !(
               specifier.type === 'ImportDefaultSpecifier' ||
@@ -291,7 +291,7 @@ async function minifyHTML(config: IConfig, labelPrefix: string): Promise<void> {
       return;
     }
 
-    files.map(async file => {
+    files.map(async (file) => {
       const fileContent = await readFile(file, {
         encoding: 'utf8',
         flag: 'r'
@@ -383,7 +383,7 @@ async function compileCSS(config: IConfig, labelPrefix: string): Promise<void> {
  * @returns The compiled css.
  */
 async function compileSass(file: string): Promise<string> {
-  const renderSass: (options: sass.Options) => Promise<sass.Result> = promisify(
+  const renderSass = promisify<(options: sass.Options) => Promise<sass.Result>>(
     sass.render.bind(sass)
   );
   return (await renderSass({
@@ -468,49 +468,51 @@ function getImportsAndExports(
   type Wrapper = [ReadonlyArray<number>, ReadonlyArray<number>];
 
   // Get info about the code.
-  const [esImports, esExports]: Wrapper = Array.from(
-    program.body.entries()
-  ).reduce(
-    (reducedDetails, nodeInfo) => {
-      const [nodeIndex, node] = nodeInfo;
+  const [esImports, esExports] = Array.from(program.body.entries())
+    .reduce<Wrapper>(
+      (reducedDetails, nodeInfo) => {
+        const [nodeIndex, node] = nodeInfo;
 
-      if (node.type === 'ImportDeclaration') {
-        // If bundling imports? Don't strip them.
-        if (config.build.script.bundleImports) {
-          return reducedDetails;
-        }
-        return node.specifiers.reduce((reducedSpecifierDetails, specifier) => {
-          const importedName =
-            specifier.type === 'ImportDefaultSpecifier'
-              ? specifier.local.name
-              : specifier.type === 'ImportSpecifier'
-                ? specifier.imported.name
-                : null;
-          if (
-            importedName === null ||
-            !importedName.toLowerCase().startsWith('catalyst')
-          ) {
-            throw new Error(
-              `Cannot automatically process import "${importedName}."`
-            );
+        if (node.type === 'ImportDeclaration') {
+          // If bundling imports? Don't strip them.
+          if (config.build.script.bundleImports) {
+            return reducedDetails;
           }
+          return node.specifiers.reduce<Wrapper>(
+            (reducedSpecifierDetails, specifier) => {
+              const importedName =
+                specifier.type === 'ImportDefaultSpecifier'
+                  ? specifier.local.name
+                  : specifier.type === 'ImportSpecifier'
+                    ? specifier.imported.name
+                    : undefined;
+              if (
+                importedName === undefined ||
+                !importedName
+                  .toLowerCase()
+                  .startsWith('catalyst')
+              ) {
+                throw new Error(
+                  `Cannot automatically process import "${importedName}."`
+                );
+              }
 
+              return [
+                [...reducedSpecifierDetails[0], nodeIndex],
+                reducedSpecifierDetails[1]
+              ];
+            }, reducedDetails);
+        }
+        if (node.type === 'ExportNamedDeclaration') {
           return [
-            [...reducedSpecifierDetails[0], nodeIndex],
-            reducedSpecifierDetails[1]
-          ] as Wrapper;
-        }, reducedDetails);
-      }
-      if (node.type === 'ExportNamedDeclaration') {
-        return [
-          reducedDetails[0],
-          [...reducedDetails[1], nodeIndex]
-        ] as Wrapper;
-      }
-      return reducedDetails;
-    },
-    [[], []] as Wrapper
-  );
+            reducedDetails[0],
+            [...reducedDetails[1], nodeIndex]
+          ];
+        }
+        return reducedDetails;
+      },
+      [[], []]
+    );
 
   return {
     esImports,
@@ -716,7 +718,7 @@ function processExports(
       const exportDef = reducedDetails.body[index] as ExportNamedDeclaration;
       const offsetIndex = index + reducedDetails.offset;
 
-      if (exportDef.declaration == null) {
+      if (exportDef.declaration == undefined) {
         return processExportWithSpecifiers(
           exportDef.specifiers,
           reducedDetails.body,
@@ -853,7 +855,7 @@ async function injectTemplateHTML(
   }`;
 
   const [element, html] = await Promise.all(
-    [file, htmlFile].map(async filepath =>
+    [file, htmlFile].map(async (filepath) =>
       readFile(filepath, {
         encoding: 'utf8',
         flag: 'r'
@@ -930,7 +932,7 @@ async function injectTemplateCSS(
   )}.css`;
 
   const [element, css] = await Promise.all(
-    [file, cssFile].map(async filepath =>
+    [file, cssFile].map(async (filepath) =>
       readFile(filepath, {
         encoding: 'utf8',
         flag: 'r'
@@ -1062,7 +1064,7 @@ async function finalizeScript(
   try {
     tasksHelpers.log.starting(subTaskLabel, labelPrefix);
 
-    const compiler: webpack.Compiler = webpack({
+    const compiler = webpack({
       mode: 'none',
       entry: `./${config.temp.path}/${tempSubpath}/${config.componenet.name}${
         config.build.script.extension
@@ -1195,7 +1197,7 @@ async function finalizeCopyFiles(
     const files = await glob(['./README.md', './LICENSE']);
     await Promise.all(
       // tslint:disable-next-line:promise-function-async
-      files.map(file => copy(file, `./${config.dist.path}/${file}`))
+      files.map((file) => copy(file, `./${config.dist.path}/${file}`))
     );
 
     tasksHelpers.log.successful(subTaskLabel, labelPrefix);
@@ -1226,32 +1228,32 @@ async function finalizePackageJson(
     });
     const modifiedContent = {
       ...JSON.parse(fileContents),
-      version: null,
+      version: undefined,
       main: `${config.componenet.name}${config.build.module.extension}`
     };
 
     const updatedContent = Object.keys(modifiedContent)
       .filter(
-        key =>
+        (key) =>
           !['scripts', 'directories', 'devDependencies', 'engines'].includes(
             key
           )
       )
-      .reduce(
+      .reduce<{ readonly [key: string]: any }>(
         (reducedContent, key) => {
           return {
             ...reducedContent,
             [key]: modifiedContent[key]
           };
         },
-        {} as { readonly [key: string]: any }
+        {}
       );
 
     const destDir = `./${config.dist.path}`;
     await ensureDir(destDir);
     await writeFile(
       `${destDir}/package.json`,
-      JSON.stringify(updatedContent, null, 2)
+      JSON.stringify(updatedContent, undefined, 2)
     );
 
     tasksHelpers.log.successful(subTaskLabel, labelPrefix);
@@ -1308,7 +1310,7 @@ async function buildSymlinks(
     );
 
     await Promise.all(
-      files.map(async file => {
+      files.map(async (file) => {
         const outFile = `./${getFileBasename(file)}`;
         if (existsSync(outFile)) {
           await del(outFile);

@@ -22,7 +22,7 @@ export class MultiPromiseRejectionError<T> extends Error {
     // Extract out the errors.
     this.promiseErrors = multiPromiseResults.reduce(
       (previous: ReadonlyArray<Error>, current) => {
-        if ((current as any).error != null) {
+        if ((current as any).error != undefined) {
           return [...previous, (current as { readonly error: Error }).error];
         }
         return previous;

@@ -99,7 +99,7 @@ declare interface IConfig {
     /**
      * The npm scope of the component
      */
-    readonly scope?: string | null;
+    readonly scope?: string;
   };
 
   /**

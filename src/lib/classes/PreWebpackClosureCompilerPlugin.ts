@@ -82,8 +82,8 @@ export class PreWebpackClosureCompilerPlugin {
   private processNode(node: Node, meta: any): void {
     if (node.type === 'ClassDeclaration') {
       if (
-        node.id !== null &&
-        node.superClass != null &&
+        node.id === null &&
+        node.superClass != undefined &&
         node.superClass.type === 'MemberExpression'
       ) {
         const className = node.id.name;
@@ -99,9 +99,9 @@ export class PreWebpackClosureCompilerPlugin {
                 ? `"${node.superClass.property.value}"`
                 : node.superClass.property.type === 'Identifier'
                   ? `${node.superClass.property.name}`
-                  : null;
+                  : undefined;
 
-            if (property !== null) {
+            if (property !== undefined) {
               this.mutableCodeReplacements.push({
                 start: meta.start.offset,
                 end: meta.end.offset,

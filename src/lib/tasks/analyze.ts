@@ -27,194 +27,16 @@ import { glob, runAllPromises, tasksHelpers } from '../util';
 const tempSubpath = 'analyze';
 
 /**
- * Fix issues with the automatically generated analysis.
- *
- * @param analysis - The generated analysis.
- * @param config - Config settings
- */
-function fixAnalysis(
-  analysis: ProcessedAnalysis,
-  config: IConfig
-): ProcessedAnalysis {
-  return {
-    ...analysis,
-    ...{
-      elements: fixAnalysisElements(analysis.elements, config),
-      mixins: fixAnalysisElementMixins(analysis.mixins, config),
-      namespaces: fixAnalysisNamespaces(analysis.namespaces, config),
-      classes: fixAnalysisClasses(analysis.classes, config)
-    }
-  } as ProcessedAnalysis;
-}
-
-/**
- * Fix the elements in the analysis.
- */
-function fixAnalysisElements(
-  elements: ReadonlyArray<Element> | undefined,
-  config: IConfig
-): Array<Element> | undefined {
-  if (elements === undefined) {
-    return undefined;
-  }
-
-  return elements.map(element => {
-    return {
-      ...element,
-      paths: fixAnalysisComponentPath(element, config),
-      demos: fixAnalysisComponentDemos(element)
-    };
-  });
-}
-
-/**
- * Fix the mixins in the analysis.
- */
-function fixAnalysisElementMixins(
-  elementMixins: ReadonlyArray<ElementMixin> | undefined,
-  config: IConfig
-): Array<ElementMixin> | undefined {
-  if (elementMixins === undefined) {
-    return undefined;
-  }
-
-  return elementMixins.map(mixin => {
-    return {
-      ...mixin,
-      paths: fixAnalysisComponentPath(mixin, config),
-      demos: fixAnalysisComponentDemos(mixin)
-    };
-  });
-}
-
-/**
- * Fix the namespaces in the analysis.
- */
-function fixAnalysisNamespaces(
-  namespaces: ReadonlyArray<Namespace> | undefined,
-  config: IConfig
-): Array<Namespace> | undefined {
-  if (namespaces === undefined) {
-    return undefined;
-  }
-
-  return namespaces.map(namespace => {
-    return {
-      ...namespace,
-      elements: fixAnalysisElements(namespace.elements, config),
-      mixins: fixAnalysisElementMixins(namespace.mixins, config),
-      classes: fixAnalysisClasses(namespace.classes, config)
-    };
-  });
-}
-
-/**
- * Fix the classes in the analysis.
- */
-function fixAnalysisClasses(
-  classes: ReadonlyArray<Class> | undefined,
-  config: IConfig
-): Array<Class> | undefined {
-  if (classes === undefined) {
-    return undefined;
-  }
-
-  return classes.map(classComponent => {
-    return {
-      ...classComponent,
-      paths: fixAnalysisComponentPath(classComponent, config),
-      demos: fixAnalysisComponentDemos(classComponent)
-    };
-  });
-}
-
-/**
- * Don't refer to the file's temp path, but rather its node path.
- */
-function fixAnalysisComponentPath(
-  component: Class,
-  config: IConfig
-): string | undefined {
-  if (component.path === undefined) {
-    return component.path;
-  }
-
-  const pathBase = getFileBasename(
-    component.path,
-    getFileExtension(component.path)
-  );
-
-  return component.path.indexOf(`${config.temp.path}/${tempSubpath}/`) === 0
-    ? `node_modules${
-        config.componenet.scope == null ? '' : `/${config.componenet.scope}`
-      }/${pathBase}/${pathBase}${config.build.module.extension}`
-    : component.path;
-}
-
-/**
- * Prefix the demos' url.
- */
-function fixAnalysisComponentDemos(
-  component: Class
-): Array<Demo> {
-  // No path? Don't change anything.
-  if (component.path === undefined) {
-    return component.demos;
-  }
-
-  const pathBase = getFileBasename(
-    component.path,
-    getFileExtension(component.path)
-  );
-
-  return component.demos.map(demo => {
-    return {
-      ...demo,
-      url: normalizePath(`../${pathBase}/${demo.url}`)
-    };
-  });
-}
-
-/**
- * Copy all the elements over to the temp folder for analysis.
+ * Analyze the component.
  *
  * @param config - Config settings
- * @param labelPrefix - A prefix to print before
  */
-async function copyElementsForAnalysis(
-  config: IConfig,
-  labelPrefix: string
+export async function analyze(
+  taskName: string,
+  config: IConfig
 ): Promise<void> {
-  const subTaskLabel = 'get files';
-
-  try {
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
-
-    const filepaths = await glob([
-      `./${config.dist.path}/**/*${config.build.module.extension}`,
-      `./node_modules/catalyst-*/**/*${config.build.module.extension}`
-    ]);
-
-    await Promise.all(
-      filepaths.map(async filepath => {
-        // Polymer analyser currently only support .js files.
-        const ext = config.build.module.extension.substring(
-          config.build.module.extension.lastIndexOf('.')
-        );
-        const outpath = `./${config.temp.path}/${tempSubpath}/${getFileBasename(
-          filepath,
-          ext
-        )}.js`;
-
-        await copy(filepath, outpath);
-      })
-    );
-
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
-  } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
-    throw error;
-  }
+  await copyElementsForAnalysis(config, taskName);
+  await generateAnalysis(config, taskName);
 }
 
 /**
@@ -246,7 +68,7 @@ async function generateAnalysis(
 
     const analysisFileContents = JSON.stringify(
       formattedfixedAnalysis,
-      null,
+      undefined,
       2
     );
     const minifiedAnalysisFileContents = JSON.stringify(formattedfixedAnalysis);
@@ -280,14 +102,192 @@ async function generateAnalysis(
 }
 
 /**
- * Analyze the component.
+ * Fix issues with the automatically generated analysis.
  *
+ * @param analysis - The generated analysis.
  * @param config - Config settings
  */
-export async function analyze(
-  taskName: string,
+function fixAnalysis(
+  analysis: ProcessedAnalysis,
   config: IConfig
+): ProcessedAnalysis {
+  return {
+    ...analysis,
+    ...{
+      elements: fixAnalysisElements(analysis.elements, config),
+      mixins: fixAnalysisElementMixins(analysis.mixins, config),
+      namespaces: fixAnalysisNamespaces(analysis.namespaces, config),
+      classes: fixAnalysisClasses(analysis.classes, config)
+    }
+  };
+}
+
+/**
+ * Fix the namespaces in the analysis.
+ */
+function fixAnalysisNamespaces(
+  namespaces: ReadonlyArray<Namespace> | undefined,
+  config: IConfig
+): Array<Namespace> | undefined {
+  if (namespaces === undefined) {
+    return undefined;
+  }
+
+  return namespaces.map((namespace) => {
+    return {
+      ...namespace,
+      elements: fixAnalysisElements(namespace.elements, config),
+      mixins: fixAnalysisElementMixins(namespace.mixins, config),
+      classes: fixAnalysisClasses(namespace.classes, config)
+    };
+  });
+}
+
+/**
+ * Fix the elements in the analysis.
+ */
+function fixAnalysisElements(
+  elements: ReadonlyArray<Element> | undefined,
+  config: IConfig
+): Array<Element> | undefined {
+  if (elements === undefined) {
+    return undefined;
+  }
+
+  return elements.map((element) => {
+    return {
+      ...element,
+      paths: fixAnalysisComponentPath(element, config),
+      demos: fixAnalysisComponentDemos(element)
+    };
+  });
+}
+
+/**
+ * Fix the mixins in the analysis.
+ */
+function fixAnalysisElementMixins(
+  elementMixins: ReadonlyArray<ElementMixin> | undefined,
+  config: IConfig
+): Array<ElementMixin> | undefined {
+  if (elementMixins === undefined) {
+    return undefined;
+  }
+
+  return elementMixins.map((mixin) => {
+    return {
+      ...mixin,
+      paths: fixAnalysisComponentPath(mixin, config),
+      demos: fixAnalysisComponentDemos(mixin)
+    };
+  });
+}
+
+/**
+ * Fix the classes in the analysis.
+ */
+function fixAnalysisClasses(
+  classes: ReadonlyArray<Class> | undefined,
+  config: IConfig
+): Array<Class> | undefined {
+  if (classes === undefined) {
+    return undefined;
+  }
+
+  return classes.map((classComponent) => {
+    return {
+      ...classComponent,
+      paths: fixAnalysisComponentPath(classComponent, config),
+      demos: fixAnalysisComponentDemos(classComponent)
+    };
+  });
+}
+
+/**
+ * Don't refer to the file's temp path, but rather its node path.
+ */
+function fixAnalysisComponentPath(
+  component: Class,
+  config: IConfig
+): string | undefined {
+  if (component.path === undefined) {
+    return component.path;
+  }
+
+  const pathBase = getFileBasename(
+    component.path,
+    getFileExtension(component.path)
+  );
+
+  return component.path.indexOf(`${config.temp.path}/${tempSubpath}/`) === 0
+    ? `node_modules${
+        config.componenet.scope === undefined ? '' : `/${config.componenet.scope}`
+      }/${pathBase}/${pathBase}${config.build.module.extension}`
+    : component.path;
+}
+
+/**
+ * Prefix the demos' url.
+ */
+function fixAnalysisComponentDemos(
+  component: Class
+): Array<Demo> {
+  // No path? Don't change anything.
+  if (component.path === undefined) {
+    return component.demos;
+  }
+
+  const pathBase = getFileBasename(
+    component.path,
+    getFileExtension(component.path)
+  );
+
+  return component.demos.map((demo) => {
+    return {
+      ...demo,
+      url: normalizePath(`../${pathBase}/${demo.url}`)
+    };
+  });
+}
+
+/**
+ * Copy all the elements over to the temp folder for analysis.
+ *
+ * @param config - Config settings
+ * @param labelPrefix - A prefix to print before
+ */
+async function copyElementsForAnalysis(
+  config: IConfig,
+  labelPrefix: string
 ): Promise<void> {
-  await copyElementsForAnalysis(config, taskName);
-  await generateAnalysis(config, taskName);
+  const subTaskLabel = 'get files';
+
+  try {
+    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+
+    const filepaths = await glob([
+      `./${config.dist.path}/**/*${config.build.module.extension}`,
+      `./node_modules/catalyst-*/**/*${config.build.module.extension}`
+    ]);
+
+    await Promise.all(
+      filepaths.map(async (filepath) => {
+        // Polymer analyser currently only support .js files.
+        const ext = config.build.module.extension.substring(
+          config.build.module.extension.lastIndexOf('.')
+        );
+        const outpath = `./${config.temp.path}/${tempSubpath}/${getFileBasename(
+          filepath,
+          ext
+        )}.js`;
+
+        await copy(filepath, outpath);
+      })
+    );
+
+    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+  } catch (error) {
+    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    throw error;
+  }
 }

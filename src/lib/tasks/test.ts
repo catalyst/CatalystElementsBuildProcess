@@ -6,6 +6,15 @@ import { IConfig } from '../config';
 import { tasksHelpers } from '../util';
 
 /**
+ * Run tests.
+ *
+ * @param config - Config settings
+ */
+export async function test(taskName: string, config: IConfig): Promise<void> {
+  await wctTests(config, taskName);
+}
+
+/**
  * Run the web componet tester tests.
  *
  * @param config - Config settings
@@ -35,13 +44,4 @@ async function wctTests(config: IConfig, labelPrefix: string): Promise<void> {
     tasksHelpers.log.failed(subTaskLabel, labelPrefix);
     throw error;
   }
-}
-
-/**
- * Run tests.
- *
- * @param config - Config settings
- */
-export async function test(taskName: string, config: IConfig): Promise<void> {
-  await wctTests(config, taskName);
 }

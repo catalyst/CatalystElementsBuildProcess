@@ -80,6 +80,7 @@
   },
   "devDependencies": {
     "@polymer/test-fixture": "^3.0.0-pre.19",
+    "@rebeccastevens/tslint-rebeccastevens": "^0.1.0",
     "@types/archiver": "^2.1.1",
     "@types/cheerio": "^0.22.7",
     "@types/deepmerge": "^2.1.0",

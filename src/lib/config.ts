@@ -11,14 +11,14 @@ import {
   ZipOptions
 } from 'archiver';
 import colorGuard from 'colorguard';
-import postcssCqProlyfill from 'cq-prolyfill/postcss-plugin';
-import cssMQPacker from 'css-mqpacker';
+import postcssContainerQueryProlyfill from 'cq-prolyfill/postcss-plugin';
+import cssMediaQueryPacker from 'css-mqpacker';
 import cssnano from 'cssnano';
 import { Options as htmlMinifierOptions } from 'html-minifier';
 import postcss from 'postcss';
-import postcssCssNext from 'postcss-cssnext';
 import postcssFontMagician from 'postcss-font-magician';
 import postcssImport from 'postcss-import';
+import postcssPresetEnv from 'postcss-preset-env';
 import postcssReporter from 'postcss-reporter';
 import { Config as WCTConfig } from 'web-component-tester';
 
@@ -340,15 +340,16 @@ const postcssSettings = {
   options: {},
   plugins: [
     postcssImport(),
-    postcssCqProlyfill(),
+    postcssContainerQueryProlyfill(),
     postcssFontMagician(),
-    postcssCssNext({
+    postcssPresetEnv({
+      stage: 2,
       browsers: ['last 5 versions', '>= 1%', 'ie >= 11'],
       features: {
-        customProperties: false
+        'custom-properties': false
       }
     }),
-    cssMQPacker(),
+    cssMediaQueryPacker(),
     colorGuard(),
     cssnano({
       autoprefixer: false,

@@ -1,11 +1,10 @@
 {
   "root": true,
-  "extends": ["catalyst", "plugin:prettier/recommended"],
+  "extends": ["catalyst"],
   "env": {
     "browser": false,
     "node": true
   },
-  "plugins": ["prettier"],
   "rules": {
     "curly": ["error", "all"],
     "lines-around-comment": [

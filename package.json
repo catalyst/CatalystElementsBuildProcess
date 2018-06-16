@@ -21,7 +21,7 @@
     "catalyst-elements": "./bin/runner.js"
   },
   "scripts": {
-    "build": "node ./scripts/build.js && npm run format-dist",
+    "build": "node ./scripts/build.js && npm run format-dist || true",
     "do-publish": "npm run build && npm run lint && node ./dist/bin/runner.js publish",
     "dry-publish": "npm run build && npm run lint && node ./dist/bin/runner.js publishDry",
     "format-dist": "prettier-eslint --write \"dist/**/*.{js,d.ts}\"",

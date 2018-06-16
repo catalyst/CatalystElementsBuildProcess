@@ -525,7 +525,7 @@ function getFileLintingOutput(
   if (
     errors === undefined ||
     errors.length === 0 ||
-    errors.some(isRuleVialationError)
+    !errors.every(isRuleVialationError)
   ) {
     return '';
   }

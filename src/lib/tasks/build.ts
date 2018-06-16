@@ -42,8 +42,13 @@ import {
   getInjectRegExp,
   getWebpackPlugIns,
   glob,
+  INodePackage,
+  logTaskFailed,
+  logTaskInfo,
+  logTaskStarting,
+  logTaskSuccessful,
   runAllPromises,
-  tasksHelpers
+  UncertainEntryFileError
 } from '../util';
 
 // The temp path.
@@ -93,22 +98,19 @@ function getStaticImportLocalNames(javascript: string): Array<string> {
  * @param labelPrefix - A prefix to print before the label
  */
 async function checkSourceFiles(
-  config: IConfig,
+  entrypoint: string,
   labelPrefix: string
 ): Promise<void> {
   const subTaskLabel = 'check source files';
 
   try {
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    logTaskStarting(subTaskLabel, labelPrefix);
 
-    const entrypoint = await readFile(
-      `./${config.src.path}/${config.src.entrypoint}`,
-      {
-        encoding: 'utf8',
-        flag: 'r'
-      }
-    );
-    const program = parseModule(entrypoint);
+    const entrypointContent = await readFile(entrypoint, {
+      encoding: 'utf8',
+      flag: 'r'
+    });
+    const program = parseModule(entrypointContent);
 
     const defaultExports = program.body.reduce((reducedCount, node) => {
       if (node.type === 'ExportDefaultDeclaration') {
@@ -121,9 +123,9 @@ async function checkSourceFiles(
       throw new Error(`Do not use default exports. ${defaultExports} found.`);
     }
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -136,12 +138,13 @@ async function checkSourceFiles(
  */
 async function prepareEntrypoint(
   config: IConfig,
+  entrypoint: string,
   labelPrefix: string
 ): Promise<void> {
   const subTaskLabel = 'prepare entrypoint';
 
   try {
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    logTaskStarting(subTaskLabel, labelPrefix);
 
     const pathChange = getRelativePathBetween(
       `./${config.src.path}`,
@@ -157,18 +160,15 @@ async function prepareEntrypoint(
         return reducedChange + (segment === '..' ? -1 : 1);
       }, 0);
 
-    const fileContent = await readFile(
-      `./${config.src.path}/${config.src.entrypoint}`,
-      {
-        encoding: 'utf8',
-        flag: 'r'
-      }
-    );
+    const entrypointContent = await readFile(entrypoint, {
+      encoding: 'utf8',
+      flag: 'r'
+    });
 
-    const updatedFileContent =
+    const updatedEntrypointContent =
       depthChange <= 0
-        ? fileContent
-        : fileContent.replace(
+        ? entrypointContent
+        : entrypointContent.replace(
             new RegExp(`\\.\\./node_modules/`, 'g'),
             `${'../'.repeat(depthChange + 1)}node_modules/`
           );
@@ -178,12 +178,12 @@ async function prepareEntrypoint(
     await writeFile(
       `${destDir}/${tempEntrypointFileBaseName}${getFileExtension(config.src
         .entrypoint as string)}`,
-      updatedFileContent
+      updatedEntrypointContent
     );
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -202,7 +202,7 @@ async function exportStaticImports(
 
   try {
     if (!config.build.script.exportAllStaticImports) {
-      tasksHelpers.log.info(
+      logTaskInfo(
         `skipping ${subTaskLabel} - turned off in config.`,
         labelPrefix
       );
@@ -210,7 +210,7 @@ async function exportStaticImports(
       return;
     }
 
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    logTaskStarting(subTaskLabel, labelPrefix);
 
     const files = await glob(
       `./${
@@ -220,7 +220,7 @@ async function exportStaticImports(
     );
 
     if (files.length !== 1) {
-      throw new Error('Internal error: Cannot determin entryfile.');
+      throw new UncertainEntryFileError();
     }
 
     const file = files[0];
@@ -237,9 +237,9 @@ export {\n  ${staticImports.join(',\n  ')}\n};\n`;
     await ensureDir(getDirName(file));
     await writeFile(file, updatedFileContent);
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -252,22 +252,20 @@ export {\n  ${staticImports.join(',\n  ')}\n};\n`;
  */
 async function preprocessSourceFiles(
   config: IConfig,
+  entrypoint: string,
   labelPrefix: string
 ): Promise<void> {
   const subTaskLabel = 'preprocess source files';
 
   try {
-    const subTaskLabelPrefix = tasksHelpers.log.starting(
-      subTaskLabel,
-      labelPrefix
-    );
+    const subTaskLabelPrefix = logTaskStarting(subTaskLabel, labelPrefix);
 
-    await prepareEntrypoint(config, subTaskLabelPrefix);
+    await prepareEntrypoint(config, entrypoint, subTaskLabelPrefix);
     await exportStaticImports(config, subTaskLabelPrefix);
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -282,16 +280,16 @@ async function minifyHTML(config: IConfig, labelPrefix: string): Promise<void> {
   const subTaskLabel = 'minify HTML';
 
   try {
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    logTaskStarting(subTaskLabel, labelPrefix);
 
     const files = await glob(`./${config.src.path}/**/*.html`);
     if (files.length === 0) {
-      tasksHelpers.log.info(`no html files.`, labelPrefix);
-      tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+      logTaskInfo(`no html files.`, labelPrefix);
+      logTaskSuccessful(subTaskLabel, labelPrefix);
       return;
     }
 
-    files.map(async (file) => {
+    files.forEach(async (file) => {
       const fileContent = await readFile(file, {
         encoding: 'utf8',
         flag: 'r'
@@ -299,16 +297,17 @@ async function minifyHTML(config: IConfig, labelPrefix: string): Promise<void> {
       const minified = htmlMinifier(
         fileContent,
         config.build.tools.htmlMinifier
-      ).replace(/\n/g, '');
+      )
+        .replace(/\n/g, '');
 
       const destDir = `./${config.temp.path}/${tempSubpath}`;
       await ensureDir(destDir);
       await writeFile(`${destDir}/${getFileBasename(file)}`, minified);
     });
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -327,14 +326,14 @@ async function compileCSS(config: IConfig, labelPrefix: string): Promise<void> {
       config.src.template === undefined ||
       config.src.template.style === undefined
     ) {
-      tasksHelpers.log.info(
+      logTaskInfo(
         `skipping ${subTaskLabel} - no styles to compile.`,
         labelPrefix
       );
       return;
     }
 
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    logTaskStarting(subTaskLabel, labelPrefix);
 
     const postcssPlugins =
       config.build.tools.postcss === undefined
@@ -355,9 +354,8 @@ async function compileCSS(config: IConfig, labelPrefix: string): Promise<void> {
         ? await compileSass(styleFile)
         : await readFile(styleFile);
 
-    const processedCss = await postcss(
-      postcssPlugins as Array<postcss.AcceptedPlugin>
-    ).process(css, postcssOptions);
+    const processedCss = await postcss(postcssPlugins)
+      .process(css, postcssOptions);
 
     const finalizedCss = processedCss.css.replace(/\n/g, '');
 
@@ -370,9 +368,9 @@ async function compileCSS(config: IConfig, labelPrefix: string): Promise<void> {
     await ensureDir(destDir);
     await writeFile(`${destDir}/${destFilename}`, finalizedCss);
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -400,12 +398,13 @@ async function compileSass(file: string): Promise<string> {
  */
 async function initializeModuleFile(
   config: IConfig,
+  componentName: string,
   labelPrefix: string
 ): Promise<void> {
   const subTaskLabel = 'initialize file';
 
   try {
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    logTaskStarting(subTaskLabel, labelPrefix);
 
     const files = await glob(
       `./${
@@ -415,7 +414,7 @@ async function initializeModuleFile(
     );
 
     if (files.length !== 1) {
-      throw new Error('Internal error: Cannot determin entryfile.');
+      throw new UncertainEntryFileError();
     }
     const file = files[0];
     const fileContent = await readFile(file, {
@@ -423,38 +422,49 @@ async function initializeModuleFile(
       flag: 'r'
     });
 
-    const updatedFileContent = `${fileContent
+    const esLintRegExp = /^\s*\/\*+[\s\n\*]*eslint[ -]\S*\s*\*+\/\s*$/gm;
+    const tsLintRegExp = /^\s*\/\/\s*tslint:.*$/gm;
+    const nodeModulesScopeRegExp = new RegExp(
+      `(../)*node_modules/${config.component.scope}/`,
+      'g'
+    );
+    const nodeModulesRegExp = new RegExp(`(../)*node_modules/`, 'g');
+    const updatedFileContent = `${
+      fileContent
+        // Strip eslint and tslint comments.
+        .replace(esLintRegExp, '')
+        .replace(tsLintRegExp, '')
 
-      // Strip eslint and tslint comments.
-      .replace(/^\s*\/\*+[\s\n\*]*eslint[ -]\S*\s*\*+\/\s*$/gm, '') // eslint multiline.
-      .replace(/^\s*\/\/\s*tslint:.*$/gm, '') // tslint inline.
+        // Correct `node_modules` links.
+        .replace(nodeModulesScopeRegExp, '../')
+        .replace(nodeModulesRegExp, '../../')
 
-      // Correct `node_modules` links.
-      .replace(
-        new RegExp(`(../)*node_modules/${config.componenet.scope}/`, 'g'),
-        '../'
-      )
-      .replace(new RegExp(`(../)*node_modules/`, 'g'), '../../')
+        // Trim extra white space.
+        .trim()
 
-      // Trim extra white space but end with a newline.
-      .trim()}\n`;
+      // End with a newline.
+    }\n`;
 
     const destDir = `./${config.temp.path}/${tempSubpath}`;
     await ensureDir(destDir);
     await writeFile(
-      `${destDir}/${config.componenet.name}${config.build.module.extension}`,
+      `${destDir}/${componentName}${config.build.module.extension}`,
       updatedFileContent
     );
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
 
+type ImportsAndExportsWrapper = [Array<number>, Array<number>];
+
 /**
- * Strip the imports and exports out of the parse code and return them.
+ * Get the indexes of the imports and exports out of the parse code.
+ *
+ * Note: Bundled imports will not be returned.
  *
  * @param program - The parsed code.
  */
@@ -465,51 +475,28 @@ function getImportsAndExports(
   readonly esImports: ReadonlyArray<number>;
   readonly esExports: ReadonlyArray<number>;
 } {
-  type Wrapper = [ReadonlyArray<number>, ReadonlyArray<number>];
-
   // Get info about the code.
   const [esImports, esExports] = Array.from(program.body.entries())
-    .reduce<Wrapper>(
+    .reduce<ImportsAndExportsWrapper>(
       (reducedDetails, nodeInfo) => {
         const [nodeIndex, node] = nodeInfo;
 
-        if (node.type === 'ImportDeclaration') {
-          // If bundling imports? Don't strip them.
-          if (config.build.script.bundleImports) {
-            return reducedDetails;
-          }
-          return node.specifiers.reduce<Wrapper>(
-            (reducedSpecifierDetails, specifier) => {
-              const importedName =
-                specifier.type === 'ImportDefaultSpecifier'
-                  ? specifier.local.name
-                  : specifier.type === 'ImportSpecifier'
-                    ? specifier.imported.name
-                    : undefined;
-              if (
-                importedName === undefined ||
-                !importedName
-                  .toLowerCase()
-                  .startsWith('catalyst')
-              ) {
-                throw new Error(
-                  `Cannot automatically process import "${importedName}."`
-                );
-              }
+        switch (node.type) {
+          case 'ImportDeclaration':
+            // Don't process imports that are to be bundled.
+            if (config.build.script.bundleImports) {
+              return reducedDetails;
+            }
 
-              return [
-                [...reducedSpecifierDetails[0], nodeIndex],
-                reducedSpecifierDetails[1]
-              ];
-            }, reducedDetails);
+            ensureProcessableImport(node);
+            return [[...reducedDetails[0], nodeIndex], reducedDetails[1]];
+
+          case 'ExportNamedDeclaration':
+            return [reducedDetails[0], [...reducedDetails[1], nodeIndex]];
+
+          default:
+            return reducedDetails;
         }
-        if (node.type === 'ExportNamedDeclaration') {
-          return [
-            reducedDetails[0],
-            [...reducedDetails[1], nodeIndex]
-          ];
-        }
-        return reducedDetails;
       },
       [[], []]
     );
@@ -518,6 +505,39 @@ function getImportsAndExports(
     esImports,
     esExports
   };
+}
+
+/**
+ * Ensure the given import declaration is processable.
+ * If it is not, an error will be thrown.
+ */
+function ensureProcessableImport(importDeclaration: ImportDeclaration): void {
+  importDeclaration.specifiers.forEach(
+    (specifier): void => {
+      const importedName =
+        specifier.type === 'ImportDefaultSpecifier'
+          ? specifier.local.name
+          : specifier.type === 'ImportSpecifier'
+            ? specifier.imported.name
+            : undefined;
+
+      if (importedName === undefined) {
+        throw new Error(
+          `Cannot automatically process import declaration specifier.`
+        );
+      }
+      // tslint:disable-next-line:early-exit
+      if (
+        !importedName
+          .toLowerCase()
+          .startsWith('catalyst')
+      ) {
+        throw new Error(
+          `Cannot automatically process import "${importedName}".`
+        );
+      }
+    }
+  );
 }
 
 /**
@@ -554,7 +574,11 @@ function processImports(
         const localName = specifier.local.name;
         const importedName = specifier.imported.name;
 
-        if (!importedName.toLowerCase().startsWith('catalyst')) {
+        if (
+          !importedName
+            .toLowerCase()
+            .startsWith('catalyst')
+        ) {
           throw new Error(
             `Cannot automatically process import "${importedName}."`
           );
@@ -655,7 +679,7 @@ function processExportWithDeclaration(
     FunctionDeclaration | ClassDeclaration | VariableDeclarator
   >;
 
-  return declarations.reduce(
+  return declarations.reduce<IExportDetails>(
     (reducedBody, dec) => {
       if (dec.id === null) {
         throw new Error(
@@ -697,7 +721,7 @@ function processExportWithDeclaration(
       exportNamesProcessed,
       offset: 0,
       body
-    } as IExportDetails
+    }
   );
 }
 
@@ -713,7 +737,7 @@ function processExports(
   program: Program,
   esExports: ReadonlyArray<number>
 ): Program {
-  const updatedBody = esExports.reduce(
+  const updatedBody = esExports.reduce<IExportDetails>(
     (reducedDetails, index) => {
       const exportDef = reducedDetails.body[index] as ExportNamedDeclaration;
       const offsetIndex = index + reducedDetails.offset;
@@ -737,7 +761,7 @@ function processExports(
       exportNamesProcessed: {},
       offset: 0,
       body: program.body
-    } as IExportDetails
+    }
   ).body;
 
   return {
@@ -754,12 +778,13 @@ function processExports(
  */
 async function initializeScriptFile(
   config: IConfig,
+  componentName: string,
   labelPrefix: string
 ): Promise<void> {
   const subTaskLabel = 'initialize file';
 
   try {
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    logTaskStarting(subTaskLabel, labelPrefix);
 
     const files = await glob(
       `./${
@@ -769,7 +794,7 @@ async function initializeScriptFile(
     );
 
     if (files.length !== 1) {
-      throw new Error('Internal error: Cannot determin entryfile.');
+      throw new UncertainEntryFileError();
     }
     const file = files[0];
     const fileContent = await readFile(file, {
@@ -784,19 +809,20 @@ async function initializeScriptFile(
       esExports
     );
     const updatedSourceCode =
-      'window.CatalystElements = window.CatalystElements || {};\n' +
-      `${generateJS(updatedProgram)}`;
+      `window.CatalystElements = window.CatalystElements || {};\n'${generateJS(
+        updatedProgram
+      )}`;
 
     const destDir = `./${config.temp.path}/${tempSubpath}`;
     await ensureDir(destDir);
     await writeFile(
-      `${destDir}/${config.componenet.name}${config.build.script.extension}`,
+      `${destDir}/${componentName}${config.build.script.extension}`,
       updatedSourceCode
     );
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -819,10 +845,7 @@ async function injectTemplateMarkup(
     config.src.template === undefined ||
     config.src.template.markup === undefined
   ) {
-    tasksHelpers.log.info(
-      `skipping ${subTaskLabel} - no markup to inject.`,
-      labelPrefix
-    );
+    logTaskInfo(`skipping ${subTaskLabel} - no markup to inject.`, labelPrefix);
     return;
   }
 
@@ -831,31 +854,35 @@ async function injectTemplateMarkup(
     throw new Error(`Cannot process markup files of type "${fileExtension}"`);
   }
 
-  return injectTemplateHTML(config, file, labelPrefix);
+  return injectTemplateHTML(
+    config,
+    file,
+    config.src.template.markup,
+    labelPrefix
+  );
 }
 
 /**
  * Inject the template html.
  *
  * @param config - Config settings
- * @param file - The file to inject into
+ * @param targetFile - The file to inject into
  * @param labelPrefix - A prefix to print before the label
  */
 async function injectTemplateHTML(
   config: IConfig,
-  file: string,
+  targetFile: string,
+  markupFile: string,
   labelPrefix: string
 ): Promise<void> {
   const subTaskLabel = 'html';
 
-  tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+  logTaskStarting(subTaskLabel, labelPrefix);
 
-  const htmlFile = `./${config.temp.path}/${tempSubpath}/${
-    config.src.template!.markup
-  }`;
+  const htmlFile = `./${config.temp.path}/${tempSubpath}/${markupFile}`;
 
   const [element, html] = await Promise.all(
-    [file, htmlFile].map(async (filepath) =>
+    [targetFile, htmlFile].map(async (filepath) =>
       readFile(filepath, {
         encoding: 'utf8',
         flag: 'r'
@@ -868,10 +895,10 @@ async function injectTemplateHTML(
     html.replace(/`/g, '\\`')
   );
 
-  await ensureDir(getDirName(file));
-  await writeFile(file, injectedElement);
+  await ensureDir(getDirName(targetFile));
+  await writeFile(targetFile, injectedElement);
 
-  tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+  logTaskSuccessful(subTaskLabel, labelPrefix);
 }
 
 /**
@@ -892,10 +919,7 @@ async function injectTemplateStyle(
     config.src.template === undefined ||
     config.src.template.style === undefined
   ) {
-    tasksHelpers.log.info(
-      `skipping ${subTaskLabel} - no styles to inject.`,
-      labelPrefix
-    );
+    logTaskInfo(`skipping ${subTaskLabel} - no styles to inject.`, labelPrefix);
     return;
   }
 
@@ -904,35 +928,39 @@ async function injectTemplateStyle(
     throw new Error(`Cannot process style files of type "${fileExtension}"`);
   }
 
-  return injectTemplateCSS(config, file, labelPrefix);
+  return injectTemplateCSS(
+    config,
+    file,
+    config.src.template.style,
+    labelPrefix
+  );
 }
 
 /**
  * Inject the template css.
  *
  * @param config - Config settings
- * @param file - The file to inject into
+ * @param targetFile - The file to inject into
  * @param labelPrefix - A prefix to print before the label
  */
 async function injectTemplateCSS(
   config: IConfig,
-  file: string,
+  targetFile: string,
+  styleFile: string,
   labelPrefix: string
 ): Promise<void> {
   const subTaskLabel = 'css';
 
-  tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+  logTaskStarting(subTaskLabel, labelPrefix);
 
-  const cssFile = `./${
-    config.temp.path
-  }/${tempSubpath}/${config.src.template!.style!.substring(
+  const styleFileBasename = styleFile.substring(
     0,
-    config.src.template!.style!.length -
-      getFileExtension(config.src.template!.style!).length
-  )}.css`;
+    styleFile.length - getFileExtension(styleFile).length
+  );
+  const cssFile = `./${config.temp.path}/${tempSubpath}/${styleFileBasename}.css`;
 
   const [element, css] = await Promise.all(
-    [file, cssFile].map(async (filepath) =>
+    [targetFile, cssFile].map(async (filepath) =>
       readFile(filepath, {
         encoding: 'utf8',
         flag: 'r'
@@ -945,9 +973,9 @@ async function injectTemplateCSS(
     css.replace(/`/g, '\\`')
   );
 
-  await ensureDir(getDirName(file));
-  await writeFile(file, injectedElement);
-  tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+  await ensureDir(getDirName(targetFile));
+  await writeFile(targetFile, injectedElement);
+  logTaskSuccessful(subTaskLabel, labelPrefix);
 }
 
 /**
@@ -965,17 +993,14 @@ async function injectTemplate(
   const subTaskLabel = 'inject template';
 
   try {
-    const subTaskLabelPrefix = tasksHelpers.log.starting(
-      subTaskLabel,
-      labelPrefix
-    );
+    const subTaskLabelPrefix = logTaskStarting(subTaskLabel, labelPrefix);
 
     await injectTemplateMarkup(config, file, subTaskLabelPrefix);
     await injectTemplateStyle(config, file, subTaskLabelPrefix);
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -988,11 +1013,12 @@ async function injectTemplate(
  */
 async function injectTemplateModule(
   config: IConfig,
+  componentName: string,
   labelPrefix: string
 ): Promise<void> {
   await injectTemplate(
     config,
-    `./${config.temp.path}/${tempSubpath}/${config.componenet.name}${
+    `./${config.temp.path}/${tempSubpath}/${componentName}${
       config.build.module.extension
     }`,
     labelPrefix
@@ -1007,11 +1033,12 @@ async function injectTemplateModule(
  */
 async function injectTemplateScript(
   config: IConfig,
+  componentName: string,
   labelPrefix: string
 ): Promise<void> {
   await injectTemplate(
     config,
-    `./${config.temp.path}/${tempSubpath}/${config.componenet.name}${
+    `./${config.temp.path}/${tempSubpath}/${componentName}${
       config.build.script.extension
     }`,
     labelPrefix
@@ -1026,25 +1053,24 @@ async function injectTemplateScript(
  */
 async function finalizeModule(
   config: IConfig,
+  componentName: string,
   labelPrefix: string
 ): Promise<void> {
   const subTaskLabel = 'finalize';
 
   try {
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    logTaskStarting(subTaskLabel, labelPrefix);
 
     await copy(
-      `./${config.temp.path}/${tempSubpath}/${config.componenet.name}${
+      `./${config.temp.path}/${tempSubpath}/${componentName}${
         config.build.module.extension
       }`,
-      `./${config.dist.path}/${config.componenet.name}${
-        config.build.module.extension
-      }`
+      `./${config.dist.path}/${componentName}${config.build.module.extension}`
     );
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -1057,48 +1083,47 @@ async function finalizeModule(
  */
 async function finalizeScript(
   config: IConfig,
+  componentName: string,
   labelPrefix: string
 ): Promise<void> {
   const subTaskLabel = 'finalize';
 
   try {
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    logTaskStarting(subTaskLabel, labelPrefix);
 
     const compiler = webpack({
       mode: 'none',
-      entry: `./${config.temp.path}/${tempSubpath}/${config.componenet.name}${
+      entry: `./${config.temp.path}/${tempSubpath}/${componentName}${
         config.build.script.extension
       }`,
       output: {
         path: joinPaths(process.cwd(), config.dist.path),
-        chunkFilename: `${config.componenet.name}.part-[id]${
+        chunkFilename: `${componentName}.part-[id]${
           config.build.script.extension
         }`,
-        filename: `${config.componenet.name}${config.build.script.extension}`
+        filename: `${componentName}${config.build.script.extension}`
       },
       resolve: {
         extensions: ['.js', '.mjs']
       },
       plugins: getWebpackPlugIns(),
       target: 'web'
-    } as any);
+    });
 
     const runCompiler = promisify(compiler.run.bind(
       compiler
     ) as typeof compiler.run);
     const stats = await runCompiler();
-
-    // tslint:disable-next-line:no-console
-    console.log(
+    console.info(
       stats.toString({
         chunks: false,
         colors: true
       })
     );
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -1111,13 +1136,14 @@ async function finalizeScript(
  */
 async function buildModule(
   config: IConfig,
+  componentName: string,
   labelPrefix: string
 ): Promise<void> {
   const subTaskLabel = 'module';
 
   try {
     if (!config.build.module.create) {
-      tasksHelpers.log.info(
+      logTaskInfo(
         `skipping ${subTaskLabel} - turned off in config.`,
         labelPrefix
       );
@@ -1125,18 +1151,15 @@ async function buildModule(
       return;
     }
 
-    const subTaskLabelPrefix = tasksHelpers.log.starting(
-      subTaskLabel,
-      labelPrefix
-    );
+    const subTaskLabelPrefix = logTaskStarting(subTaskLabel, labelPrefix);
 
-    await initializeModuleFile(config, subTaskLabelPrefix);
-    await injectTemplateModule(config, subTaskLabelPrefix);
-    await finalizeModule(config, subTaskLabelPrefix);
+    await initializeModuleFile(config, componentName, subTaskLabelPrefix);
+    await injectTemplateModule(config, componentName, subTaskLabelPrefix);
+    await finalizeModule(config, componentName, subTaskLabelPrefix);
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -1149,13 +1172,14 @@ async function buildModule(
  */
 async function buildScript(
   config: IConfig,
+  componentName: string,
   labelPrefix: string
 ): Promise<void> {
   const subTaskLabel = 'script';
 
   try {
     if (!config.build.script.create) {
-      tasksHelpers.log.info(
+      logTaskInfo(
         `skipping ${subTaskLabel} - turned off in config.`,
         labelPrefix
       );
@@ -1163,18 +1187,15 @@ async function buildScript(
       return;
     }
 
-    const subTaskLabelPrefix = tasksHelpers.log.starting(
-      subTaskLabel,
-      labelPrefix
-    );
+    const subTaskLabelPrefix = logTaskStarting(subTaskLabel, labelPrefix);
 
-    await initializeScriptFile(config, subTaskLabelPrefix);
-    await injectTemplateScript(config, subTaskLabelPrefix);
-    await finalizeScript(config, subTaskLabelPrefix);
+    await initializeScriptFile(config, componentName, subTaskLabelPrefix);
+    await injectTemplateScript(config, componentName, subTaskLabelPrefix);
+    await finalizeScript(config, componentName, subTaskLabelPrefix);
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -1192,17 +1213,16 @@ async function finalizeCopyFiles(
   const subTaskLabel = 'copy files';
 
   try {
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    logTaskStarting(subTaskLabel, labelPrefix);
 
     const files = await glob(['./README.md', './LICENSE']);
     await Promise.all(
-      // tslint:disable-next-line:promise-function-async
-      files.map((file) => copy(file, `./${config.dist.path}/${file}`))
+      files.map(async (file) => copy(file, `./${config.dist.path}/${file}`))
     );
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -1215,12 +1235,13 @@ async function finalizeCopyFiles(
  */
 async function finalizePackageJson(
   config: IConfig,
+  componentName: string,
   labelPrefix: string
 ): Promise<void> {
   const subTaskLabel = 'package.json';
 
   try {
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    logTaskStarting(subTaskLabel, labelPrefix);
 
     const fileContents = await readFile('./package.json', {
       encoding: 'utf8',
@@ -1229,7 +1250,7 @@ async function finalizePackageJson(
     const modifiedContent = {
       ...JSON.parse(fileContents),
       version: undefined,
-      main: `${config.componenet.name}${config.build.module.extension}`
+      main: `${componentName}${config.build.module.extension}`
     };
 
     const updatedContent = Object.keys(modifiedContent)
@@ -1239,15 +1260,12 @@ async function finalizePackageJson(
             key
           )
       )
-      .reduce<{ readonly [key: string]: any }>(
-        (reducedContent, key) => {
-          return {
-            ...reducedContent,
-            [key]: modifiedContent[key]
-          };
-        },
-        {}
-      );
+      .reduce<INodePackage>((reducedContent, key) => {
+        return {
+          ...reducedContent,
+          [key]: modifiedContent[key]
+        };
+      }, {});
 
     const destDir = `./${config.dist.path}`;
     await ensureDir(destDir);
@@ -1256,9 +1274,9 @@ async function finalizePackageJson(
       JSON.stringify(updatedContent, undefined, 2)
     );
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -1269,23 +1287,24 @@ async function finalizePackageJson(
  * @param config - Config settings
  * @param labelPrefix - A prefix to print before the label
  */
-async function finalize(config: IConfig, labelPrefix: string): Promise<void> {
+async function finalize(
+  config: IConfig,
+  componentName: string,
+  labelPrefix: string
+): Promise<void> {
   const subTaskLabel = 'finalize';
 
   try {
-    const subTaskLabelPrefix = tasksHelpers.log.starting(
-      subTaskLabel,
-      labelPrefix
-    );
+    const subTaskLabelPrefix = logTaskStarting(subTaskLabel, labelPrefix);
 
     await runAllPromises([
       finalizeCopyFiles(config, subTaskLabelPrefix),
-      finalizePackageJson(config, subTaskLabelPrefix)
+      finalizePackageJson(config, componentName, subTaskLabelPrefix)
     ]);
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -1298,16 +1317,15 @@ async function finalize(config: IConfig, labelPrefix: string): Promise<void> {
  */
 async function buildSymlinks(
   config: IConfig,
+  componentName: string,
   labelPrefix: string
 ): Promise<void> {
   const subTaskLabel = 'symlinks';
 
   try {
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    logTaskStarting(subTaskLabel, labelPrefix);
 
-    const files = await glob(
-      `./${config.dist.path}/${config.componenet.name}**.?(m)js`
-    );
+    const files = await glob(`./${config.dist.path}/${componentName}**.?(m)js`);
 
     await Promise.all(
       files.map(async (file) => {
@@ -1319,9 +1337,9 @@ async function buildSymlinks(
       })
     );
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -1330,23 +1348,26 @@ async function buildSymlinks(
  * Build the component.
  */
 export async function build(taskName: string, config: IConfig): Promise<void> {
-  if (config.componenet.name === undefined) {
-    throw new Error('Cannot build: `config.componenet.name` is not set.');
+  if (config.component.name === undefined) {
+    throw new Error('Cannot build: `config.component.name` is not set.');
   }
   if (config.src.entrypoint === undefined) {
     throw new Error('Cannot build: `config.src.entrypoint` is not set.');
   }
+
+  const entrypoint = `./${config.src.path}/${config.src.entrypoint}`;
+
   await cleanDist(config, taskName);
-  await checkSourceFiles(config, taskName);
-  await preprocessSourceFiles(config, taskName);
+  await checkSourceFiles(entrypoint, taskName);
+  await preprocessSourceFiles(config, config.component.name, taskName);
   await runAllPromises([
     minifyHTML(config, taskName),
     compileCSS(config, taskName)
   ]);
   await runAllPromises([
-    buildModule(config, taskName),
-    buildScript(config, taskName)
+    buildModule(config, config.component.name, taskName),
+    buildScript(config, config.component.name, taskName)
   ]);
-  await finalize(config, taskName);
-  await buildSymlinks(config, taskName);
+  await finalize(config, config.component.name, taskName);
+  await buildSymlinks(config, config.component.name, taskName);
 }

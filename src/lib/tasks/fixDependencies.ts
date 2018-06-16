@@ -10,7 +10,13 @@ import {
 import { dirname as getDirName } from 'path';
 
 import { IConfig } from '../config';
-import { runAllPromises, tasksHelpers } from '../util';
+import {
+  logTaskFailed,
+  logTaskInfo,
+  logTaskStarting,
+  logTaskSuccessful,
+  runAllPromises
+} from '../util';
 
 /**
  * Fix dependencies.
@@ -43,21 +49,18 @@ async function fixPrismjs(labelPrefix: string): Promise<void> {
     const bad = existsSync(`./node_modules/prism`);
 
     if (!good || bad) {
-      tasksHelpers.log.info(
-        `skipping "${subTaskLabel}" - seems ok.`,
-        labelPrefix
-      );
+      logTaskInfo(`skipping "${subTaskLabel}" - seems ok.`, labelPrefix);
 
       return;
     }
 
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    logTaskStarting(subTaskLabel, labelPrefix);
 
     await symlink('./prismjs', `./node_modules/prism`, 'dir');
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -75,15 +78,12 @@ async function fixAsync(labelPrefix: string): Promise<void> {
     const bad = existsSync(`./node_modules/async/lib/async.js`);
 
     if (!good || bad) {
-      tasksHelpers.log.info(
-        `skipping "${subTaskLabel}" - seems ok.`,
-        labelPrefix
-      );
+      logTaskInfo(`skipping "${subTaskLabel}" - seems ok.`, labelPrefix);
 
       return;
     }
 
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    logTaskStarting(subTaskLabel, labelPrefix);
 
     if (!existsSync(`./node_modules/async/lib/`)) {
       await mkdir(`./node_modules/async/lib/`);
@@ -95,9 +95,9 @@ async function fixAsync(labelPrefix: string): Promise<void> {
       'file'
     );
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -115,15 +115,12 @@ async function fixSinon(labelPrefix: string): Promise<void> {
     const bad = existsSync(`./node_modules/sinonjs/sinon.js`);
 
     if (!good || bad) {
-      tasksHelpers.log.info(
-        `skipping "${subTaskLabel}" - seems ok.`,
-        labelPrefix
-      );
+      logTaskInfo(`skipping "${subTaskLabel}" - seems ok.`, labelPrefix);
 
       return;
     }
 
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    logTaskStarting(subTaskLabel, labelPrefix);
 
     if (!existsSync(`./node_modules/sinonjs`)) {
       await mkdir(`./node_modules/sinonjs`);
@@ -135,9 +132,9 @@ async function fixSinon(labelPrefix: string): Promise<void> {
       'file'
     );
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -160,7 +157,7 @@ async function fixIronScrollManager(
     }/@polymer/iron-overlay-behavior/iron-scroll-manager.js`;
 
     if (!existsSync(file)) {
-      tasksHelpers.log.info(
+      logTaskInfo(
         `skipping "${subTaskLabel}" - file doesn't exist.`,
         labelPrefix
       );
@@ -181,22 +178,19 @@ async function fixIronScrollManager(
       );
 
     if (updatedContent === content) {
-      tasksHelpers.log.info(
-        `skipping "${subTaskLabel}" - seems ok.`,
-        labelPrefix
-      );
+      logTaskInfo(`skipping "${subTaskLabel}" - seems ok.`, labelPrefix);
 
       return;
     }
 
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    logTaskStarting(subTaskLabel, labelPrefix);
 
     await ensureDir(getDirName(file));
     await writeFile(file, updatedContent, 'utf8');
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -214,15 +208,12 @@ async function fixTestFixture(labelPrefix: string): Promise<void> {
     const bad = existsSync(`./node_modules/test-fixture`);
 
     if (!good || bad) {
-      tasksHelpers.log.info(
-        `skipping "${subTaskLabel}" - seems ok.`,
-        labelPrefix
-      );
+      logTaskInfo(`skipping "${subTaskLabel}" - seems ok.`, labelPrefix);
 
       return;
     }
 
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    logTaskStarting(subTaskLabel, labelPrefix);
 
     await symlink(
       './@polymer/test-fixture',
@@ -230,9 +221,9 @@ async function fixTestFixture(labelPrefix: string): Promise<void> {
       'dir'
     );
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }

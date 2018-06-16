@@ -42,8 +42,13 @@ import {
   cleanDocs,
   getWebpackPlugIns,
   glob,
+  INodePackage,
+  logTaskFailed,
+  logTaskInfo,
+  logTaskStarting,
+  logTaskSuccessful,
   runAllPromises,
-  tasksHelpers
+  webpackPostProcess
 } from '../util';
 
 /**
@@ -60,6 +65,7 @@ function getTempPath(config: IConfig): string {
  */
 async function directoryCanBeClonedInTo(dirPath: string): Promise<boolean> {
   await ensureDir(dirPath);
+
   // tslint:disable-next-line:no-bitwise
   await access(dirPath, constants.R_OK | constants.W_OK);
 
@@ -87,15 +93,15 @@ async function cloneRepository(
   const subTaskLabel = `clone of ${repoPath}`;
 
   try {
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    logTaskStarting(subTaskLabel, labelPrefix);
 
     const gitInstance = getGitInstance();
     const clone = promisify(gitInstance.clone.bind(gitInstance));
     await clone(repoPath, dirPath, { '--quiet': undefined });
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -156,7 +162,7 @@ async function cloneRepositories(
       const skipClone = !(await directoryCanBeClonedInTo(clonePath));
 
       if (skipClone) {
-        tasksHelpers.log.info(
+        logTaskInfo(
           `skipping clone of "${repositoryPath}" - output dir not empty.`,
           labelPrefix
         );
@@ -184,7 +190,7 @@ async function copyNodeModules(
   const subTaskLabel = 'node modules';
 
   try {
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    logTaskStarting(subTaskLabel, labelPrefix);
 
     await copy(
       `./node_modules`,
@@ -192,9 +198,9 @@ async function copyNodeModules(
       { overwrite: true }
     );
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -212,7 +218,7 @@ async function copyDocsIndex(
   const subTaskLabel = 'index page';
 
   try {
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    logTaskStarting(subTaskLabel, labelPrefix);
 
     const inDir = '.';
     const filename = config.docs.indexPage;
@@ -222,9 +228,9 @@ async function copyDocsIndex(
       overwrite: true
     });
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -242,7 +248,7 @@ async function copyExtraDocDependencies(
   const subTaskLabel = 'extra dependencies';
 
   try {
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    logTaskStarting(subTaskLabel, labelPrefix);
 
     const inDir = `.`;
     const destDir = `./${getTempPath(config)}`;
@@ -263,9 +269,9 @@ async function copyExtraDocDependencies(
       })
     );
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -278,16 +284,17 @@ async function copyExtraDocDependencies(
  */
 async function copyDistributionFiles(
   config: IConfig,
+  nodePackage: INodePackage,
   labelPrefix: string
 ): Promise<void> {
   const subTaskLabel = 'distribution files';
 
   try {
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    logTaskStarting(subTaskLabel, labelPrefix);
 
     const inDir = `./${config.dist.path}`;
     const destDir = `./${getTempPath(config)}/${config.docs.nodeModulesPath}/${
-      (config.package as any).name
+      nodePackage.name
     }`;
 
     await runAllPromises(
@@ -298,9 +305,9 @@ async function copyDistributionFiles(
       )
     );
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -313,17 +320,17 @@ async function copyDistributionFiles(
  */
 async function copyLocalDemos(
   config: IConfig,
+  nodePackage: INodePackage,
   labelPrefix: string
 ): Promise<void> {
   const subTaskLabel = 'local demos';
 
   try {
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    logTaskStarting(subTaskLabel, labelPrefix);
 
     const srcDir = `./${config.demos.path}`;
     const destDir = `./${getTempPath(config)}/${config.docs.nodeModulesPath}/${
-      (config.package as any).name
-    }/${config.demos.path}`;
+      nodePackage.name}/${config.demos.path}`;
 
     if (existsSync(srcDir)) {
       await runAllPromises(
@@ -335,9 +342,9 @@ async function copyLocalDemos(
       );
     }
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -350,14 +357,15 @@ async function copyLocalDemos(
  * @param config - Config settings
  * @param labelPrefix - A prefix to print before the label
  */
-async function copyFiles(config: IConfig, labelPrefix: string): Promise<void> {
+async function copyFiles(
+  config: IConfig,
+  nodePackage: INodePackage,
+  labelPrefix: string
+): Promise<void> {
   const subTaskLabel = 'copy files';
 
   try {
-    const subTaskLabelPrefix = tasksHelpers.log.starting(
-      subTaskLabel,
-      labelPrefix
-    );
+    const subTaskLabelPrefix = logTaskStarting(subTaskLabel, labelPrefix);
 
     await runAllPromises([
       copyNodeModules(config, subTaskLabelPrefix),
@@ -365,12 +373,12 @@ async function copyFiles(config: IConfig, labelPrefix: string): Promise<void> {
       copyExtraDocDependencies(config, subTaskLabelPrefix)
     ]);
 
-    await copyDistributionFiles(config, subTaskLabelPrefix);
-    await copyLocalDemos(config, subTaskLabelPrefix);
+    await copyDistributionFiles(config, nodePackage, subTaskLabelPrefix);
+    await copyLocalDemos(config, nodePackage, subTaskLabelPrefix);
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -380,7 +388,8 @@ async function copyFiles(config: IConfig, labelPrefix: string): Promise<void> {
  */
 function updateAnalysisElements(
   elements: ReadonlyArray<Element> | undefined,
-  config: IConfig
+  config: IConfig,
+  nodePackage: INodePackage
 ): Array<Element> | undefined {
   if (elements === undefined) {
     return undefined;
@@ -389,7 +398,7 @@ function updateAnalysisElements(
   return elements.map((element) => {
     return {
       ...element,
-      demos: updateAnalysisComponentDemos(element, config)
+      demos: updateAnalysisComponentDemos(element, config, nodePackage)
     };
   });
 }
@@ -399,7 +408,8 @@ function updateAnalysisElements(
  */
 function updateAnalysisElementMixins(
   elementMixins: ReadonlyArray<ElementMixin> | undefined,
-  config: IConfig
+  config: IConfig,
+  nodePackage: INodePackage
 ): Array<ElementMixin> | undefined {
   if (elementMixins === undefined) {
     return undefined;
@@ -408,7 +418,7 @@ function updateAnalysisElementMixins(
   return elementMixins.map((mixin) => {
     return {
       ...mixin,
-      demos: updateAnalysisComponentDemos(mixin, config)
+      demos: updateAnalysisComponentDemos(mixin, config, nodePackage)
     };
   });
 }
@@ -418,7 +428,8 @@ function updateAnalysisElementMixins(
  */
 function updateAnalysisNamespaces(
   namespaces: ReadonlyArray<Namespace> | undefined,
-  config: IConfig
+  config: IConfig,
+  nodePackage: INodePackage
 ): Array<Namespace> | undefined {
   if (namespaces === undefined) {
     return undefined;
@@ -427,9 +438,9 @@ function updateAnalysisNamespaces(
   return namespaces.map((namespace) => {
     return {
       ...namespace,
-      elements: updateAnalysisElements(namespace.elements, config),
-      mixins: updateAnalysisElementMixins(namespace.mixins, config),
-      classes: updateAnalysisClasses(namespace.classes, config)
+      elements: updateAnalysisElements(namespace.elements, config, nodePackage),
+      mixins: updateAnalysisElementMixins(namespace.mixins, config, nodePackage),
+      classes: updateAnalysisClasses(namespace.classes, config, nodePackage)
     };
   });
 }
@@ -439,7 +450,8 @@ function updateAnalysisNamespaces(
  */
 function updateAnalysisClasses(
   classes: ReadonlyArray<Class> | undefined,
-  config: IConfig
+  config: IConfig,
+  nodePackage: INodePackage
 ): Array<Class> | undefined {
   if (classes === undefined) {
     return undefined;
@@ -448,7 +460,7 @@ function updateAnalysisClasses(
   return classes.map((classComponent) => {
     return {
       ...classComponent,
-      demos: updateAnalysisComponentDemos(classComponent, config)
+      demos: updateAnalysisComponentDemos(classComponent, config, nodePackage)
     };
   });
 }
@@ -458,14 +470,13 @@ function updateAnalysisClasses(
  */
 function updateAnalysisComponentDemos(
   component: Class,
-  config: IConfig
+  config: IConfig,
+  nodePackage: INodePackage
 ): Array<Demo> {
   return component.demos.map((demo) => {
     return {
       ...demo,
-      url: `${config.docs.nodeModulesPath}/${(config.package as any).name}/${
-        demo.url
-      }`
+      url: `${config.docs.nodeModulesPath}/${nodePackage.name}/${demo.url}`
     };
   });
 }
@@ -478,12 +489,13 @@ function updateAnalysisComponentDemos(
  */
 async function updateAnalysis(
   config: IConfig,
+  nodePackage: INodePackage,
   labelPrefix: string
 ): Promise<void> {
   const subTaskLabel = 'update analysis';
 
   try {
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    logTaskStarting(subTaskLabel, labelPrefix);
 
     const file = `./${getTempPath(config)}/${config.docs.analysisFilename}`;
     const fileContent = await readFile(file, { encoding: 'utf8', flag: 'r' });
@@ -491,10 +503,26 @@ async function updateAnalysis(
     const updatedAnalysis = {
       ...analysis,
       ...{
-        elements: updateAnalysisElements(analysis.elements, config),
-        mixins: updateAnalysisElementMixins(analysis.mixins, config),
-        namespaces: updateAnalysisNamespaces(analysis.namespaces, config),
-        classes: updateAnalysisClasses(analysis.classes, config)
+        elements: updateAnalysisElements(
+          analysis.elements,
+          config,
+          nodePackage
+        ),
+        mixins: updateAnalysisElementMixins(
+          analysis.mixins,
+          config,
+          nodePackage
+        ),
+        namespaces: updateAnalysisNamespaces(
+          analysis.namespaces,
+          config,
+          nodePackage
+        ),
+        classes: updateAnalysisClasses(
+          analysis.classes,
+          config,
+          nodePackage
+        )
       }
     };
 
@@ -503,9 +531,9 @@ async function updateAnalysis(
     await ensureDir(getDirName(file));
     await writeFile(file, updatedFileContent);
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -520,15 +548,15 @@ async function getDemos(config: IConfig, labelPrefix: string): Promise<void> {
   const subTaskLabel = 'get demos';
 
   try {
-    const subTaskLabelPrefix = tasksHelpers.log.starting(
-      subTaskLabel,
-      labelPrefix
-    );
+    const subTaskLabelPrefix = logTaskStarting(subTaskLabel, labelPrefix);
+
+    const nodeScope =
+      config.component.scope === undefined
+        ? ''
+        : `/${config.component.scope}`;
 
     const packageFiles = await glob(
-      `./node_modules${
-        config.componenet.scope === undefined ? '' : `/${config.componenet.scope}`
-      }/catalyst-*/package.json`
+      `./node_modules${nodeScope}/catalyst-*/package.json`
     );
 
     if (packageFiles.length > 0) {
@@ -559,9 +587,9 @@ async function getDemos(config: IConfig, labelPrefix: string): Promise<void> {
       );
     }
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -579,32 +607,30 @@ async function indexPageUpdateReferences(
   const subTaskLabel = 'index';
 
   try {
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    logTaskStarting(subTaskLabel, labelPrefix);
 
     const file = `./${getTempPath(config)}/index.html`;
     const fileContent = await readFile(file, { encoding: 'utf8', flag: 'r' });
     const $ = cheerio.load(fileContent);
 
-    // tslint:disable:no-delete no-object-mutation
-    $('script').each((_index, element) => {
-      if (element.attribs.type === 'module') {
-        delete element.attribs.type;
-      }
-      element.attribs.src = element.attribs.src
-        .replace(/^\.\.\/\.\.\//, `${config.docs.nodeModulesPath}/`)
-        .replace(/.mjs$/, '.js');
-    });
-
-    // tslint:enable:no-delete no-object-mutation
+    $('script')
+      .each((_index, mutableElement) => {
+        if (mutableElement.attribs.type === 'module') {
+          delete mutableElement.attribs.type;
+        }
+        mutableElement.attribs.src = mutableElement.attribs.src
+          .replace(/^\.\.\/\.\.\//, `${config.docs.nodeModulesPath}/`)
+          .replace(/.mjs$/, '.js');
+      });
 
     const updatedFileContent = $.html();
 
     await ensureDir(getDirName(file));
     await writeFile(file, updatedFileContent);
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -622,12 +648,17 @@ async function demosPagesUpdateReferences(
   const subTaskLabel = 'demo files';
 
   try {
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    logTaskStarting(subTaskLabel, labelPrefix);
+
+    const nodeScope =
+      config.component.scope === undefined
+        ? ''
+        : `/${config.component.scope}`;
 
     const files = await glob(
-      `./${getTempPath(config)}/${config.docs.nodeModulesPath}${
-        config.componenet.scope === undefined ? '' : `/${config.componenet.scope}`
-      }/*/${config.demos.path}/*.html`
+      `./${getTempPath(config)}/${config.docs.nodeModulesPath}${nodeScope}/*/${
+        config.demos.path
+      }/*.html`
     );
 
     await runAllPromises(
@@ -638,15 +669,12 @@ async function demosPagesUpdateReferences(
         });
         const $ = cheerio.load(fileContent);
 
-        // tslint:disable:no-delete no-object-mutation
-        $('script[type="module"]').each(
-          (_index, element) => {
-            delete element.attribs.type;
-            element.attribs.src = element.attribs.src.replace(/.mjs$/, '.js');
-          }
-        );
-
-        // tslint:enable:no-delete no-object-mutation
+        $('script[type="module"]')
+          .each((_index, mutableElement) => {
+            delete mutableElement.attribs.type;
+            mutableElement.attribs.src =
+              mutableElement.attribs.src.replace(/.mjs$/, '.js');
+          });
 
         const updatedFileContent = $.html();
 
@@ -655,9 +683,9 @@ async function demosPagesUpdateReferences(
       })
     );
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -675,7 +703,7 @@ async function indexImportsUpdateReferences(
   const subTaskLabel = 'imports';
 
   try {
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    logTaskStarting(subTaskLabel, labelPrefix);
 
     const file = `./${getTempPath(config)}/${config.docs.importsFilename}`;
     const fileContent = await readFile(file, { encoding: 'utf8', flag: 'r' });
@@ -708,9 +736,9 @@ async function indexImportsUpdateReferences(
     await ensureDir(getDirName(file));
     await writeFile(file, updatedFileContent);
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -728,19 +756,16 @@ async function indexUpdateReferences(
   const subTaskLabel = 'update references';
 
   try {
-    const subTaskLabelPrefix = tasksHelpers.log.starting(
-      subTaskLabel,
-      labelPrefix
-    );
+    const subTaskLabelPrefix = logTaskStarting(subTaskLabel, labelPrefix);
 
     await runAllPromises([
       indexPageUpdateReferences(config, subTaskLabelPrefix),
       indexImportsUpdateReferences(config, subTaskLabelPrefix)
     ]);
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -758,18 +783,15 @@ async function demosUpdateReferences(
   const subTaskLabel = 'update references';
 
   try {
-    const subTaskLabelPrefix = tasksHelpers.log.starting(
-      subTaskLabel,
-      labelPrefix
-    );
+    const subTaskLabelPrefix = logTaskStarting(subTaskLabel, labelPrefix);
 
     await runAllPromises([
       demosPagesUpdateReferences(config, subTaskLabelPrefix)
     ]);
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -787,7 +809,7 @@ async function finalizeIndexPage(
   const subTaskLabel = 'finalize';
 
   try {
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    logTaskStarting(subTaskLabel, labelPrefix);
 
     const docsImportsBaseName = getFileBasename(
       config.docs.importsFilename,
@@ -816,15 +838,14 @@ async function finalizeIndexPage(
       },
       plugins: getWebpackPlugIns(),
       target: 'web'
-    } as any);
+    });
 
     const runCompiler = promisify(compiler.run.bind(
       compiler
     ) as typeof compiler.run);
     const stats = await runCompiler();
 
-    // tslint:disable-next-line:no-console
-    console.log(
+    console.info(
       stats.toString({
         chunks: false,
         colors: true
@@ -834,20 +855,9 @@ async function finalizeIndexPage(
     const statsDetails = stats.toJson({
       assets: true
     }) as WebpackStats;
-    const webpackEmittedFiles = statsDetails.assets.reduce(
-      (reducedFiles: ReadonlyArray<string>, asset) => {
-        if (asset.emitted) {
-          return [
-            ...reducedFiles,
-            joinPaths(statsDetails.outputPath, asset.name)
-          ];
-        }
-        return reducedFiles;
-      },
-      []
-    );
+    const webpackEmittedFiles = getWebpackEmittedFiles(statsDetails);
 
-    webpackEmittedFiles.map(async (file) => {
+    webpackEmittedFiles.forEach(async (file) => {
       const fileContent = await readFile(file, { encoding: 'utf8', flag: 'r' });
       const updatedFileContent = fileContent.replace(/\\\\\$/g, '$');
 
@@ -855,9 +865,9 @@ async function finalizeIndexPage(
       await writeFile(file, updatedFileContent);
     });
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -875,7 +885,7 @@ async function finalizeDemos(
   const subTaskLabel = 'finalize';
 
   try {
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    logTaskStarting(subTaskLabel, labelPrefix);
 
     const demoImportsBaseName = getFileBasename(
       config.demos.importsFilename,
@@ -887,10 +897,15 @@ async function finalizeDemos(
       getFileExtension(config.demos.importsImporterFilename)
     );
 
+    const nodeScope =
+      config.component.scope === undefined
+        ? ''
+        : `/${config.component.scope}`;
+
     const sourceFiles = await glob(
-      `${getTempPath(config)}/${config.docs.nodeModulesPath}${
-        config.componenet.scope === undefined ? '' : `/${config.componenet.scope}`
-      }/*/${config.demos.path}/${config.demos.importsImporterFilename}`
+      `${getTempPath(config)}/${config.docs.nodeModulesPath}${nodeScope}/*/${
+        config.demos.path
+      }/${config.demos.importsImporterFilename}`
     );
 
     const webpackResults = await runAllPromises(
@@ -912,7 +927,7 @@ async function finalizeDemos(
         });
 
         const runCompiler = promisify<() => Promise<webpack.Stats>>(
-          (compiler.run.bind(compiler))
+          compiler.run.bind(compiler)
         );
         const stats = await runCompiler();
 
@@ -920,18 +935,7 @@ async function finalizeDemos(
           assets: true
         }) as WebpackStats;
 
-        const webpackEmittedFiles = statsDetails.assets.reduce(
-          (reducedFiles: ReadonlyArray<string>, asset) => {
-            if (asset.emitted) {
-              return [
-                ...reducedFiles,
-                joinPaths(statsDetails.outputPath, asset.name)
-              ];
-            }
-            return reducedFiles;
-          },
-          []
-        );
+        const webpackEmittedFiles = getWebpackEmittedFiles(statsDetails);
 
         return {
           log: stats.toString({
@@ -943,34 +947,25 @@ async function finalizeDemos(
       })
     );
 
-    const outFiles = webpackResults.reduce(
-      (reducedFiles: ReadonlyArray<string>, result) => {
-        // tslint:disable-next-line:no-console
-        console.log(result.log);
+    await webpackPostProcess(webpackResults);
 
-        return [...reducedFiles, ...result.webpackEmittedFiles];
-      },
-      []
-    );
-
-    await runAllPromises(
-      outFiles.map(async (file) => {
-        const fileContent = await readFile(file, {
-          encoding: 'utf8',
-          flag: 'r'
-        });
-        const updatedFileContent = fileContent.replace(/\\\\\$/g, '$');
-
-        await ensureDir(getDirName(file));
-        await writeFile(file, updatedFileContent);
-      })
-    );
-
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
+}
+
+/**
+ * Get the emitted files of a webpack build.
+ */
+function getWebpackEmittedFiles(statsDetails: WebpackStats): Array<string> {
+  return statsDetails.assets.reduce<Array<string>>((reducedFiles, asset) => {
+    if (asset.emitted) {
+      return [...reducedFiles, joinPaths(statsDetails.outputPath, asset.name)];
+    }
+    return reducedFiles;
+  }, []);
 }
 
 /**
@@ -986,17 +981,14 @@ async function buildIndexPage(
   const subTaskLabel = 'index page';
 
   try {
-    const subTaskLabelPrefix = tasksHelpers.log.starting(
-      subTaskLabel,
-      labelPrefix
-    );
+    const subTaskLabelPrefix = logTaskStarting(subTaskLabel, labelPrefix);
 
     await indexUpdateReferences(config, subTaskLabelPrefix);
     await finalizeIndexPage(config, subTaskLabelPrefix);
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -1011,17 +1003,14 @@ async function buildDemos(config: IConfig, labelPrefix: string): Promise<void> {
   const subTaskLabel = 'demos';
 
   try {
-    const subTaskLabelPrefix = tasksHelpers.log.starting(
-      subTaskLabel,
-      labelPrefix
-    );
+    const subTaskLabelPrefix = logTaskStarting(subTaskLabel, labelPrefix);
 
     await demosUpdateReferences(config, subTaskLabelPrefix);
     await finalizeDemos(config, subTaskLabelPrefix);
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -1036,17 +1025,14 @@ async function build(config: IConfig, labelPrefix: string): Promise<void> {
   const subTaskLabel = 'build';
 
   try {
-    const subTaskLabelPrefix = tasksHelpers.log.starting(
-      subTaskLabel,
-      labelPrefix
-    );
+    const subTaskLabelPrefix = logTaskStarting(subTaskLabel, labelPrefix);
 
     await buildIndexPage(config, subTaskLabelPrefix);
     await buildDemos(config, subTaskLabelPrefix);
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -1061,7 +1047,7 @@ async function generate(config: IConfig, labelPrefix: string): Promise<void> {
   const subTaskLabel = 'generate';
 
   try {
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    logTaskStarting(subTaskLabel, labelPrefix);
 
     const docsImportsBaseName = getFileBasename(
       config.docs.importsFilename,
@@ -1073,15 +1059,16 @@ async function generate(config: IConfig, labelPrefix: string): Promise<void> {
       getFileExtension(config.docs.importsImporterFilename)
     );
 
+    const nodeScope =
+      config.component.scope === undefined
+        ? ''
+        : `/${config.component.scope}`;
+
     const buildConfig = {
       root: `${getTempPath(config)}/`,
       entrypoint: `index${getFileExtension(config.docs.indexPage)}`,
       fragments: [],
-      sources: [
-        `${config.docs.nodeModulesPath}${
-          config.componenet.scope === undefined ? '' : `/${config.componenet.scope}`
-        }/catalyst-*/**/*`
-      ],
+      sources: [`${config.docs.nodeModulesPath}${nodeScope}/catalyst-*/**/*`],
       extraDependencies: [
         `${
           config.docs.nodeModulesPath
@@ -1114,22 +1101,24 @@ async function generate(config: IConfig, labelPrefix: string): Promise<void> {
     await promisePipe(
       mergeStream(docBuilder.sources(), docBuilder.dependencies()),
       docBuilder.addCustomElementsEs5Adapter(),
-      rename((path) => {
+      rename((mutablePath) => {
         const prefix = getNormalizedPath(`${getTempPath(config)}`);
-        if (path.dirname === undefined || path.dirname.indexOf(prefix) !== 0) {
+        if (
+          mutablePath.dirname === undefined ||
+          mutablePath.dirname.indexOf(prefix) !== 0
+        ) {
           return;
         }
-        // tslint:disable-next-line:no-object-mutation
-        path.dirname = getNormalizedPath(
-          path.dirname.substring(prefix.length)
+        mutablePath.dirname = getNormalizedPath(
+          mutablePath.dirname.substring(prefix.length)
         );
       }),
       dest(`./${config.docs.path}`)
     );
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -1141,8 +1130,12 @@ export async function buildDocs(
   taskName: string,
   config: IConfig
 ): Promise<void> {
-  await copyFiles(config, taskName);
-  await updateAnalysis(config, taskName);
+  if (config.package === undefined) {
+    throw new Error('Cannot build docs: Cannot get node package info.');
+  }
+
+  await copyFiles(config, config.package, taskName);
+  await updateAnalysis(config, config.package, taskName);
   await getDemos(config, taskName);
   await build(config, taskName);
   await cleanDocs(config, taskName);

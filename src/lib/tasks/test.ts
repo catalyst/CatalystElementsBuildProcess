@@ -3,7 +3,7 @@ import { existsSync } from 'fs-extra';
 import { test as runTests } from 'web-component-tester';
 
 import { IConfig } from '../config';
-import { tasksHelpers } from '../util';
+import { logTaskFailed, logTaskStarting, logTaskSuccessful } from '../util';
 
 /**
  * Run tests.
@@ -24,7 +24,7 @@ async function wctTests(config: IConfig, labelPrefix: string): Promise<void> {
   const subTaskLabel = 'wct';
 
   try {
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    logTaskStarting(subTaskLabel, labelPrefix);
 
     if (config.tests.wctConfig === undefined) {
       throw new Error(`No config for wct - cannot run wct tests.`);
@@ -33,7 +33,7 @@ async function wctTests(config: IConfig, labelPrefix: string): Promise<void> {
     if (existsSync(`./${config.dist.path}`)) {
       await runTests(config.tests.wctConfig);
 
-      tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+      logTaskSuccessful(subTaskLabel, labelPrefix);
     } else {
       throw new Error(
         `No ${config.dist.path}/ path exists - cannot run wct tests. ` +
@@ -41,7 +41,7 @@ async function wctTests(config: IConfig, labelPrefix: string): Promise<void> {
       );
     }
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }

@@ -17,7 +17,16 @@ import { quote as shellQuote } from 'shell-quote';
 import { promisify } from 'util';
 
 import { IConfig } from '../config';
-import { glob, runAllPromises, runCommand, tasksHelpers } from '../util';
+import {
+  glob,
+  INodePackage,
+  logTaskFailed,
+  logTaskInfo,
+  logTaskStarting,
+  logTaskSuccessful,
+  runAllPromises,
+  runCommand
+} from '../util';
 
 // Promisified functions.
 const promptGet = promisify(_prompt.get);
@@ -38,11 +47,11 @@ export async function publish(
 ): Promise<void> {
   // Are we doing a dryrun?
   if (config.publish.dryrun) {
-    tasksHelpers.log.info(`${magenta('Performing dry run')}`);
+    logTaskInfo(`${magenta('Performing dry run')}`);
   }
 
   if (config.package === undefined) {
-    throw new Error('No package data.');
+    throw new Error('Cannot publish: Cannot get node package info.');
   }
 
   const currentBranch = await runCommand('git rev-parse --abbrev-ref HEAD');
@@ -71,36 +80,51 @@ export async function publish(
   } catch (error) {}
 
   // Ask the user if they want to push the changes to git.
-  if (await promptUserPushToGit()) {
-    // Push changes to GitHub.
-    await doPushToGit(
-      config,
-      publishedInfo.git.currentBranch,
-      publishedInfo.git.majorBranch,
-      taskName
-    );
-
-    // Only prompt about a GitHub release if the project is hosted on GitHub.
-    if (config.publish.hostedOnGitHub) {
-      // Ask the user if they want to do a GitHub release.
-      const gitHubReleaseSettings = await promptUserGitHubReleaseSettings(
-        publishedInfo.git.tag,
-        publishedInfo.version.prerelease,
-        config.package
-      );
-
-      if (gitHubReleaseSettings.create) {
-        await createGitHubRelease(
-          config,
-          {
-            ...gitHubReleaseSettings.options,
-            version: publishedInfo.version.semantic
-          },
-          taskName
-        );
-      }
-    }
+  if (!(await promptUserPushToGit())) {
+    return;
   }
+
+  // Push changes to GitHub.
+  await doPushToGit(
+    config,
+    publishedInfo.git.currentBranch,
+    publishedInfo.git.majorBranch,
+    taskName
+  );
+
+  // Only prompt about a GitHub release if the project is hosted on GitHub.
+  if (config.publish.hostedOnGitHub) {
+    await doGitHubRelease(config, config.package, publishedInfo, taskName);
+  }
+}
+
+/**
+ * Ask the user if they want to do a GitHub release.
+ */
+async function doGitHubRelease(
+  config: IConfig,
+  nodePackage: INodePackage,
+  publishedInfo: IPublishedInfo,
+  labelPrefix: string
+): Promise<void> {
+  const gitHubReleaseSettings = await promptUserGitHubReleaseSettings(
+    publishedInfo.git.tag,
+    publishedInfo.version.prerelease,
+    nodePackage
+  );
+
+  if (!gitHubReleaseSettings.create) {
+    return;
+  }
+
+  await createGitHubRelease(
+    config,
+    {
+      ...gitHubReleaseSettings.options,
+      version: publishedInfo.version.semantic
+    },
+    labelPrefix
+  );
 }
 
 /**
@@ -252,12 +276,12 @@ async function promptUserPushToGit(): Promise<boolean> {
 async function promptUserGitHubReleaseSettings(
   tag: string,
   prerelease: boolean,
-  packageJson: { readonly [key: string]: any }
+  packageJson: INodePackage
 ): Promise<
   | {
       readonly create: true;
       readonly options: {
-        readonly manifest: { readonly [key: string]: any };
+        readonly manifest: INodePackage;
         readonly prerelease: boolean;
         readonly tag: string;
         readonly token: string;
@@ -365,16 +389,16 @@ async function gitCheckWorkingDirector(labelPrefix: string): Promise<void> {
   const subTaskLabel = 'working director clean';
 
   try {
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    logTaskStarting(subTaskLabel, labelPrefix);
 
     const status = await runCommand('git status --porcelain');
     if (status !== '') {
       throw new Error('Cannot publish - working directory is not clean.');
     }
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -396,7 +420,7 @@ async function gitCheckGoodBranch(
   const subTaskLabel = 'branch';
 
   try {
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    logTaskStarting(subTaskLabel, labelPrefix);
 
     const branchMuchMatch = prerelease
       ? config.publish.prereleaseBranchRegex
@@ -405,14 +429,15 @@ async function gitCheckGoodBranch(
     if (branch.search(branchMuchMatch) < 0) {
       throw new Error(
         prerelease
-          ? `Cannot publish - not on valid prerelease branch. Branch name much match this regex: ${config.publish.prereleaseBranchRegex.toString()}`
+          ? `Cannot publish - not on valid prerelease branch. \
+Branch name much match this regex: ${config.publish.prereleaseBranchRegex.toString()}`
           : `Cannot publish - not on "${config.publish.masterBranch}" branch.`
       );
     }
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -426,7 +451,7 @@ async function gitCheckSynced(labelPrefix: string): Promise<void> {
   const subTaskLabel = 'in sync with upstream';
 
   try {
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    logTaskStarting(subTaskLabel, labelPrefix);
 
     await runCommand('git fetch --quiet');
 
@@ -441,9 +466,9 @@ async function gitCheckSynced(labelPrefix: string): Promise<void> {
       );
     }
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -466,14 +491,11 @@ async function gitChecks(
 
   try {
     if (!config.publish.runGitChecks) {
-      tasksHelpers.log.info(`skipping ${subTaskLabel}`, labelPrefix);
+      logTaskInfo(`skipping ${subTaskLabel}`, labelPrefix);
       return;
     }
 
-    const subTaskLabelPrefix = tasksHelpers.log.starting(
-      subTaskLabel,
-      labelPrefix
-    );
+    const subTaskLabelPrefix = logTaskStarting(subTaskLabel, labelPrefix);
 
     await runAllPromises([
       gitCheckWorkingDirector(subTaskLabelPrefix),
@@ -481,9 +503,9 @@ async function gitChecks(
       gitCheckSynced(subTaskLabelPrefix)
     ]);
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
 
     // Ignore the error if force is true.
     if (config.publish.force) {
@@ -510,18 +532,16 @@ async function fileCheckModule(
 
   try {
     if (
-      config.componenet.name === undefined ||
+      config.component.name === undefined ||
       !config.publish.checkFiles.module
     ) {
-      tasksHelpers.log.info(`skipping ${subTaskLabel}`, labelPrefix);
+      logTaskInfo(`skipping ${subTaskLabel}`, labelPrefix);
       return;
     }
 
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    logTaskStarting(subTaskLabel, labelPrefix);
 
-    const filename = `${config.componenet.name}${
-      config.build.module.extension
-    }`;
+    const filename = `${config.component.name}${config.build.module.extension}`;
     if (config.build.module.create && !distFiles.includes(filename)) {
       throw new Error(
         `Module file missing ` +
@@ -529,9 +549,9 @@ async function fileCheckModule(
       );
     }
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -552,18 +572,16 @@ async function fileCheckScript(
 
   try {
     if (
-      config.componenet.name === undefined ||
+      config.component.name === undefined ||
       !config.publish.checkFiles.script
     ) {
-      tasksHelpers.log.info(`skipping ${subTaskLabel}`, labelPrefix);
+      logTaskInfo(`skipping ${subTaskLabel}`, labelPrefix);
       return;
     }
 
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    logTaskStarting(subTaskLabel, labelPrefix);
 
-    const filename = `${config.componenet.name}${
-      config.build.script.extension
-    }`;
+    const filename = `${config.component.name}${config.build.script.extension}`;
     if (config.build.script.create && !distFiles.includes(filename)) {
       throw new Error(
         `Script file missing ` +
@@ -571,9 +589,9 @@ async function fileCheckScript(
       );
     }
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -594,11 +612,11 @@ async function fileCheckPackage(
 
   try {
     if (!config.publish.checkFiles.package) {
-      tasksHelpers.log.info(`skipping ${subTaskLabel}`, labelPrefix);
+      logTaskInfo(`skipping ${subTaskLabel}`, labelPrefix);
       return;
     }
 
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    logTaskStarting(subTaskLabel, labelPrefix);
 
     const filename = 'package.json';
     if (!distFiles.includes(filename)) {
@@ -608,9 +626,9 @@ async function fileCheckPackage(
       );
     }
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -631,11 +649,11 @@ async function fileCheckLicense(
 
   try {
     if (!config.publish.checkFiles.license) {
-      tasksHelpers.log.info(`skipping ${subTaskLabel}`, labelPrefix);
+      logTaskInfo(`skipping ${subTaskLabel}`, labelPrefix);
       return;
     }
 
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    logTaskStarting(subTaskLabel, labelPrefix);
 
     const filename = 'LICENSE';
     if (!distFiles.includes(filename)) {
@@ -645,9 +663,9 @@ async function fileCheckLicense(
       );
     }
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -668,11 +686,11 @@ async function fileCheckReadme(
 
   try {
     if (!config.publish.checkFiles.readme) {
-      tasksHelpers.log.info(`skipping ${subTaskLabel}`, labelPrefix);
+      logTaskInfo(`skipping ${subTaskLabel}`, labelPrefix);
       return;
     }
 
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    logTaskStarting(subTaskLabel, labelPrefix);
 
     const filename = 'README.md';
     if (!distFiles.includes(filename)) {
@@ -682,9 +700,9 @@ async function fileCheckReadme(
       );
     }
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -700,15 +718,12 @@ async function fileChecks(config: IConfig, labelPrefix: string): Promise<void> {
 
   try {
     if (!config.publish.runFileChecks) {
-      tasksHelpers.log.info(`skipping ${subTaskLabel}`, labelPrefix);
+      logTaskInfo(`skipping ${subTaskLabel}`, labelPrefix);
 
       return;
     }
 
-    const subTaskLabelPrefix = tasksHelpers.log.starting(
-      subTaskLabel,
-      labelPrefix
-    );
+    const subTaskLabelPrefix = logTaskStarting(subTaskLabel, labelPrefix);
 
     // Read the files that will be published.
     const distFiles = await readdir(config.dist.path);
@@ -727,9 +742,9 @@ async function fileChecks(config: IConfig, labelPrefix: string): Promise<void> {
       fileCheckReadme(config, distFiles, subTaskLabelPrefix)
     ]);
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
 
     // Ignore the error if force is true.
     if (config.publish.force) {
@@ -757,15 +772,12 @@ async function updateVersion(
   try {
     // Are we doing a dryrun?
     if (config.publish.dryrun) {
-      tasksHelpers.log.info(
-        `skipping ${subTaskLabel}${dryRunLabel}`,
-        labelPrefix
-      );
+      logTaskInfo(`skipping ${subTaskLabel}${dryRunLabel}`, labelPrefix);
 
       return;
     }
 
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    logTaskStarting(subTaskLabel, labelPrefix);
 
     const files = await glob([
       `./package.json`,
@@ -773,7 +785,7 @@ async function updateVersion(
     ]);
 
     await runAllPromises(
-      files.map(async file => {
+      files.map(async (file) => {
         const fileContent = await readFile(file, {
           encoding: 'utf8',
           flag: 'r'
@@ -798,9 +810,9 @@ async function updateVersion(
       );
     }
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -822,21 +834,18 @@ async function createTag(
   try {
     // Are we doing a dryrun?
     if (config.publish.dryrun) {
-      tasksHelpers.log.info(
-        `skipping ${subTaskLabel}${dryRunLabel}`,
-        labelPrefix
-      );
+      logTaskInfo(`skipping ${subTaskLabel}${dryRunLabel}`, labelPrefix);
 
       return;
     }
 
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    logTaskStarting(subTaskLabel, labelPrefix);
 
     await runCommand(`git tag ${shellQuote([tag])}`);
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -858,28 +867,25 @@ async function mergeChangesIntoMajorBranch(
   const subTaskLabel = 'merge into major branch';
 
   try {
-    if (majorBranch == undefined) {
-      tasksHelpers.log.info(`skipping ${subTaskLabel}`, labelPrefix);
+    if (majorBranch === undefined) {
+      logTaskInfo(`skipping ${subTaskLabel}`, labelPrefix);
       return;
     }
 
     // Are we doing a dryrun?
     if (config.publish.dryrun) {
-      tasksHelpers.log.info(
-        `skipping ${subTaskLabel}${dryRunLabel}`,
-        labelPrefix
-      );
+      logTaskInfo(`skipping ${subTaskLabel}${dryRunLabel}`, labelPrefix);
       return;
     }
 
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    logTaskStarting(subTaskLabel, labelPrefix);
 
     await runCommand(`git checkout ${shellQuote([majorBranch])} -b`);
     await runCommand(`git merge ${shellQuote([fromBranch])}`);
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -905,10 +911,7 @@ async function releaseToNpm(
   try {
     // Are we doing a dryrun?
     if (config.publish.dryrun) {
-      tasksHelpers.log.info(
-        `skipping ${subTaskLabel}${dryRunLabel}`,
-        labelPrefix
-      );
+      logTaskInfo(`skipping ${subTaskLabel}${dryRunLabel}`, labelPrefix);
       return {
         lastCommit: await runCommand('git log -1 --oneline'),
         publisher: await runCommand('npm whoami --silent'),
@@ -919,23 +922,23 @@ async function releaseToNpm(
     const confirm = await promptUserConfirmPublish();
 
     if (confirm) {
+      const publishDir = shellQuote([normalizePath(`./${config.dist.path}`)]);
+
       await runCommand(
-        `npm publish ${shellQuote([
-          normalizePath(`./${config.dist.path}`)
-        ])} --tag ${shellQuote([npmTag])}`
+        `npm publish ${publishDir} --tag ${shellQuote([npmTag])}`
       );
     } else {
       throw new Error('User aborted.');
     }
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
     return {
       lastCommit: await runCommand('git log -2 --oneline --reverse | head -1'),
       publisher: await runCommand('npm whoami --silent'),
       versionCommit: await runCommand('git log -1 --oneline')
     };
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -953,16 +956,16 @@ async function restoreBranch(
   const subTaskLabel = 'restore branch';
 
   try {
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    logTaskStarting(subTaskLabel, labelPrefix);
 
     // No need to check the branch out if it is already checked out.
     if ((await runCommand('rev-parse --abbrev-ref HEAD')) !== branch) {
       await runCommand(`git checkout ${shellQuote([branch])}`);
     }
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -977,16 +980,13 @@ async function cleanUp(branch: string, labelPrefix: string): Promise<void> {
   const subTaskLabel = 'clean up';
 
   try {
-    const subTaskLabelPrefix = tasksHelpers.log.starting(
-      subTaskLabel,
-      labelPrefix
-    );
+    const subTaskLabelPrefix = logTaskStarting(subTaskLabel, labelPrefix);
 
     await restoreBranch(branch, subTaskLabelPrefix);
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -1000,13 +1000,15 @@ async function cleanUp(branch: string, labelPrefix: string): Promise<void> {
  */
 async function printNpmReleaseInfo(
   config: IConfig,
-  releaseInfo: any,
+  releaseInfo: IPublishedInfo['releaseInfo'] & {
+    readonly version: IPublishSettings['version']['semantic'];
+  },
   labelPrefix: string
 ): Promise<void> {
   const subTaskLabel = 'release info';
 
   try {
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    logTaskStarting(subTaskLabel, labelPrefix);
 
     // Are we doing a dryrun?
     if (config.publish.dryrun) {
@@ -1022,9 +1024,9 @@ async function printNpmReleaseInfo(
   ${yellow('NPM tag')}:               ${releaseInfo.npmTag}
   ${yellow('Publisher')}:             ${releaseInfo.publisher}`);
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -1048,26 +1050,23 @@ async function doPushToGit(
   try {
     // Are we doing a dryrun?
     if (config.publish.dryrun) {
-      tasksHelpers.log.info(
-        `skipping ${subTaskLabel}${dryRunLabel}`,
-        labelPrefix
-      );
+      logTaskInfo(`skipping ${subTaskLabel}${dryRunLabel}`, labelPrefix);
       return;
     }
 
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    logTaskStarting(subTaskLabel, labelPrefix);
 
     const branches =
-      majorBranch == undefined
+      majorBranch === undefined
         ? `${shellQuote([currentBranch])}`
         : `${shellQuote([currentBranch])} ${shellQuote([majorBranch])}`;
 
     await runCommand(`git push origin ${branches}`);
     await runCommand('git push origin --tags');
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -1092,7 +1091,7 @@ async function createArchive(
   const outputStream = createWriteStream(outputFile);
   const archive = archiver(format, formatOptions);
 
-  archive.on('warning', (error: any) => {
+  archive.on('warning', (error) => {
     if (error.code === 'ENOENT') {
       console.warn(error);
     } else {
@@ -1100,7 +1099,7 @@ async function createArchive(
     }
   });
 
-  archive.on('error', (error: Error) => {
+  archive.on('error', (error) => {
     throw error;
   });
 
@@ -1133,69 +1132,66 @@ async function createArchivesForGitHubRelease(
   const subTaskLabel = 'create archives';
 
   try {
-    if (config.componenet.name === undefined) {
-      tasksHelpers.log.info(`skipping ${subTaskLabel}`, labelPrefix);
+    if (config.component.name === undefined) {
+      logTaskInfo(`skipping ${subTaskLabel}`, labelPrefix);
       return [];
     }
 
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    logTaskStarting(subTaskLabel, labelPrefix);
 
     const archiveFormats = config.publish.archiveFormats;
 
-    const { assets, archivers } = Object.entries(archiveFormats).reduce(
-      (result, format) => {
-        const archiveFormatRaw = format[0];
-
-        if (archiveFormatRaw !== 'tar' && archiveFormatRaw !== 'zip') {
-          throw new Error('Unknown archive format.');
-        }
-
-        const [archiveFormat, formatConfig]: [
-          ArchiverFormat,
-          {
-            readonly extension: string;
-            readonly ignore: boolean;
-            readonly options: ArchiverOptions;
-          }
-        ] = [archiveFormatRaw, format[1]];
-
-        if (formatConfig.ignore) {
-          return result;
-        }
-
-        const outputFile = `./${config.temp.path}/${
-          config.componenet.name
-        }-${version}${formatConfig.extension}`;
-
-        return {
-          assets: [...result.assets, outputFile],
-          archivers: [
-            ...result.archivers,
-            createArchive(
-              `./${config.dist.path}`,
-              outputFile,
-              archiveFormat,
-              formatConfig.options
-            )
-          ]
-        };
-      },
-
-      // tslint:disable:readonly-array
-      { assets: [], archivers: [] } as {
+    const { assets, archivers } = Object.entries(archiveFormats)
+      .reduce<{
         readonly assets: Array<string>;
         readonly archivers: Array<Promise<void>>;
-      }
+      }>(
+        (result, format) => {
+          const archiveFormatRaw = format[0];
 
-      // tslint:enable:readonly-array
-    );
+          if (archiveFormatRaw !== 'tar' && archiveFormatRaw !== 'zip') {
+            throw new Error('Unknown archive format.');
+          }
+
+          const [archiveFormat, formatConfig]: [
+            ArchiverFormat,
+            {
+              readonly extension: string;
+              readonly ignore: boolean;
+              readonly options: ArchiverOptions;
+            }
+          ] = [archiveFormatRaw, format[1]];
+
+          if (formatConfig.ignore) {
+            return result;
+          }
+
+          const outputFile = `./${config.temp.path}/${
+            config.component.name
+          }-${version}${formatConfig.extension}`;
+
+          return {
+            assets: [...result.assets, outputFile],
+            archivers: [
+              ...result.archivers,
+              createArchive(
+                `./${config.dist.path}`,
+                outputFile,
+                archiveFormat,
+                formatConfig.options
+              )
+            ]
+          };
+        },
+        { assets: [], archivers: [] }
+      );
 
     await Promise.all(archivers);
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
     return assets;
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -1218,20 +1214,17 @@ async function commitGitHubRelease(
   try {
     // Are we doing a dryrun?
     if (config.publish.dryrun) {
-      tasksHelpers.log.info(
-        `skipping ${subTaskLabel}${dryRunLabel}`,
-        labelPrefix
-      );
+      logTaskInfo(`skipping ${subTaskLabel}${dryRunLabel}`, labelPrefix);
       return;
     }
 
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    logTaskStarting(subTaskLabel, labelPrefix);
 
     await gitHubRelease(settings);
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -1246,9 +1239,7 @@ async function commitGitHubRelease(
 async function createGitHubRelease(
   config: IConfig,
   options: {
-    readonly manifest: {
-      readonly [key: string]: any;
-    };
+    readonly manifest: INodePackage;
     readonly prerelease: boolean;
     readonly tag: string;
     readonly token: string;
@@ -1262,10 +1253,7 @@ async function createGitHubRelease(
   const subTaskLabel = 'GitHub release';
 
   try {
-    const subTaskLabelPrefix = tasksHelpers.log.starting(
-      subTaskLabel,
-      labelPrefix
-    );
+    const subTaskLabelPrefix = logTaskStarting(subTaskLabel, labelPrefix);
 
     const archives = await createArchivesForGitHubRelease(
       config,
@@ -1295,9 +1283,9 @@ async function createGitHubRelease(
       throw error;
     }
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }

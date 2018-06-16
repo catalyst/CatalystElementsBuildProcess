@@ -22,6 +22,8 @@ import postcssImport from 'postcss-import';
 import postcssReporter from 'postcss-reporter';
 import { Config as WCTConfig } from 'web-component-tester';
 
+import { INodePackage } from './util';
+
 // tslint:disable:no-reserved-keywords
 declare interface IConfig {
   /**
@@ -90,7 +92,7 @@ declare interface IConfig {
   /**
    * Component settings.
    */
-  readonly componenet: {
+  readonly component: {
     /**
      * The name of the component.
      */
@@ -319,10 +321,17 @@ declare interface IConfig {
   /**
    * Contents of component project's package.json file.
    */
-  readonly package?: {
-    readonly [key: string]: any;
+  readonly package?: INodePackage;
+
+  /**
+   * Config file paths.
+   */
+  readonly configFiles: {
+    readonly eslint: string;
+    readonly sasslint: string;
+    readonly tsconfig: string;
+    readonly tslint: string;
   };
-  readonly [key: string]: any;
 }
 
 // tslint:enable:no-reserved-keywords
@@ -392,7 +401,7 @@ const defaultConfig: IConfig = {
       postcss: postcssSettings
     }
   },
-  componenet: {},
+  component: {},
   demos: {
     importsFilename: 'imports.mjs',
     importsImporterFilename: 'imports-importer.mjs',
@@ -467,6 +476,12 @@ const defaultConfig: IConfig = {
         }
       }
     }
+  },
+  configFiles: {
+    eslint: './.eslintrc.json',
+    sasslint: './.sass-lint.yml',
+    tsconfig: './tsconfig.json',
+    tslint: './tslint.json'
   }
 };
 

@@ -39,6 +39,7 @@
         "ignoreRegExpLiterals": true
       }
     ],
-    "capitalized-comments": "off"
+    "capitalized-comments": "off",
+    "no-console": "off"
   }
 }

@@ -13,7 +13,7 @@ import { fixDependencies } from './tasks/fixDependencies';
 import { lint } from './tasks/lint';
 import { publish, publishDry } from './tasks/publish';
 import { test } from './tasks/test';
-import { cleanTemp, ConfigError } from './util';
+import { cleanTemp, ConfigError, INodePackage } from './util';
 
 /**
  * Get the config for the build process.
@@ -25,8 +25,7 @@ export async function getConfig(options?: Partial<IConfig>): Promise<IConfig> {
   // Read and save the package.json file.
   const projectPackage = JSON.parse(
     await readFile('./package.json', { encoding: 'utf8', flag: 'r' })
-  // tslint:disable-next-line:no-any
-  ) as { readonly [key: string]: any } | undefined;
+  ) as INodePackage | undefined;
 
   // Make sure the file was successfully loaded.
   if (projectPackage === undefined) {
@@ -49,7 +48,7 @@ export async function getConfig(options?: Partial<IConfig>): Promise<IConfig> {
   // All the automatically set options in the config (can be overridden with `options`)
   const autoLoadedConfig: Partial<IConfig> = {
     package: projectPackage,
-    componenet: {
+    component: {
       scope: packageScope === '' ? undefined : packageScope
     }
   };

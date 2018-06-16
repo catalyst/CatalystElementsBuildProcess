@@ -21,7 +21,13 @@ import {
 } from 'polymer-analyzer/lib/analysis-format/analysis-format';
 
 import { IConfig } from '../config';
-import { glob, runAllPromises, tasksHelpers } from '../util';
+import {
+  glob,
+  logTaskFailed,
+  logTaskStarting,
+  logTaskSuccessful,
+  runAllPromises
+} from '../util';
 
 // The temp path.
 const tempSubpath = 'analyze';
@@ -52,7 +58,7 @@ async function generateAnalysis(
   const subTaskLabel = 'generate';
 
   try {
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    logTaskStarting(subTaskLabel, labelPrefix);
 
     const files = await glob(`./${config.temp.path}/${tempSubpath}/**/*.js`);
     const analyzer = new Analyzer({
@@ -94,9 +100,9 @@ async function generateAnalysis(
       })()
     ]);
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -219,19 +225,23 @@ function fixAnalysisComponentPath(
     getFileExtension(component.path)
   );
 
-  return component.path.indexOf(`${config.temp.path}/${tempSubpath}/`) === 0
-    ? `node_modules${
-        config.componenet.scope === undefined ? '' : `/${config.componenet.scope}`
-      }/${pathBase}/${pathBase}${config.build.module.extension}`
-    : component.path;
+  const nodeScope =
+    config.component.scope === undefined
+      ? ''
+      : `/${config.component.scope}`;
+
+  return (
+    component.path.indexOf(`${config.temp.path}/${tempSubpath}/`) === 0
+      ? `node_modules${nodeScope}/${pathBase}/${pathBase}${
+          config.build.module.extension}`
+      : component.path
+    );
 }
 
 /**
  * Prefix the demos' url.
  */
-function fixAnalysisComponentDemos(
-  component: Class
-): Array<Demo> {
+function fixAnalysisComponentDemos(component: Class): Array<Demo> {
   // No path? Don't change anything.
   if (component.path === undefined) {
     return component.demos;
@@ -263,7 +273,7 @@ async function copyElementsForAnalysis(
   const subTaskLabel = 'get files';
 
   try {
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    logTaskStarting(subTaskLabel, labelPrefix);
 
     const filepaths = await glob([
       `./${config.dist.path}/**/*${config.build.module.extension}`,
@@ -285,9 +295,9 @@ async function copyElementsForAnalysis(
       })
     );
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }

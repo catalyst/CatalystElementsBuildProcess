@@ -18,8 +18,11 @@ import { IConfig } from '../config';
 import {
   ExternalError,
   glob,
+  logTaskFailed,
+  logTaskInfo,
+  logTaskStarting,
+  logTaskSuccessful,
   runAllPromises,
-  tasksHelpers,
   transpose
 } from '../util';
 
@@ -153,7 +156,6 @@ function getFileLintingOutput(
   file: string,
   errors?: ReadonlyArray<ILintingError>
 ): string {
-
   if (
     errors === undefined ||
     errors.length === 0 ||
@@ -189,7 +191,7 @@ function printLintingErrors(
   subTaskLabel: string,
   labelPrefix: string
 ): void {
-  tasksHelpers.log.info(
+  logTaskInfo(
     `Rule warnings and errors:\n${getLintingOutput(errorsByFile)}`,
     labelPrefix,
     subTaskLabel
@@ -234,8 +236,8 @@ function printTSLintResult(
         readonly line: number;
         readonly character: number;
       } = failure
-          .getStartPosition()
-          .getLineAndCharacter();
+        .getStartPosition()
+        .getLineAndCharacter();
 
       return {
         ...errors,
@@ -265,27 +267,24 @@ function printESLintResult(
   subTaskLabel: string,
   labelPrefix: string
 ): void {
-  const errorsByFile = results.reduce<IErrorsByFile>(
-    (errors, result) => {
-      return {
-        ...errors,
-        [result.filePath]: result.messages.reduce<ReadonlyArray<ILintingError>>(
-          (reducedError, msg) => [
-            ...reducedError,
-            {
-              column: msg.column,
-              line: msg.line,
-              message: msg.message,
-              rule: msg.ruleId === null ? '' : msg.ruleId,
-              severity: getSeverity(msg.severity)
-            }
-          ],
-          []
-        )
-      };
-    },
-    {}
-  );
+  const errorsByFile = results.reduce<IErrorsByFile>((errors, result) => {
+    return {
+      ...errors,
+      [result.filePath]: result.messages.reduce<ReadonlyArray<ILintingError>>(
+        (reducedError, msg) => [
+          ...reducedError,
+          {
+            column: msg.column,
+            line: msg.line,
+            message: msg.message,
+            rule: msg.ruleId === null ? '' : msg.ruleId,
+            severity: getSeverity(msg.severity)
+          }
+        ],
+        []
+      )
+    };
+  }, {});
 
   printLintingErrors(errorsByFile, subTaskLabel, labelPrefix);
 }
@@ -298,49 +297,47 @@ function printSassLintResult(
   subTaskLabel: string,
   labelPrefix: string
 ): void {
-  const errorsByFile = results.reduce<IErrorsByFile>(
-    (errors, result) => {
-      return {
-        ...errors,
-        [result.filePath]: result.messages.reduce(
-          (reducedError: ReadonlyArray<ILintingError>, msg) => [
-            ...reducedError,
-            {
-              column: msg.column,
-              line: msg.line,
-              message: msg.message,
-              rule: msg.ruleId,
-              severity: getSeverity(msg.severity)
-            }
-          ],
-          []
-        )
-      };
-    },
-    {}
-  );
+  const errorsByFile = results.reduce<IErrorsByFile>((errors, result) => {
+    return {
+      ...errors,
+      [result.filePath]: result.messages.reduce(
+        (reducedError: ReadonlyArray<ILintingError>, msg) => [
+          ...reducedError,
+          {
+            column: msg.column,
+            line: msg.line,
+            message: msg.message,
+            rule: msg.ruleId,
+            severity: getSeverity(msg.severity)
+          }
+        ],
+        []
+      )
+    };
+  }, {});
 
   printLintingErrors(errorsByFile, subTaskLabel, labelPrefix);
 }
 
 /**
  * Lint TS.
- *
- * @param labelPrefix - A prefix to print before the label
  */
-async function lintTS(labelPrefix: string): Promise<void> {
+async function lintTS(
+  labelPrefix: string,
+  tsconfigFile: string
+): Promise<void> {
   const subTaskLabel = 'TypeScript';
 
   try {
-    if (!existsSync('./tsconfig.json')) {
+    if (!existsSync(tsconfigFile)) {
       return;
     }
 
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    logTaskStarting(subTaskLabel, labelPrefix);
 
-    await access('./tsconfig.json');
+    await access(tsconfigFile);
 
-    const program = TsLinter.createProgram('./tsconfig.json');
+    const program = TsLinter.createProgram(tsconfigFile);
     const files = TsLinter.getFileNames(program);
     const linter = new TsLinter({ fix: false }, program);
 
@@ -367,28 +364,26 @@ async function lintTS(labelPrefix: string): Promise<void> {
       throw new ExternalError('tslint failed.');
     }
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
 
 /**
  * Lint JS.
- *
- * @param config - Config settings
- * @param labelPrefix - A prefix to print before the label
  */
 async function lintJSFiles(
   config: IConfig,
-  labelPrefix: string
+  labelPrefix: string,
+  eslintConfigFile: string
 ): Promise<void> {
   const subTaskLabel = 'Files';
 
   try {
     const linter = new eslint.CLIEngine({
-      configFile: './.eslintrc.json'
+      configFile: eslintConfigFile
     });
 
     const files = await glob([
@@ -411,9 +406,9 @@ async function lintJSFiles(
       }
     }
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -464,21 +459,19 @@ function getEslintResultsFromReports(
 
 /**
  * Lint JS in HTML.
- *
- * @param config - Config settings
- * @param labelPrefix - A prefix to print before the label
  */
 async function lintJSInHTML(
   config: IConfig,
-  labelPrefix: string
+  labelPrefix: string,
+  eslintConfigFile: string
 ): Promise<void> {
   const subTaskLabel = 'In HTML';
 
   try {
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    logTaskStarting(subTaskLabel, labelPrefix);
 
     const linter = new eslint.CLIEngine({
-      configFile: './.eslintrc.json'
+      configFile: eslintConfigFile
     });
 
     const files = await glob([
@@ -517,8 +510,7 @@ async function lintJSInHTML(
             reducedReports: ReadonlyArray<eslint.CLIEngine.LintReport>,
             element
           ) => {
-            const script =
-              $(element)
+            const script = $(element)
               .html();
             if (script !== null && script.trim().length > 0) {
               return [...reducedReports, linter.executeOnText(script, file)];
@@ -541,9 +533,9 @@ async function lintJSInHTML(
       throw new ExternalError('eslint failed.');
     }
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -551,55 +543,57 @@ async function lintJSInHTML(
 /**
  * Lint JavaScript.
  */
-async function lintJS(config: IConfig, labelPrefix: string): Promise<void> {
+async function lintJS(
+  config: IConfig,
+  labelPrefix: string,
+  eslintConfigFile: string
+): Promise<void> {
   const subTaskLabel = 'JavaScript';
 
   try {
-    if (!existsSync('./.eslintrc.json')) {
+    if (!existsSync(eslintConfigFile)) {
       return;
     }
 
-    const subTaskLabelPrefix = tasksHelpers.log.starting(
-      subTaskLabel,
-      labelPrefix
-    );
+    const subTaskLabelPrefix = logTaskStarting(subTaskLabel, labelPrefix);
 
-    await access('./.eslintrc.json');
+    await access(eslintConfigFile);
 
     await runAllPromises([
-      lintJSFiles(config, subTaskLabelPrefix),
-      lintJSInHTML(config, subTaskLabelPrefix)
+      lintJSFiles(config, subTaskLabelPrefix, eslintConfigFile),
+      lintJSInHTML(config, subTaskLabelPrefix, eslintConfigFile)
     ]);
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
 
 /**
  * Lint Sass.
- *
- * @param config - Config settings
- * @param labelPrefix - A prefix to print before the label
  */
-async function lintSass(config: IConfig, labelPrefix: string): Promise<void> {
+async function lintSass(
+  config: IConfig,
+  labelPrefix: string,
+  sasslintConfigFile: string
+): Promise<void> {
   const subTaskLabel = 'Sass';
 
   try {
-    if (!existsSync('./.sass-lint.yml')) {
+    if (!existsSync(sasslintConfigFile)) {
       return;
     }
 
-    tasksHelpers.log.starting(subTaskLabel, labelPrefix);
+    logTaskStarting(subTaskLabel, labelPrefix);
 
-    await access('./.sass-lint.yml');
+    await access(sasslintConfigFile);
 
     const results = sassLint.lintFiles(
       `./${config.src.path}/**/*.scss`,
       {},
-      './.sass-lint.yml'
+      sasslintConfigFile
     );
 
     if (results.length > 0) {
@@ -616,9 +610,9 @@ async function lintSass(config: IConfig, labelPrefix: string): Promise<void> {
       }
     }
 
-    tasksHelpers.log.successful(subTaskLabel, labelPrefix);
+    logTaskSuccessful(subTaskLabel, labelPrefix);
   } catch (error) {
-    tasksHelpers.log.failed(subTaskLabel, labelPrefix);
+    logTaskFailed(subTaskLabel, labelPrefix);
     throw error;
   }
 }
@@ -628,8 +622,8 @@ async function lintSass(config: IConfig, labelPrefix: string): Promise<void> {
  */
 export async function lint(taskName: string, config: IConfig): Promise<void> {
   await runAllPromises([
-    lintTS(taskName),
-    lintJS(config, taskName),
-    lintSass(config, taskName)
+    lintTS(taskName, config.configFiles.tsconfig),
+    lintJS(config, taskName, config.configFiles.eslint),
+    lintSass(config, taskName, config.configFiles.sasslint)
   ]);
 }

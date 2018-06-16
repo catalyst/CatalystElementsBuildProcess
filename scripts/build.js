@@ -18,7 +18,7 @@ async function build() {
     vinyl.src('./src/**/*.ts'),
     ts.createProject('tsconfig.json')(),
     vinyl.dest('./dist')
-  ).catch(error => console.log(error.message));
+  ).catch(error => console.info(error.message));
 
   const copyFiles = ['LICENSE', 'README.md'].map(file =>
     fs.copy(`./${file}`, `./dist/${file}`)

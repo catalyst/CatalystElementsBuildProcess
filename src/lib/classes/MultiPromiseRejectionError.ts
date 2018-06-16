@@ -5,7 +5,7 @@ export class MultiPromiseRejectionError<T> extends Error {
   /**
    * The Errors that occurred.
    */
-  private readonly promiseErrors: ReadonlyArray<Error>;
+  private readonly _promiseErrors: ReadonlyArray<Error>;
 
   /**
    * Contract a new MultiPromiseRejectionError.
@@ -20,8 +20,9 @@ export class MultiPromiseRejectionError<T> extends Error {
     super();
 
     // Extract out the errors.
-    this.promiseErrors = multiPromiseResults.reduce(
+    this._promiseErrors = multiPromiseResults.reduce(
       (previous: ReadonlyArray<Error>, current) => {
+        // tslint:disable-next-line:no-any
         if ((current as any).error != undefined) {
           return [...previous, (current as { readonly error: Error }).error];
         }
@@ -30,21 +31,22 @@ export class MultiPromiseRejectionError<T> extends Error {
       []
     );
 
-    Object.freeze(this.promiseErrors);
+    Object.freeze(this._promiseErrors);
   }
 
   /**
    * Get the message for this error.
    */
   public get message(): string {
-    const errorsOutput = this.promiseErrors.reduce((stringOutput, error) => {
-      return `${stringOutput}\n  - ${
-        error.stack === undefined ? error.message : `${error.stack}\n`
-      }`;
+    const errorsOutput = this._promiseErrors.reduce((stringOutput, error) => {
+      const errorMessage =
+        error.stack === undefined ? error.message : `${error.stack}\n`;
+
+      return `${stringOutput}\n  - ${errorMessage}`;
     }, '');
 
-    return `${this.promiseErrors.length} out of ${
-      this.promiseErrors.length
+    return `${this._promiseErrors.length} out of ${
+      this._promiseErrors.length
     } promise were rejected.\nRejected errors:${errorsOutput}`;
   }
 
@@ -52,6 +54,6 @@ export class MultiPromiseRejectionError<T> extends Error {
    * Get the errors.
    */
   public get errors(): ReadonlyArray<Error> {
-    return this.promiseErrors;
+    return this._promiseErrors;
   }
 }

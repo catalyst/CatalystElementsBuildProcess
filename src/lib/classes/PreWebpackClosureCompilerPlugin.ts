@@ -14,7 +14,7 @@ export class PreWebpackClosureCompilerPlugin {
    *
    * Can't be done without a mutable array due to the implementation of `parseScript`
    */
-  private readonly mutableCodeReplacements: Array<{
+  private readonly _mutableCodeReplacements: Array<{
     readonly start: number;
     readonly end: number;
     readonly replacementCode: string;
@@ -24,7 +24,7 @@ export class PreWebpackClosureCompilerPlugin {
    * Construct this plugin.
    */
   public constructor() {
-    this.mutableCodeReplacements = [];
+    this._mutableCodeReplacements = [];
   }
 
   /**
@@ -35,22 +35,23 @@ export class PreWebpackClosureCompilerPlugin {
   public apply(compiler: webpack.Compiler): void {
     compiler.plugin(
       'compilation',
-      (compilation: webpack.compilation.Compilation) => {
-        compilation.plugin(
+      (mutableCompilation: webpack.compilation.Compilation) => {
+        mutableCompilation.plugin(
           'optimize-chunk-assets',
           (
             chunks: ReadonlyArray<webpack.compilation.Chunk>,
             done: () => void
           ) => {
-            chunks.map(chunk => {
-              chunk.files.map(file => {
-                const source = compilation.assets[file].source() as string;
+            chunks.forEach((chunk) => {
+              chunk.files.forEach((file) => {
+                const source =
+                  mutableCompilation.assets[file].source() as string;
 
                 // Parse the source with the delegate to generate the replacement information.
-                parseScript(source, {}, this.processNode.bind(this));
+                parseScript(source, {}, this._processNode.bind(this));
 
                 // Update the source code with the replacements.
-                const updatedSource = this.mutableCodeReplacements.reduce(
+                const updatedSource = this._mutableCodeReplacements.reduce(
                   (code, codeUpdate) => {
                     return (
                       code.slice(0, codeUpdate.start) +
@@ -62,8 +63,7 @@ export class PreWebpackClosureCompilerPlugin {
                 );
 
                 // Replace the file's source code with the modified version.
-                // tslint:disable-next-line:no-object-mutation
-                compilation.assets[file] = new RawSource(updatedSource);
+                mutableCompilation.assets[file] = new RawSource(updatedSource);
               });
             });
             done();
@@ -79,42 +79,49 @@ export class PreWebpackClosureCompilerPlugin {
    * @param node - An esprima node object
    * @param meta - Metadata about the node
    */
-  private processNode(node: Node, meta: any): void {
-    if (node.type === 'ClassDeclaration') {
-      if (
-        node.id === null &&
-        node.superClass != undefined &&
-        node.superClass.type === 'MemberExpression'
-      ) {
-        const className = node.id.name;
-        const classBody = node.body;
-        const superClassVar = `${className}_SuperClass_${Math.random()
-          .toString(16)
-          .substring(2)}`;
-        if (node.superClass.computed) {
-          if (node.superClass.object.type === 'Identifier') {
-            const object = node.superClass.object.name;
-            const property =
-              node.superClass.property.type === 'Literal'
-                ? `"${node.superClass.property.value}"`
-                : node.superClass.property.type === 'Identifier'
-                  ? `${node.superClass.property.name}`
-                  : undefined;
-
-            if (property !== undefined) {
-              this.mutableCodeReplacements.push({
-                start: meta.start.offset,
-                end: meta.end.offset,
-                replacementCode:
-                  `const ${superClassVar} = ${object}[${property}];\n` +
-                  `class ${className} extends ${superClassVar} ${generate(
-                    classBody
-                  )}`
-              });
-            }
-          }
-        }
-      }
+  // tslint:disable-next-line:no-any
+  private _processNode(node: Node, meta: any): void {
+    if (
+      node.type !== 'ClassDeclaration' ||
+      node.id === null ||
+      node.superClass == undefined ||
+      node.superClass.type !== 'MemberExpression'
+    ) {
+      return;
     }
+
+    const className = node.id.name;
+    const classBody = node.body;
+    const superClassVar = `${className}_SuperClass_${
+      crypto
+        .getRandomValues(new Uint32Array(2))[0]
+        .toString(16)
+      }`;
+
+    if (
+      !node.superClass.computed ||
+      node.superClass.object.type !== 'Identifier'
+    ) {
+      return;
+    }
+
+    const object = node.superClass.object.name;
+    const property =
+      node.superClass.property.type === 'Literal'
+        ? `"${node.superClass.property.value}"`
+        : node.superClass.property.type === 'Identifier'
+          ? `${node.superClass.property.name}`
+          : undefined;
+
+    if (property === undefined) {
+      return;
+    }
+
+    this._mutableCodeReplacements.push({
+      start: meta.start.offset,
+      end: meta.end.offset,
+      replacementCode: `const ${superClassVar} = ${object}[${property}];
+class ${className} extends ${superClassVar} ${generate(classBody)}`
+    });
   }
 }

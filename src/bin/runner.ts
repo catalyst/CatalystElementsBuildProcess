@@ -1,5 +1,8 @@
 #!/usr/bin/env node
-// tslint:disable:no-console
+
+/**
+ * The entry point file to run the tasks defined in ../lib/ from the commandline.
+ */
 
 import { existsSync, readJSON } from 'fs-extra';
 
@@ -67,40 +70,46 @@ function run(args: ReadonlyArray<string>): void {
  * Get the settings passed into this script.
  */
 function getSettings(args: ReadonlyArray<string>): IRunSettings {
-  return args.reduce((reduced: IRunSettings, arg) => {
-    switch (getFlag(arg)) {
-      case '-c':
-        return {
-          ...reduced,
-          config: '' // FIXME: set value.
-        };
-      case '-h':
-        return {
-          ...reduced,
-          help: true
-        };
-      case false:
-        if (!Object.prototype.hasOwnProperty.call(commands, arg)) {
-          throw new ExternalError(`No task with the name "${arg}" exists.`);
-        }
-        if (arg === 'help') {
+  return args.reduce(
+    (reduced: IRunSettings, arg) => {
+      switch (getFlag(arg)) {
+        case '-c':
+          return {
+            ...reduced,
+            config: '' // FIXME: set value.
+          };
+
+        case '-h':
           return {
             ...reduced,
             help: true
           };
-        }
-        return {
-          ...reduced,
-          taskName: arg as Task
-        };
-      default:
-        throw new Error('Unhandled flag.');
-    }
-  }, {
+
+        case false:
+          if (!Object.prototype.hasOwnProperty.call(commands, arg)) {
+            throw new ExternalError(`No task with the name "${arg}" exists.`);
+          }
+          if (arg === 'help') {
+            return {
+              ...reduced,
+              help: true
+            };
+          }
+          return {
+            ...reduced,
+            taskName: arg as Task
+          };
+
+        default:
+          throw new Error('Unhandled flag.');
+      }
+    },
+    {
       taskName: undefined,
       help: false,
       config: './build-config.json'
-    });
+    }
+  );
 }
 
 /**
@@ -123,12 +132,12 @@ async function runTask(taskName: Task, userConfigFile: string): Promise<void> {
       await task(taskName);
     }
   } catch (error) {
-    console.log('Task Failed.');
+    console.info('Task Failed.');
     if (error instanceof Error) {
       if (error instanceof MultiPromiseRejectionError) {
-        console.log(`  - ${error.errors.join('\n  - ')}`);
+        console.info(`  - ${error.errors.join('\n  - ')}`);
       } else {
-        console.log(error.message);
+        console.info(error.message);
       }
     }
     process.exit(1);
@@ -172,13 +181,15 @@ function showHelp(): void {
         const flagParams = desc
           .slice(0, desc.length - 1)
           .join(', ');
+
         const flagAliases = Object.entries(flagMap)
           .reduce(
             (reducedFlagMap, [aliasName, mappedFlag]) => {
               if (flag === mappedFlag) {
-                const flagAlias = flagParams.length > 0
-                  ? `${aliasName} ${flagParams}`
-                  : `${aliasName}`;
+                const flagAlias =
+                  flagParams.length > 0
+                    ? `${aliasName} ${flagParams}`
+                    : `${aliasName}`;
                 return `${reducedFlagMap}, ${flagAlias}`;
               }
               return reducedFlagMap;
@@ -200,14 +211,14 @@ ${commandOptions}
 [options]
 ${optionsOptions}`;
 
-  console.log(helpString);
+  console.info(helpString);
 }
 
 try {
   run(process.argv.slice(2));
 } catch (error) {
   if (error instanceof ExternalError) {
-    console.log(error.message);
+    console.info(error.message);
     process.exit(2);
   } else {
     throw error;

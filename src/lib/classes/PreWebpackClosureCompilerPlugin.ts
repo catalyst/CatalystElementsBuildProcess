@@ -1,3 +1,5 @@
+// tslint:disable:no-if-statement
+
 // Libraries.
 import { generate } from 'escodegen';
 import { parseScript } from 'esprima';

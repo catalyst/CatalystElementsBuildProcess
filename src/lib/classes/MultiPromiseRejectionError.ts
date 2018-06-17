@@ -12,21 +12,18 @@ export class MultiPromiseRejectionError<T> extends Error {
    *
    * @param multiPromiseResults - The results of the promises that were executed.
    */
-  public constructor(
-    multiPromiseResults: ReadonlyArray<
-      { readonly value: T } | { readonly error: Error }
-    >
-  ) {
+  public constructor(multiPromiseResults: ReadonlyArray<ISuccessResult<T> | IErrorResult>) {
     super();
 
     // Extract out the errors.
     this._promiseErrors = multiPromiseResults.reduce(
       (previous: ReadonlyArray<Error>, current) => {
-        // tslint:disable-next-line:no-any
-        if ((current as any).error != undefined) {
-          return [...previous, (current as { readonly error: Error }).error];
-        }
-        return previous;
+        return (
+          // tslint:disable-next-line:no-any
+          (current as any).error == undefined
+            ? previous
+            : [...previous, (current as IErrorResult).error]
+        );
       },
       []
     );
@@ -56,4 +53,18 @@ export class MultiPromiseRejectionError<T> extends Error {
   public get errors(): ReadonlyArray<Error> {
     return this._promiseErrors;
   }
+}
+
+/**
+ * A successful result.
+ */
+interface ISuccessResult<T> {
+  readonly value: T;
+}
+
+/**
+ * An unsuccessful result.
+ */
+interface IErrorResult {
+  readonly error: Error;
 }

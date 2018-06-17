@@ -80,7 +80,11 @@ type Task = (
   taskLabel: string,
   config?: Promise<IConfig> | IConfig
 ) => Promise<void>;
-type InternalTask = (taskLabel: string, config: IConfig) => Promise<void>;
+
+type InternalTask = (
+  taskLabel: string,
+  config: IConfig
+) => Promise<void>;
 
 /**
  * The tasks to be exported mapped by their name.
@@ -116,11 +120,12 @@ export const TASKS = new Map(
       [
         taskName,
         async (taskLabel = taskName, config) => {
-          if (config === undefined) {
-            await taskFunc(taskLabel, await getConfig());
-          } else {
-            await taskFunc(taskLabel, await config);
-          }
+          await taskFunc(
+            taskLabel,
+            config === undefined
+              ? await getConfig()
+              : await config
+          );
         }
       ]
     ],

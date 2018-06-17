@@ -26,7 +26,7 @@ import {
   logTaskFailed,
   logTaskStarting,
   logTaskSuccessful,
-  runAllPromises
+  runTasksParallel
 } from '../util';
 
 // The temp path.
@@ -79,7 +79,7 @@ async function generateAnalysis(
     );
     const minifiedAnalysisFileContents = JSON.stringify(formattedfixedAnalysis);
 
-    await runAllPromises([
+    await runTasksParallel([
       (async () => {
         await ensureDir(`.`);
         await writeFile(
@@ -135,18 +135,18 @@ function fixAnalysisNamespaces(
   namespaces: ReadonlyArray<Namespace> | undefined,
   config: IConfig
 ): Array<Namespace> | undefined {
-  if (namespaces === undefined) {
-    return undefined;
-  }
-
-  return namespaces.map((namespace) => {
-    return {
-      ...namespace,
-      elements: fixAnalysisElements(namespace.elements, config),
-      mixins: fixAnalysisElementMixins(namespace.mixins, config),
-      classes: fixAnalysisClasses(namespace.classes, config)
-    };
-  });
+  return (
+    namespaces === undefined
+      ? undefined
+      : namespaces.map((namespace) => {
+          return {
+            ...namespace,
+            elements: fixAnalysisElements(namespace.elements, config),
+            mixins: fixAnalysisElementMixins(namespace.mixins, config),
+            classes: fixAnalysisClasses(namespace.classes, config)
+          };
+        })
+  );
 }
 
 /**
@@ -156,17 +156,25 @@ function fixAnalysisElements(
   elements: ReadonlyArray<Element> | undefined,
   config: IConfig
 ): Array<Element> | undefined {
-  if (elements === undefined) {
-    return undefined;
-  }
-
-  return elements.map((element) => {
-    return {
-      ...element,
-      paths: fixAnalysisComponentPath(element, config),
-      demos: fixAnalysisComponentDemos(element)
-    };
-  });
+  return (
+    elements === undefined
+      ? undefined
+      : elements.map((element) => {
+          return {
+            ...element,
+            path: (
+              element.path === undefined
+                ? undefined
+                : fixAnalysisComponentPath(element.path, config)
+            ),
+            demos: (
+              element.path === undefined
+                ? element.demos
+                : fixAnalysisComponentDemos(element.path, element.demos)
+            )
+          };
+        })
+  );
 }
 
 /**
@@ -176,17 +184,25 @@ function fixAnalysisElementMixins(
   elementMixins: ReadonlyArray<ElementMixin> | undefined,
   config: IConfig
 ): Array<ElementMixin> | undefined {
-  if (elementMixins === undefined) {
-    return undefined;
-  }
-
-  return elementMixins.map((mixin) => {
-    return {
-      ...mixin,
-      paths: fixAnalysisComponentPath(mixin, config),
-      demos: fixAnalysisComponentDemos(mixin)
-    };
-  });
+  return (
+    elementMixins === undefined
+      ? undefined
+      : elementMixins.map((mixin) => {
+          return {
+            ...mixin,
+            path: (
+              mixin.path === undefined
+                ? undefined
+                : fixAnalysisComponentPath(mixin.path, config)
+            ),
+            demos: (
+              mixin.path === undefined
+                ? mixin.demos
+                : fixAnalysisComponentDemos(mixin.path, mixin.demos)
+            )
+          };
+        })
+  );
 }
 
 /**
@@ -196,33 +212,37 @@ function fixAnalysisClasses(
   classes: ReadonlyArray<Class> | undefined,
   config: IConfig
 ): Array<Class> | undefined {
-  if (classes === undefined) {
-    return undefined;
-  }
-
-  return classes.map((classComponent) => {
-    return {
-      ...classComponent,
-      paths: fixAnalysisComponentPath(classComponent, config),
-      demos: fixAnalysisComponentDemos(classComponent)
-    };
-  });
+  return (
+    classes === undefined
+      ? undefined
+      : classes.map((classComponent) => {
+          return {
+            ...classComponent,
+            path: (
+              classComponent.path === undefined
+                ? undefined
+                : fixAnalysisComponentPath(classComponent.path, config)
+            ),
+            demos: (
+              classComponent.path === undefined
+                ? classComponent.demos
+                : fixAnalysisComponentDemos(classComponent.path, classComponent.demos)
+            )
+          };
+        })
+  );
 }
 
 /**
  * Don't refer to the file's temp path, but rather its node path.
  */
 function fixAnalysisComponentPath(
-  component: Class,
+  componentPath: string,
   config: IConfig
 ): string | undefined {
-  if (component.path === undefined) {
-    return component.path;
-  }
-
   const pathBase = getFileBasename(
-    component.path,
-    getFileExtension(component.path)
+    componentPath,
+    getFileExtension(componentPath)
   );
 
   const nodeScope =
@@ -231,28 +251,26 @@ function fixAnalysisComponentPath(
       : `/${config.component.scope}`;
 
   return (
-    component.path.indexOf(`${config.temp.path}/${tempSubpath}/`) === 0
+    componentPath.indexOf(`${config.temp.path}/${tempSubpath}/`) === 0
       ? `node_modules${nodeScope}/${pathBase}/${pathBase}${
           config.build.module.extension}`
-      : component.path
+      : componentPath
     );
 }
 
 /**
  * Prefix the demos' url.
  */
-function fixAnalysisComponentDemos(component: Class): Array<Demo> {
-  // No path? Don't change anything.
-  if (component.path === undefined) {
-    return component.demos;
-  }
-
+function fixAnalysisComponentDemos(
+  componentPath: string,
+  demos: Array<Demo>
+): Array<Demo> {
   const pathBase = getFileBasename(
-    component.path,
-    getFileExtension(component.path)
+    componentPath,
+    getFileExtension(componentPath)
   );
 
-  return component.demos.map((demo) => {
+  return demos.map((demo) => {
     return {
       ...demo,
       url: normalizePath(`../${pathBase}/${demo.url}`)

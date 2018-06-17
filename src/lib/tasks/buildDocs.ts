@@ -47,7 +47,7 @@ import {
   logTaskInfo,
   logTaskStarting,
   logTaskSuccessful,
-  runAllPromises,
+  runTasksParallel,
   webpackPostProcess
 } from '../util';
 
@@ -258,7 +258,7 @@ async function copyExtraDocDependencies(
       `${inDir}/${config.docs.analysisFilename}`
     ]);
 
-    await runAllPromises(
+    await runTasksParallel(
       files.map(async (srcFilepath) => {
         const basepath = getRelativePathBetween(inDir, srcFilepath);
         const destFilepath = joinPaths(destDir, basepath);
@@ -297,7 +297,7 @@ async function copyDistributionFiles(
       nodePackage.name
     }`;
 
-    await runAllPromises(
+    await runTasksParallel(
       (await readdir(inDir)).map(async (filename) =>
         copy(`${inDir}/${filename}`, `${destDir}/${filename}`, {
           overwrite: true
@@ -333,7 +333,7 @@ async function copyLocalDemos(
       nodePackage.name}/${config.demos.path}`;
 
     if (existsSync(srcDir)) {
-      await runAllPromises(
+      await runTasksParallel(
         (await readdir(srcDir)).map(async (filename) =>
           copy(`${srcDir}/${filename}`, `${destDir}/${filename}`, {
             overwrite: true
@@ -367,7 +367,7 @@ async function copyFiles(
   try {
     const subTaskLabelPrefix = logTaskStarting(subTaskLabel, labelPrefix);
 
-    await runAllPromises([
+    await runTasksParallel([
       copyNodeModules(config, subTaskLabelPrefix),
       copyDocsIndex(config, subTaskLabelPrefix),
       copyExtraDocDependencies(config, subTaskLabelPrefix)
@@ -562,7 +562,7 @@ async function getDemos(config: IConfig, labelPrefix: string): Promise<void> {
     if (packageFiles.length > 0) {
       await cloneRepositories(packageFiles, config, subTaskLabelPrefix);
 
-      await runAllPromises(
+      await runTasksParallel(
         packageFiles.map(async (packageFilepath) => {
           const name = (await readJson(packageFilepath)).name;
           const srcDir = `./${getTempPath(config)}/demo-clones/${name}/${
@@ -576,7 +576,7 @@ async function getDemos(config: IConfig, labelPrefix: string): Promise<void> {
             return;
           }
 
-          await runAllPromises(
+          await runTasksParallel(
             (await readdir(srcDir)).map(async (filename) =>
               copy(`${srcDir}/${filename}`, `${destDir}/${filename}`, {
                 overwrite: true
@@ -661,7 +661,7 @@ async function demosPagesUpdateReferences(
       }/*.html`
     );
 
-    await runAllPromises(
+    await runTasksParallel(
       files.map(async (file) => {
         const fileContent = await readFile(file, {
           encoding: 'utf8',
@@ -758,7 +758,7 @@ async function indexUpdateReferences(
   try {
     const subTaskLabelPrefix = logTaskStarting(subTaskLabel, labelPrefix);
 
-    await runAllPromises([
+    await runTasksParallel([
       indexPageUpdateReferences(config, subTaskLabelPrefix),
       indexImportsUpdateReferences(config, subTaskLabelPrefix)
     ]);
@@ -785,7 +785,7 @@ async function demosUpdateReferences(
   try {
     const subTaskLabelPrefix = logTaskStarting(subTaskLabel, labelPrefix);
 
-    await runAllPromises([
+    await runTasksParallel([
       demosPagesUpdateReferences(config, subTaskLabelPrefix)
     ]);
 
@@ -908,7 +908,7 @@ async function finalizeDemos(
       }/${config.demos.importsImporterFilename}`
     );
 
-    const webpackResults = await runAllPromises(
+    const webpackResults = await runTasksParallel(
       sourceFiles.map(async (file) => {
         const destDir = getDirName(file);
         const compiler = webpack({

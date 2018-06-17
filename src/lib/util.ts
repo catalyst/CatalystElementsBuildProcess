@@ -31,6 +31,98 @@ export interface INodePackage {
   readonly [key: string]: any;
 }
 
+// tslint:disable:max-line-length
+export async function runTask<T1>(subTaskLabel: string, labelPrefix: string, taskFunction: (lp: string, p1: T1) => Promise<void>, parameters: [T1]): Promise<void>;
+export async function runTask<T1, T2>(subTaskLabel: string, labelPrefix: string, taskFunction: (lp: string, p1: T1, p2: T2) => Promise<void>, parameters: [T1, T2]): Promise<void>;
+export async function runTask<T1, T2, T3>(subTaskLabel: string, labelPrefix: string, taskFunction: (lp: string, p1: T1, p2: T2, p3: T3) => Promise<void>, parameters: [T1, T2, T3]): Promise<void>;
+export async function runTask<T1, T2, T3, T4>(subTaskLabel: string, labelPrefix: string, taskFunction: (lp: string, p1: T1, p2: T2, p3: T3, p4: T4) => Promise<void>, parameters: [T1, T2, T3, T4]): Promise<void>;
+export async function runTask<T1, T2, T3, T4, T5>(subTaskLabel: string, labelPrefix: string, taskFunction: (lp: string, p1: T1, p2: T2, p3: T3, p4: T4, p5: T5) => Promise<void>, parameters: [T1, T2, T3, T4, T5]): Promise<void>;
+export async function runTask<T1, T2, T3, T4, T5, T6>(subTaskLabel: string, labelPrefix: string, taskFunction: (lp: string, p1: T1, p2: T2, p3: T3, p4: T4, p5: T5, p6: T6) => Promise<void>, parameters: [T1, T2, T3, T4, T5, T6]): Promise<void>;
+export async function runTask<T1, T2, T3, T4, T5, T6, T7>(subTaskLabel: string, labelPrefix: string, taskFunction: (lp: string, p1: T1, p2: T2, p3: T3, p4: T4, p5: T5, p6: T6, p7: T7) => Promise<void>, parameters: [T1, T2, T3, T4, T5, T6, T7]): Promise<void>;
+export async function runTask<T1, T2, T3, T4, T5, T6, T7, T8>(subTaskLabel: string, labelPrefix: string, taskFunction: (lp: string, p1: T1, p2: T2, p3: T3, p4: T4, p5: T5, p6: T6, p7: T7, p8: T8) => Promise<void>, parameters: [T1, T2, T3, T4, T5, T6, T7, T8]): Promise<void>;
+export async function runTask<T1, T2, T3, T4, T5, T6, T7, T8, T9>(subTaskLabel: string, labelPrefix: string, taskFunction: (lp: string, p1: T1, p2: T2, p3: T3, p4: T4, p5: T5, p6: T6, p7: T7, p8: T8, p9: T9) => Promise<void>, parameters: [T1, T2, T3, T4, T5, T6, T7, T8, T9]): Promise<void>;
+export async function runTask<T1, T2, T3, T4, T5, T6, T7, T8, T9, T10>(subTaskLabel: string, labelPrefix: string, taskFunction: (lp: string, p1: T1, p2: T2, p3: T3, p4: T4, p5: T5, p6: T6, p7: T7, p8: T8, p9: T9, p10: T10) => Promise<void>, parameters: [T1, T2, T3, T4, T5, T6, T7, T8, T9, T10]): Promise<void>;
+// tslint:enable:max-line-length
+
+/**
+ * Run a given function as a task.
+ */
+export async function runTask<T>(
+  subTaskLabel: string,
+  labelPrefix: string,
+  taskFunction: (labelPrefix: string, ...params: Array<T>) => Promise<void>,
+  parameters: Array<T>
+): Promise<void> {
+  const subTaskLabelPrefix = logTaskStarting(subTaskLabel, labelPrefix);
+
+  return taskFunction(subTaskLabelPrefix, ...parameters)
+    .then(() => {
+      logTaskSuccessful(subTaskLabel, labelPrefix);
+    })
+    .catch((error) => {
+      logTaskFailed(subTaskLabel, labelPrefix);
+      return Promise.reject(error);
+    });
+}
+
+/**
+ * Returns a new promise that will not resolving or rejecting until all the given
+ * promises have either resolved or rejected.
+ *
+ * @param promises - The promises to wait for
+ */
+export async function runTasksParallel<T>(
+  promises: ReadonlyArray<Promise<T>>
+): Promise<Array<T>> {
+  interface ISuccessResult<U> {
+    readonly value: U;
+  }
+
+  interface IErrorResult {
+    readonly error: Error;
+  }
+
+  const promiseResults: ReadonlyArray<ISuccessResult<T> | IErrorResult> =
+    await Promise.all(
+      promises.map(async (promise: Promise<T>) => {
+        try {
+          const value = await promise;
+
+          return { value };
+        } catch (error) {
+          return { error };
+        }
+      })
+    );
+
+  const reducedResults = promiseResults.reduce<Array<T> | MultiPromiseRejectionError<T>>(
+    (reducedValues, result) => {
+      return (
+        reducedValues instanceof Error
+        ? reducedValues
+        : (result as ISuccessResult<T> & IErrorResult).error != undefined
+        ? new MultiPromiseRejectionError<T>(promiseResults)
+        : [...reducedValues, (result as ISuccessResult<T>).value]
+      );
+    },
+    []
+  );
+
+  return (
+    reducedResults instanceof Error
+      ? Promise.reject(reducedResults)
+      : reducedResults
+  );
+}
+
+export function skipTask(
+  subTaskLabel: string,
+  labelPrefix: string,
+  message?: string
+): void {
+  logTaskSkipped(message, subTaskLabel, labelPrefix);
+}
+
 /**
  * Clean dist folder.
  */
@@ -75,7 +167,7 @@ export async function webpackPostProcess(
     []
   );
 
-  await runAllPromises(
+  await Promise.all(
     outFiles.map(async (file) => {
       const fileContent = await readFile(file, {
         encoding: 'utf8',
@@ -114,66 +206,20 @@ export async function clean(
 }
 
 /**
- * Returns a new promise that will not resolving or rejecting until all the given
- * promises have either resolved or rejected.
- *
- * @param promises - The promises to wait for
- */
-export async function runAllPromises<T>(
-  promises: ReadonlyArray<Promise<T>>
-): Promise<Array<T>> {
-  const promiseResults: ReadonlyArray<
-    { readonly value: T } | { readonly error: Error }
-  > = await Promise.all(
-    promises.map(async (promise: Promise<T>) => {
-      try {
-        const value = await promise;
-
-        return { value };
-      } catch (error) {
-        return { error };
-      }
-    })
-  );
-
-  return promiseResults.reduce<Array<T>>((reducedValues, result) => {
-    // tslint:disable-next-line:no-any
-    if ((result as any).error != undefined) {
-      throw new MultiPromiseRejectionError<T>(promiseResults);
-    }
-    return [...reducedValues, (result as { readonly value: T }).value];
-  }, []);
-}
-
-/**
- * Log a task failed.
- */
-export function logTaskFailed(
-  label: string,
-  ...prefixes: Array<string>
-): string {
-  const fullLabel =
-    `${getFullFormattedPrefix(prefixes)} ${blue('→')} ${cyan(label)}`;
-  log(`Failed    ${fullLabel} ${red('✗')}`);
-
-  return fullLabel;
-}
-
-/**
  * Log info from a task message.
  */
-export function logTaskInfo(label: string, ...prefixes: Array<string>): string {
+function logTaskInfo(message: string, ...prefixes: Array<string>): string {
   const fullLabel =
-    `${getFullFormattedPrefix(prefixes)} ${blue('→')} ${magenta(label)}`;
+    `${getFullFormattedPrefix(prefixes)} ${blue('→')} ${magenta(message)}`;
   log(`Info      ${fullLabel}`);
 
-  return label;
+  return message;
 }
 
 /**
  * Log that a task has started.
  */
-export function logTaskStarting(
+function logTaskStarting(
   label: string,
   ...prefixes: Array<string>
 ): string {
@@ -187,7 +233,7 @@ export function logTaskStarting(
 /**
  * Log a that a task finished successfully.
  */
-export function logTaskSuccessful(
+function logTaskSuccessful(
   label: string,
   ...prefixes: Array<string>
 ): string {
@@ -199,15 +245,50 @@ export function logTaskSuccessful(
 }
 
 /**
+ * Log a task failed.
+ */
+function logTaskFailed(
+  label: string,
+  ...prefixes: Array<string>
+): string {
+  const fullLabel =
+    `${getFullFormattedPrefix(prefixes)} ${blue('→')} ${cyan(label)}`;
+  log(`Failed    ${fullLabel} ${red('✗')}`);
+
+  return fullLabel;
+}
+
+/**
+ * Log that a task was skipped.
+ */
+function logTaskSkipped(
+  message: string | undefined,
+  label: string,
+  ...prefixes: Array<string>
+): string {
+  const fullLabel =
+    `${getFullFormattedPrefix(prefixes)} ${blue('→')} ${cyan(label)}`;
+
+  const formattedMessage =
+    message === undefined
+      ? ''
+      : ` - ${magenta(message)}`;
+
+  log(`Skipping  ${fullLabel}${formattedMessage}`);
+
+  return fullLabel;
+}
+
+/**
  * Get the full formatted prefix.
  */
 function getFullFormattedPrefix(prefixes: ReadonlyArray<string>): string {
   return prefixes.reduce((previous, current) => {
-    if (previous === '') {
-      return grey(stripColor(current));
-    }
-    const formattedCurrent = grey(`'→ ${stripColor(current)}`);
-    return `${previous} ${formattedCurrent}`;
+    return (
+      previous === ''
+        ? grey(stripColor(current))
+        : `${previous} ${grey('→ ' + stripColor(current))}`
+    );
   }, '');
 }
 
@@ -236,16 +317,31 @@ export async function glob(
   pattern: string | ReadonlyArray<string>,
   options?: nodeGlob.IOptions
 ): Promise<Array<string>> {
-  if (Array.isArray(pattern)) {
-    if (pattern.length === 0) {
-      throw new Error('No glob patterns given.');
-    }
-    if (pattern.length === 1) {
-      return nodeGlobPromise(pattern[0], options);
-    }
-    return nodeGlobPromise(`{${pattern.join(',')}}`, options);
-  }
-  return nodeGlobPromise(pattern as string, options);
+  return (
+    Array.isArray(pattern)
+      ? globArray(pattern)
+      : globString(pattern as string)
+  );
+}
+
+async function globString(
+  pattern: string,
+  options?: nodeGlob.IOptions
+): Promise<Array<string>> {
+  return nodeGlobPromise(pattern, options);
+}
+
+async function globArray(
+  pattern: ReadonlyArray<string>,
+  options?: nodeGlob.IOptions
+): Promise<Array<string>> {
+  return (
+    pattern.length === 0
+      ? Promise.reject(new Error('No glob patterns given.'))
+      : pattern.length === 1
+        ? nodeGlobPromise(pattern[0], options)
+        : nodeGlobPromise(`{${pattern.join(',')}}`, options)
+  );
 }
 
 /**
@@ -254,10 +350,11 @@ export async function glob(
 export function transpose<T>(
   array: ReadonlyArray<ReadonlyArray<T>>
 ): Array<Array<T>> {
-  if (array.length === 0) {
-    return [];
-  }
-  return array[0].map((_, index) => array.map((row) => row[index]));
+  return (
+    array.length === 0
+      ? []
+      : array[0].map((_, index) => array.map((row) => row[index]))
+  );
 }
 
 /**

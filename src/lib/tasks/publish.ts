@@ -24,7 +24,7 @@ import {
   logTaskInfo,
   logTaskStarting,
   logTaskSuccessful,
-  runAllPromises,
+  runTasksParallel,
   runCommand
 } from '../util';
 
@@ -157,7 +157,7 @@ async function npmPublish(
   const publishInfoSettingsUpdate = await getPublishSettings(currentBranch);
 
   // Run checks.
-  await runAllPromises([
+  await runTasksParallel([
     gitChecks(
       config,
       publishInfoSettingsUpdate.git.currentBranch,
@@ -497,7 +497,7 @@ async function gitChecks(
 
     const subTaskLabelPrefix = logTaskStarting(subTaskLabel, labelPrefix);
 
-    await runAllPromises([
+    await runTasksParallel([
       gitCheckWorkingDirector(subTaskLabelPrefix),
       gitCheckGoodBranch(config, branch, prerelease, subTaskLabelPrefix),
       gitCheckSynced(subTaskLabelPrefix)
@@ -734,7 +734,7 @@ async function fileChecks(config: IConfig, labelPrefix: string): Promise<void> {
     }
 
     // Check files.
-    await runAllPromises([
+    await runTasksParallel([
       fileCheckModule(config, distFiles, subTaskLabelPrefix),
       fileCheckScript(config, distFiles, subTaskLabelPrefix),
       fileCheckPackage(config, distFiles, subTaskLabelPrefix),
@@ -784,7 +784,7 @@ async function updateVersion(
       `./${config.dist.path}/package.json`
     ]);
 
-    await runAllPromises(
+    await runTasksParallel(
       files.map(async (file) => {
         const fileContent = await readFile(file, {
           encoding: 'utf8',

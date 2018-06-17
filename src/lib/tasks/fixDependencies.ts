@@ -15,7 +15,7 @@ import {
   logTaskInfo,
   logTaskStarting,
   logTaskSuccessful,
-  runAllPromises
+  runTasksParallel
 } from '../util';
 
 /**
@@ -27,7 +27,7 @@ export async function fixDependencies(
   taskName: string,
   config: IConfig
 ): Promise<void> {
-  await runAllPromises([
+  await runTasksParallel([
     fixPrismjs(taskName),
     fixTestFixture(taskName),
     fixAsync(taskName),

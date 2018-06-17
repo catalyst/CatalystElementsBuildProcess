@@ -22,7 +22,7 @@ import {
   logTaskInfo,
   logTaskStarting,
   logTaskSuccessful,
-  runAllPromises,
+  runTasksParallel,
   transpose
 } from '../util';
 
@@ -66,7 +66,7 @@ interface IEslintReportDetails {
  * Lint the code.
  */
 export async function lint(taskName: string, config: IConfig): Promise<void> {
-  await runAllPromises([
+  await runTasksParallel([
     lintTS(taskName, config.configFiles.tsconfig),
     lintJS(config, taskName, config.configFiles.eslint),
     lintSass(config, taskName, config.configFiles.sasslint)
@@ -144,7 +144,7 @@ async function lintJS(
 
     await access(eslintConfigFile);
 
-    await runAllPromises([
+    await runTasksParallel([
       lintJSFiles(config, subTaskLabelPrefix, eslintConfigFile),
       lintJSInHTML(config, subTaskLabelPrefix, eslintConfigFile)
     ]);

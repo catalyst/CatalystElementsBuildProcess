@@ -5,14 +5,14 @@ import { readFile } from 'fs-extra';
 // Config
 import { defaultConfig, IConfig } from './config';
 
-// Load the tasks.
-import { analyze } from './tasks/analyze';
-import { build } from './tasks/build';
-import { buildDocs } from './tasks/buildDocs';
-import { fixDependencies } from './tasks/fixDependencies';
-import { lint } from './tasks/lint';
-import { publish, publishDry } from './tasks/publish';
-import { test } from './tasks/test';
+// Load the jobs.
+import { analyze } from './jobs/analyze';
+import { jobBuild } from './jobs/build';
+import { buildDocs } from './jobs/buildDocs';
+import { fixDependencies } from './jobs/fixDependencies';
+import { lint } from './jobs/lint';
+import { publish, publishDry } from './jobs/publish';
+import { test } from './jobs/test';
 import { cleanTemp, ConfigError, INodePackage } from './util';
 
 /**
@@ -76,25 +76,25 @@ export async function getConfig(options?: Partial<IConfig>): Promise<IConfig> {
   return config;
 }
 
-type Task = (
-  taskLabel: string,
+type Job = (
+  jobLabel: string,
   config?: Promise<IConfig> | IConfig
 ) => Promise<void>;
 
-type InternalTask = (
-  taskLabel: string,
+type InternalJob = (
+  jobLabel: string,
   config: IConfig
 ) => Promise<void>;
 
 /**
- * The tasks to be exported mapped by their name.
+ * The jobs to be exported mapped by their name.
  */
-const tasksByName = {
+const jobsByName = {
   analyze,
-  build,
+  build: jobBuild,
   buildDocs,
-  clean: async (taskName: string, config: IConfig): Promise<void> =>
-    cleanTemp(config, taskName),
+  clean: async (jobName: string, config: IConfig): Promise<void> =>
+    cleanTemp(config, jobName),
   fixDependencies,
   lint,
   publish,
@@ -103,25 +103,25 @@ const tasksByName = {
 };
 
 /**
- * The tasks.
+ * The Jobs.
  */
-export const TASKS = new Map(
-  (Object.entries(tasksByName) as ReadonlyArray<
+export const JOBS = new Map(
+  (Object.entries(jobsByName) as ReadonlyArray<
     [
-      keyof typeof tasksByName,
-      (taskName: string, config: IConfig) => Promise<void>
+      keyof typeof jobsByName,
+      (jobName: string, config: IConfig) => Promise<void>
     ]
   >).reduce(
     (
-      reducedTasks: ReadonlyArray<[keyof typeof tasksByName, Task]>,
-      [taskName, taskFunc]: [keyof typeof tasksByName, InternalTask]
-    ): ReadonlyArray<[keyof typeof tasksByName, Task]> => [
-      ...reducedTasks,
+      reducedJobs: ReadonlyArray<[keyof typeof jobsByName, Job]>,
+      [jobName, jobFunc]: [keyof typeof jobsByName, InternalJob]
+    ): ReadonlyArray<[keyof typeof jobsByName, Job]> => [
+      ...reducedJobs,
       [
-        taskName,
-        async (taskLabel = taskName, config) => {
-          await taskFunc(
-            taskLabel,
+        jobName,
+        async (jobLabel = jobName, config) => {
+          await jobFunc(
+            jobLabel,
             config === undefined
               ? await getConfig()
               : await config

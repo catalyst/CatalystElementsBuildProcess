@@ -8,6 +8,7 @@ import {
   ExportSpecifier,
   FunctionDeclaration,
   ImportDeclaration,
+  ImportSpecifier,
   ModuleDeclaration,
   Statement,
   VariableDeclaration,
@@ -40,6 +41,7 @@ import webpack from 'webpack';
 import { IConfig } from '../config';
 import {
   clean,
+  ExternalError,
   getInjectRegExp,
   getWebpackPlugIns,
   glob,
@@ -58,14 +60,13 @@ const renderSass = promisify<(options: sass.Options) => Promise<sass.Result>>(
 const validMarkupFileTypes = ['.html', '.htm'];
 const validStyleFileTypes = ['.css', '.sass', '.scss'];
 
-export {
-  buildPreChecks as build
-};
-
 /**
  * Build the component.
  */
-async function buildPreChecks(taskName: string, config: IConfig): Promise<void> {
+export async function jobBuild(
+  jobName: string,
+  config: IConfig
+): Promise<void> {
   return (
     config.component.name === undefined
     ? Promise.reject(new Error('Cannot build: `config.component.name` is not set.'))
@@ -74,10 +75,10 @@ async function buildPreChecks(taskName: string, config: IConfig): Promise<void> 
     ? Promise.reject(new Error('Cannot build: `config.src.entrypoint` is not set.'))
 
     : build(
+        jobName,
         config.component.name,
         `./${config.src.path}/${config.src.entrypoint}`,
-        config,
-        taskName
+        config
       )
   );
 }
@@ -86,43 +87,34 @@ async function buildPreChecks(taskName: string, config: IConfig): Promise<void> 
  * Build the component.
  */
 async function build(
+  labelPrefix: string,
   componentName: string,
   srcEntrypoint: string,
-  config: IConfig,
-  taskName: string
+  config: IConfig
 ): Promise<void> {
   const entrypoint = `entrypoint${getFileExtension(srcEntrypoint)}`;
+  const srcPath = `./${config.src.path}`;
   const tempPath = `./${config.temp.path}/build`;
+  const distPath = `./${config.dist.path}`;
 
-  await clean(`./${config.dist.path}`, 'dist', taskName);
-  await runTaskCheckSourceFiles(srcEntrypoint, taskName);
-  await runTaskPrepareEntrypoint(srcEntrypoint, entrypoint, config.src.path, tempPath, taskName);
+  await clean(distPath, 'dist', labelPrefix);
+  await runTaskCheckSourceFiles(labelPrefix, srcEntrypoint);
+  await runTaskPrepareEntrypoint(labelPrefix, srcEntrypoint, entrypoint, srcPath, tempPath);
   await runTasksParallel([
-    runTaskMinifyHTML(config.src.path, tempPath, config.build.tools.htmlMinifier, taskName),
-    runTaskCompileCSS(config.src.path, tempPath, config.build.tools.postcss, config.src.template, taskName)
+    runTaskMinifyHTML(labelPrefix, srcPath, tempPath, config.build.tools.htmlMinifier),
+    runTaskCompileCSS(labelPrefix, srcPath, tempPath, config.build.tools.postcss, config.src.template)
   ]);
-  await runTasksParallel([
-    runTaskBuildModule(
-      config.build.module.create,
-      entrypoint,
-      componentName,
-      config.component.scope,
-      tempPath,
-      config.build.module.extension,
-      taskName
-    ),
-    buildScript(
-      config.build.script.create,
-      entrypoint,
-      componentName,
-      config.component.scope,
-      tempPath,
-      config.build.script.extension,
-      taskName
-    ),
-  ]);
-  await finalize(componentName, taskName);
-  await buildSymlinks(componentName, taskName);
+  await runTaskBuildVersions(
+    labelPrefix,
+    config.build,
+    entrypoint,
+    componentName,
+    config.src.template,
+    config.component.scope,
+    tempPath,
+    distPath
+  );
+  await runTaskPostBuild(labelPrefix, componentName, config.build.module.extension, distPath);
 }
 
 //#region Task Runners
@@ -131,14 +123,18 @@ async function build(
  * Run the "check source files" task.
  */
 async function runTaskCheckSourceFiles(
-  srcEntrypoint: string,
-  labelPrefix: string
+  labelPrefix: string,
+  srcEntrypoint: string
 ): Promise<void> {
+  const taskLabel = 'check source files';
+
   return runTask(
-    'check source files',
-    labelPrefix,
     taskCheckSourceFiles,
-    [srcEntrypoint]
+    [
+      srcEntrypoint
+    ],
+    taskLabel,
+    labelPrefix
   );
 }
 
@@ -146,22 +142,24 @@ async function runTaskCheckSourceFiles(
  * Run the "prepare entrypoint" task.
  */
 async function runTaskPrepareEntrypoint(
+  labelPrefix: string,
   srcEntrypoint: string,
   entrypoint: string,
   srcPath: string,
-  tempPath: string,
-  labelPrefix: string
+  tempPath: string
 ): Promise<void> {
+  const taskLabel = 'prepare entrypoint';
+
   return runTask(
-    'prepare entrypoint',
-    labelPrefix,
     taskPrepareEntrypoint,
     [
       srcEntrypoint,
       entrypoint,
       srcPath,
       tempPath
-    ]
+    ],
+    taskLabel,
+    labelPrefix
   );
 }
 
@@ -169,27 +167,27 @@ async function runTaskPrepareEntrypoint(
  * Run the "minify HTML" task.
  */
 async function runTaskMinifyHTML(
+  labelPrefix: string,
   srcPath: string,
   tempPath: string,
-  htmlMinifierOptions: IConfig['build']['tools']['htmlMinifier'],
-  labelPrefix: string
+  htmlMinifierOptions: IConfig['build']['tools']['htmlMinifier']
 ): Promise<void> {
-  const subTaskLabel = 'minify HTML';
+  const taskLabel = 'minify HTML';
 
-  const files = await glob(`./${srcPath}/**/*.html`);
+  const files = await glob(`${srcPath}/**/*.html`);
 
   return (
     files.length === 0
-    ? skipTask(subTaskLabel, labelPrefix, 'no styles to compile')
+    ? skipTask(taskLabel, labelPrefix, 'no html files to minify')
     : runTask(
-        subTaskLabel,
-        labelPrefix,
         taskMinifyHTML,
         [
           files,
           htmlMinifierOptions,
           tempPath
-        ]
+        ],
+        taskLabel,
+        labelPrefix
       )
   );
 }
@@ -198,71 +196,160 @@ async function runTaskMinifyHTML(
  * Run the "compile CSS" task.
  */
 async function runTaskCompileCSS(
+  labelPrefix: string,
   srcPath: string,
   tempPath: string,
   postcssConfig: IConfig['build']['tools']['postcss'],
-  template: IConfig['src']['template'],
-  labelPrefix: string
+  template: IConfig['src']['template']
 ): Promise<void> {
-  const subTaskLabel = 'compile CSS';
+  const taskLabel = 'compile CSS';
 
   return (
-    template === undefined ||
-    template.style === undefined
-      ? skipTask(subTaskLabel, labelPrefix, 'no styles to compile')
-      : runTask(
-          subTaskLabel,
-          labelPrefix,
-          taskCompileCSS,
-          [
-            postcssConfig === undefined
-            ? []
-            : postcssConfig.plugins === undefined
-            ? []
-            : postcssConfig.plugins,
+    template === undefined || template.style === undefined
+    ? skipTask(taskLabel, labelPrefix, 'no styles to compile')
+    : runTask(
+        taskCompileCSS,
+        [
+          postcssConfig === undefined
+          ? []
+          : postcssConfig.plugins === undefined
+          ? []
+          : postcssConfig.plugins,
 
-            postcssConfig === undefined
-            ? undefined
-            : postcssConfig.options,
+          postcssConfig === undefined
+          ? undefined
+          : postcssConfig.options,
 
-            `${srcPath}/${template.style}`,
+          `${srcPath}/${template.style}`,
 
-            tempPath
-          ]
-        )
+          tempPath
+        ],
+        taskLabel,
+        labelPrefix
+      )
   );
 }
 
 /**
- *
- *
- * @param config - Config settings
- * @param labelPrefix - A prefix to print before the label
+ * Run the "build" task.
+ */
+async function runTaskBuildVersions(
+  labelPrefix: string,
+  buildConfig: IConfig['build'],
+  entrypoint: string,
+  componentName: string,
+  template: IConfig['src']['template'],
+  nodeScope: string | undefined,
+  tempPath: string,
+  distPath: string
+): Promise<void> {
+  const taskLabel = 'type';
+
+  return runTask(
+    taskBuildVersions,
+    [
+      buildConfig,
+      entrypoint,
+      componentName,
+      template,
+      nodeScope,
+      tempPath,
+      distPath
+    ],
+    taskLabel,
+    labelPrefix
+  );
+}
+
+/**
+ * Run the "post build" task.
+ */
+async function runTaskPostBuild(
+  labelPrefix: string,
+  componentName: string,
+  moduleExtension: string,
+  distPath: string
+): Promise<void> {
+  const taskLabel = 'post build';
+
+  return runTask(
+    taskPostBuild,
+    [
+      componentName,
+      moduleExtension,
+      distPath
+    ],
+    taskLabel,
+    labelPrefix
+  );
+}
+
+/**
+ * Run the "build module" task.
  */
 async function runTaskBuildModule(
+  labelPrefix: string,
   createModule: boolean,
   entrypoint: string,
   componentName: string,
+  moduleExtension: string,
+  template: IConfig['src']['template'],
   nodeScope: string | undefined,
   tempPath: string,
-  moduleExtension: string,
-  labelPrefix: string
+  distPath: string
 ): Promise<void> {
-  const subTaskLabel = 'module';
+  const taskLabel = 'module';
   return (
     !createModule
-    ? skipTask(subTaskLabel, labelPrefix, 'Turned off in config.')
+    ? skipTask(taskLabel, labelPrefix, 'Turned off in config.')
     : runTask(
-        subTaskLabel,
-        labelPrefix,
         taskBuildModule,
         [
           entrypoint,
           componentName,
+          moduleExtension,
+          template,
           nodeScope,
           tempPath,
-          moduleExtension
-        ]
+          distPath
+        ],
+        taskLabel,
+        labelPrefix
+      )
+  );
+}
+
+/**
+ * Run the "build script" task.
+ */
+async function runTaskBuildScript(
+  labelPrefix: string,
+  createScript: boolean,
+  entrypoint: string,
+  componentName: string,
+  scriptExtension: string,
+  template: IConfig['src']['template'],
+  bundleImports: boolean,
+  tempPath: string,
+  distPath: string
+): Promise<void> {
+  const taskLabel = 'script';
+  return (
+    !createScript
+    ? skipTask(taskLabel, labelPrefix, 'Turned off in config.')
+    : runTask(
+        taskBuildScript,
+        [
+          entrypoint,
+          componentName,
+          scriptExtension,
+          template,
+          bundleImports,
+          tempPath,
+          distPath
+        ],
+        taskLabel,
+        labelPrefix
       )
   );
 }
@@ -271,23 +358,23 @@ async function runTaskBuildModule(
  * Run the "initialize module file" task.
  */
 async function runTaskInitializeModuleFile(
+  labelPrefix: string,
   entrypoint: string,
   componentName: string,
   nodeScope: string | undefined,
   tempPath: string,
-  moduleExtension: string,
-  labelPrefix: string
+  moduleExtension: string
 ): Promise<void> {
+  const taskLabel = 'initialize file';
+
   const files = await glob(
-    `${tempPath}/**/${entrypoint}`
+    `${tempPath}/${entrypoint}`
   );
 
   return (
     files.length !== 1
     ? Promise.reject(new UncertainEntryFileError())
     : runTask(
-        'initialize file',
-        labelPrefix,
         taskInitializeModuleFile,
         [
           files[0],
@@ -295,8 +382,285 @@ async function runTaskInitializeModuleFile(
           nodeScope,
           tempPath,
           moduleExtension
-        ]
+        ],
+        taskLabel,
+        labelPrefix
       )
+  );
+}
+
+/**
+ * Run the "initialize script file" task.
+ */
+async function runTaskInitializeScriptFile(
+  labelPrefix: string,
+  entrypoint: string,
+  componentName: string,
+  tempPath: string,
+  scriptExtension: string,
+  bundleImports: boolean
+): Promise<void> {
+  const taskLabel = 'initialize file';
+
+  const files = await glob(
+    `${tempPath}/${entrypoint}`
+  );
+
+  return (
+    files.length !== 1
+    ? Promise.reject(new UncertainEntryFileError())
+    : runTask(
+        taskInitializeScriptFile,
+        [
+          files[0],
+          componentName,
+          tempPath,
+          scriptExtension,
+          bundleImports
+        ],
+        taskLabel,
+        labelPrefix
+      )
+  );
+}
+
+/**
+ * Run the "inject template" task.
+ */
+async function runTaskInjectTemplate(
+  labelPrefix: string,
+  tempPath: string,
+  targetFile: string,
+  template: IConfig['src']['template']
+): Promise<void> {
+  const taskLabel = 'inject template';
+
+  return (
+    template === undefined
+    ? skipTask(taskLabel, labelPrefix, 'No template files to inject.')
+    : runTask(
+        taskInjectTemplate,
+        [
+          tempPath,
+          targetFile,
+          template
+        ],
+        taskLabel,
+        labelPrefix
+      )
+  );
+}
+
+/**
+ * Run the "finalize module" task.
+ */
+async function runTaskFinalizeModule(
+  labelPrefix: string,
+  componentName: string,
+  moduleExtension: string,
+  tempPath: string,
+  distPath: string
+): Promise<void> {
+  const taskLabel = 'finalize';
+
+  return runTask(
+    taskFinalizeModule,
+    [
+      componentName,
+      moduleExtension,
+      tempPath,
+      distPath
+    ],
+    taskLabel,
+    labelPrefix
+  );
+}
+
+/**
+ * Run the "finalize script" task.
+ */
+async function runTaskFinalizeScript(
+  labelPrefix: string,
+  componentName: string,
+  scriptExtension: string,
+  tempPath: string,
+  distPath: string
+): Promise<void> {
+  const taskLabel = 'finalize';
+
+  return runTask(
+    taskFinalizeScript,
+    [
+      componentName,
+      scriptExtension,
+      tempPath,
+      distPath
+    ],
+    taskLabel,
+    labelPrefix
+  );
+}
+
+/**
+ * Run the "inject markup" task.
+ */
+async function runTaskInjectTemplateMarkup(
+  labelPrefix: string,
+  tempPath: string,
+  markupFile: string | undefined,
+  targetFile: string
+): Promise<void> {
+  const taskLabel = 'markup';
+
+  return (
+    markupFile === undefined
+    ? skipTask(taskLabel, labelPrefix, 'no markup to inject.')
+    : runTask(
+        taskInjectTemplateMarkup,
+        [
+          tempPath,
+          markupFile,
+          targetFile
+        ],
+        taskLabel,
+        labelPrefix
+      )
+  );
+}
+
+/**
+ * Run the "inject style" task.
+ */
+async function runTaskInjectTemplateStyle(
+  labelPrefix: string,
+  tempPath: string,
+  styleFile: string | undefined,
+  targetFile: string
+): Promise<void> {
+  const taskLabel = 'style';
+
+  return (
+    styleFile === undefined
+    ? skipTask(taskLabel, labelPrefix, 'no markup to inject.')
+    : runTask(
+        taskInjectTemplateStyle,
+        [
+          tempPath,
+          styleFile,
+          targetFile
+        ],
+        taskLabel,
+        labelPrefix
+      )
+  );
+}
+
+/**
+ * Run the "inject html" task.
+ */
+async function runTaskInjectTemplateHTML(
+  labelPrefix: string,
+  tempPath: string,
+  targetFile: string,
+  markupFile: string
+): Promise<void> {
+  const taskLabel = 'html';
+
+  return runTask(
+    taskInjectTemplateHTML,
+    [
+      tempPath,
+      markupFile,
+      targetFile
+    ],
+    taskLabel,
+    labelPrefix
+  );
+}
+
+/**
+ * Run the "inject css" task.
+ */
+async function runTaskInjectTemplateCSS(
+  labelPrefix: string,
+  tempPath: string,
+  targetFile: string,
+  styleFile: string
+): Promise<void> {
+  const taskLabel = 'css';
+
+  return runTask(
+    taskInjectTemplateCSS,
+    [
+      tempPath,
+      targetFile,
+      styleFile
+    ],
+    taskLabel,
+    labelPrefix
+  );
+}
+
+/**
+ * Run the "copy extra dist files" task.
+ */
+async function runTaskDistributionCopyFiles(
+  labelPrefix: string,
+  distPath: string
+): Promise<void> {
+  const taskLabel = 'copy files';
+
+  return runTask(
+    taskDistributionCopyFiles,
+    [
+      distPath
+    ],
+    taskLabel,
+    labelPrefix
+  );
+}
+
+/**
+ * Run the "dist package.json" task.
+ */
+async function runTaskDistributionPackageJson(
+  labelPrefix: string,
+  componentName: string,
+  moduleExtension: string,
+  distPath: string
+): Promise<void> {
+  const taskLabel = 'package.json';
+
+  return runTask(
+    taskDistributionPackageJson,
+    [
+      componentName,
+      moduleExtension,
+      distPath
+    ],
+    taskLabel,
+    labelPrefix
+  );
+}
+
+/**
+ * Run the "build symlinks" task.
+ */
+async function runTaskBuildSymlinks(
+  labelPrefix: string,
+  componentName: string,
+  distPath: string
+): Promise<void> {
+  const taskLabel = 'symlinks';
+
+  return runTask(
+    taskBuildSymlinks,
+    [
+      componentName,
+      distPath
+    ],
+    taskLabel,
+    labelPrefix
   );
 }
 
@@ -317,18 +681,18 @@ async function taskCheckSourceFiles(
   });
   const program = parseModule(entrypointContent);
 
-  const defaultExports = program.body.reduce((reducedCount, node) => {
-    return (
+  const defaultExports = program.body.reduce(
+    (reducedCount, node) =>
       node.type === 'ExportDefaultDeclaration'
       ? reducedCount + 1
-      : reducedCount
-    );
-  }, 0);
+      : reducedCount,
+    0
+  );
 
   return (
     defaultExports === 0
-      ? undefined
-      : Promise.reject(Error(`Do not use default exports. ${defaultExports} found.`))
+    ? undefined
+    : Promise.reject(Error(`Do not use default exports. ${defaultExports} found.`))
   );
 }
 
@@ -342,18 +706,18 @@ async function taskPrepareEntrypoint(
   srcPath: string,
   tempPath: string
 ): Promise<void> {
-  const pathChange = getRelativePathBetween(`./${srcPath}`, tempPath);
+  const pathChange = getRelativePathBetween(`${srcPath}`, tempPath);
   const depthChange = pathChange
     .split('/')
-    .reduce((reducedChange, segment) => {
-      return (
+    .reduce(
+      (reducedChange, segment) =>
         segment === '' || segment === '.'
         ? reducedChange
         : segment === '..'
         ? reducedChange - 1
-        : reducedChange + 1
-      );
-    }, 0);
+        : reducedChange + 1,
+      0
+    );
 
   const entrypointContent = await readFile(srcEntrypoint, {
     encoding: 'utf8',
@@ -427,63 +791,187 @@ async function taskCompileCSS(
 }
 
 /**
+ * Task: Build all the versions of the component.
+ */
+async function taskBuildVersions(
+  labelPrefix: string,
+  buildConfig: IConfig['build'],
+  entrypoint: string,
+  componentName: string,
+  template: IConfig['src']['template'],
+  nodeScope: string | undefined,
+  tempPath: string,
+  distPath: string
+): Promise<void> {
+  await runTasksParallel([
+    runTaskBuildModule(
+      labelPrefix,
+      buildConfig.module.create,
+      entrypoint,
+      componentName,
+      buildConfig.module.extension,
+      template,
+      nodeScope,
+      tempPath,
+      distPath
+    ),
+    runTaskBuildScript(
+      labelPrefix,
+      buildConfig.script.create,
+      entrypoint,
+      componentName,
+      buildConfig.script.extension,
+      template,
+      buildConfig.script.bundleImports,
+      tempPath,
+      distPath
+    )
+  ]);
+}
+
+/**
+ * Task: Post build tasks.
+ */
+async function taskPostBuild(
+  labelPrefix: string,
+  componentName: string,
+  moduleExtension: string,
+  distPath: string
+): Promise<void> {
+  // Get the build ready for distribution.
+  await runTasksParallel([
+    runTaskDistributionCopyFiles(labelPrefix, distPath),
+    runTaskDistributionPackageJson(labelPrefix, componentName, moduleExtension, distPath)
+  ]);
+
+  await runTaskBuildSymlinks(labelPrefix, componentName, distPath);
+}
+
+/**
  * Task: Build the es module version of the component.
  */
 async function taskBuildModule(
   labelPrefix: string,
   entrypoint: string,
   componentName: string,
+  moduleExtension: string,
+  template: IConfig['src']['template'],
   nodeScope: string | undefined,
   tempPath: string,
-  moduleExtension: string
+  distPath: string
 ): Promise<void> {
   await runTaskInitializeModuleFile(
+    labelPrefix,
     entrypoint,
     componentName,
     nodeScope,
     tempPath,
-    moduleExtension,
-    labelPrefix
+    moduleExtension
   );
-  await injectTemplateModule(config, componentName, labelPrefix);
-  await finalizeModule(config, componentName, labelPrefix);
+  await runTaskInjectTemplate(
+    labelPrefix,
+    tempPath,
+    `${tempPath}/${componentName}${moduleExtension}`,
+    template
+  );
+  await runTaskFinalizeModule(
+    labelPrefix,
+    componentName,
+    moduleExtension,
+    tempPath,
+    distPath
+  );
 }
 
 /**
- * Task: Create the module file.
+ * Task: Build the es5 script version of the component.
+ */
+async function taskBuildScript(
+  labelPrefix: string,
+  entrypoint: string,
+  componentName: string,
+  scriptExtension: string,
+  template: IConfig['src']['template'],
+  bundleImports: boolean,
+  tempPath: string,
+  distPath: string
+): Promise<void> {
+  await runTaskInitializeScriptFile(
+    labelPrefix,
+    entrypoint,
+    componentName,
+    tempPath,
+    scriptExtension,
+    bundleImports
+  );
+  await runTaskInjectTemplate(
+    labelPrefix,
+    tempPath,
+    `${tempPath}/${componentName}${scriptExtension}`,
+    template
+  );
+  await runTaskFinalizeScript(
+    labelPrefix,
+    componentName,
+    scriptExtension,
+    tempPath,
+    distPath
+  );
+}
+
+/**
+ * Task: Create the file for the es module version of the component.
  */
 async function taskInitializeModuleFile(
   _labelPrefix: string,
-  file: string,
+  srcEntrypoint: string,
   componentName: string,
   nodeScope: string | undefined,
   tempPath: string,
   moduleExtension: string
 ): Promise<void> {
-  const fileContent = await readFile(file, {
+  const fileContent = await readFile(srcEntrypoint, {
     encoding: 'utf8',
     flag: 'r'
   });
 
   const esLintRegExp = /^\s*\/\*+[\s\n\*]*eslint[ -]\S*\s*\*+\/\s*$/gm;
   const tsLintRegExp = /^\s*\/\/\s*tslint:.*$/gm;
-  const nodeModulesScopeRegExp = new RegExp(`(../)*node_modules/${nodeScope}/`, 'g'); // FIXME: nodeScope === undefined not handled.
+  const nodeModulesScopeRegExp =
+    nodeScope === undefined
+    ? undefined
+    : new RegExp(`(../)*node_modules/${nodeScope}/`, 'g');
   const nodeModulesRegExp = new RegExp(`(../)*node_modules/`, 'g');
-  const updatedFileContent = `${
-    fileContent
-      // Strip eslint and tslint comments.
-      .replace(esLintRegExp, '')
-      .replace(tsLintRegExp, '')
 
-      // Correct `node_modules` links.
-      .replace(nodeModulesScopeRegExp, '../')
-      .replace(nodeModulesRegExp, '../../')
+  const updatedFileContent =
+    nodeModulesScopeRegExp === undefined
+    ? `${fileContent
+          // Strip eslint and tslint comments.
+          .replace(esLintRegExp, '')
+          .replace(tsLintRegExp, '')
 
-      // Trim extra white space.
-      .trim()
+          // Correct `node_modules` links.
+          .replace(nodeModulesRegExp, '../../')
 
-    // End with a newline.
-  }\n`;
+          // Trim extra white space.
+          .trim()
+
+        // End with a newline.
+      }\n`
+    : `${fileContent
+          // Strip eslint and tslint comments.
+          .replace(esLintRegExp, '')
+          .replace(tsLintRegExp, '')
+
+          // Correct `node_modules` links.
+          .replace(nodeModulesScopeRegExp, '../')
+          .replace(nodeModulesRegExp, '../../')
+
+          // Trim extra white space.
+          .trim()
+
+        // End with a newline.
+      }\n`;
 
   await ensureDir(tempPath);
   await writeFile(
@@ -492,158 +980,227 @@ async function taskInitializeModuleFile(
   );
 }
 
-//#endregion
-
 /**
- * Build the es5 script version of the component.
- *
- * @param config - Config settings
- * @param labelPrefix - A prefix to print before the label
+ * Task: Create the file for the es5 script version of the component.
  */
-async function buildScript(
-  config: IConfig,
+async function taskInitializeScriptFile(
+  _labelPrefix: string,
+  srcEntrypoint: string,
   componentName: string,
-  labelPrefix: string
+  tempPath: string,
+  scriptExtension: string,
+  bundleImports: boolean
 ): Promise<void> {
-  const subTaskLabel = 'script';
+  const fileContent = await readFile(srcEntrypoint, {
+    encoding: 'utf8',
+    flag: 'r'
+  });
 
+  const program = parseModule(fileContent);
+  const importsAndExports = getImportsAndExports(program, bundleImports);
 
-  try {
-    if (!config.build.script.create) {
-      logTaskInfo(
-        `skipping ${subTaskLabel} - turned off in config.`,
-        labelPrefix
-      );
-
-      return;
-    }
-
-    const subTaskLabelPrefix = logTaskStarting(subTaskLabel, labelPrefix);
-
-    await initializeScriptFile(config, componentName, subTaskLabelPrefix);
-    await injectTemplateScript(config, componentName, subTaskLabelPrefix);
-    await finalizeScript(config, componentName, subTaskLabelPrefix);
-
-    logTaskSuccessful(subTaskLabel, labelPrefix);
-  } catch (error) {
-    logTaskFailed(subTaskLabel, labelPrefix);
-    throw error;
-  }
-}
-
-/**
- * Create the element file.
- *
- * @param config - Config settings
- * @param labelPrefix - A prefix to print before the label
- */
-async function initializeScriptFile(
-  config: IConfig,
-  componentName: string,
-  labelPrefix: string
-): Promise<void> {
-  const subTaskLabel = 'initialize file';
-
-
-  try {
-    logTaskStarting(subTaskLabel, labelPrefix);
-
-    const files = await glob(
-      `./${
-        config.temp.path
-      }/${tempSubpath}/**/${tempEntrypointFileBaseName}${getFileExtension(config
-        .src.entrypoint as string)}`
-    );
-
-    if (files.length !== 1) {
-      throw new UncertainEntryFileError();
-    }
-    const file = files[0];
-    const fileContent = await readFile(file, {
-      encoding: 'utf8',
-      flag: 'r'
-    });
-
-    const program = parseModule(fileContent);
-    const { esImports, esExports } = getImportsAndExports(config, program);
-    const updatedProgram = processExports(
-      processImports(program, esImports),
-      esExports
-    );
-    const updatedSourceCode =
-      `window.CatalystElements = window.CatalystElements || {};\n'${generateJS(
-        updatedProgram
-      )}`;
-
-    const destDir = `./${config.temp.path}/${tempSubpath}`;
-    await ensureDir(destDir);
-    await writeFile(
-      `${destDir}/${componentName}${config.build.script.extension}`,
-      updatedSourceCode
-    );
-
-    logTaskSuccessful(subTaskLabel, labelPrefix);
-  } catch (error) {
-    logTaskFailed(subTaskLabel, labelPrefix);
-    throw error;
-  }
-}
-
-/**
- * Inject the template markup.
- *
- * @param config - Config settings
- * @param file - The file to inject into
- * @param labelPrefix - A prefix to print before the label
- */
-async function injectTemplateMarkup(
-  config: IConfig,
-  file: string,
-  labelPrefix: string
-): Promise<void> {
-  const subTaskLabel = 'markup';
-
-
-  if (
-    config.src.template === undefined ||
-    config.src.template.markup === undefined
-  ) {
-    logTaskInfo(`skipping ${subTaskLabel} - no markup to inject.`, labelPrefix);
-    return;
-  }
-
-  const fileExtension = getFileExtension(config.src.template.markup);
-  if (!validMarkupFileTypes.includes(fileExtension)) {
-    throw new Error(`Cannot process markup files of type "${fileExtension}"`);
-  }
-
-  return injectTemplateHTML(
-    config,
-    file,
-    config.src.template.markup,
-    labelPrefix
+  return (
+    importsAndExports instanceof Error
+    ? Promise.reject(importsAndExports)
+    : taskInitializeScriptFilePart2(
+        program,
+        importsAndExports.esImports,
+        importsAndExports.esExports,
+        componentName,
+        tempPath,
+        scriptExtension
+      )
   );
 }
 
 /**
- * Inject the template html.
- *
- * @param config - Config settings
- * @param targetFile - The file to inject into
- * @param labelPrefix - A prefix to print before the label
+ * Continuation of `taskInitializeScriptFile`.
  */
-async function injectTemplateHTML(
-  config: IConfig,
-  targetFile: string,
-  markupFile: string,
-  labelPrefix: string
+async function taskInitializeScriptFilePart2(
+  program: Program,
+  esImports: ImportsAndExports['0'],
+  esExports: ImportsAndExports['1'],
+  componentName: string,
+  tempPath: string,
+  scriptExtension: string
 ): Promise<void> {
-  const subTaskLabel = 'html';
+  const updatedProgram = processImports(program, esImports);
+  return (
+    updatedProgram instanceof Error
+    ? Promise.reject(updatedProgram)
+    : taskInitializeScriptFilePart3(
+        updatedProgram,
+        esExports,
+        componentName,
+        tempPath,
+        scriptExtension
+      )
+  );
+}
 
+/**
+ * Continuation of `taskInitializeScriptFile`.
+ */
+async function taskInitializeScriptFilePart3(
+  program: Program,
+  esExports: ImportsAndExports['1'],
+  componentName: string,
+  tempPath: string,
+  scriptExtension: string
+): Promise<void> {
+  const updatedProgram = processExports(program, esExports);
+  return (
+    updatedProgram instanceof Error
+    ? Promise.reject(updatedProgram)
+    : taskInitializeScriptFilePart4(
+        updatedProgram,
+        componentName,
+        tempPath,
+        scriptExtension
+      )
+  );
+}
 
-  logTaskStarting(subTaskLabel, labelPrefix);
+/**
+ * Continuation of `taskInitializeScriptFile`.
+ */
+async function taskInitializeScriptFilePart4(
+  program: Program,
+  componentName: string,
+  tempPath: string,
+  scriptExtension: string
+): Promise<void> {
+  const updatedSourceCode =
+    `window.CatalystElements = window.CatalystElements || {};\n'${generateJS(
+      program
+    )}`;
 
-  const htmlFile = `./${config.temp.path}/${tempSubpath}/${markupFile}`;
+  await ensureDir(tempPath);
+  await writeFile(
+    `${tempPath}/${componentName}${scriptExtension}`,
+    updatedSourceCode
+  );
+}
+
+/**
+ * Task: Inject the template into the element.
+ */
+async function taskInjectTemplate(
+  labelPrefix: string,
+  tempPath: string,
+  targetFile: string,
+  template: Exclude<IConfig['src']['template'], undefined>
+): Promise<void> {
+  await runTaskInjectTemplateMarkup(labelPrefix, tempPath, template.markup, targetFile);
+  await runTaskInjectTemplateStyle(labelPrefix, tempPath, template.style, targetFile);
+}
+
+/**
+ * Task: Finalize the module.
+ */
+async function taskFinalizeModule(
+  componentName: string,
+  moduleExtension: string,
+  tempPath: string,
+  distPath: string
+): Promise<void> {
+  await copy(
+    `${tempPath}/${componentName}${moduleExtension}`,
+    `${distPath}/${componentName}${moduleExtension}`
+  );
+}
+
+/**
+ * Task: Finalize the script.
+ */
+async function taskFinalizeScript(
+  componentName: string,
+  scriptExtension: string,
+  tempPath: string,
+  distPath: string
+): Promise<void> {
+  const compiler = webpack({
+    mode: 'none',
+    entry: `${tempPath}/${componentName}${scriptExtension}`,
+    output: {
+      path: joinPaths(process.cwd(), distPath),
+      chunkFilename: `${componentName}.part-[id]${scriptExtension}`,
+      filename: `${componentName}${scriptExtension}`
+    },
+    resolve: {
+      extensions: ['.js', '.mjs']
+    },
+    plugins: getWebpackPlugIns(),
+    target: 'web'
+  });
+
+  const runCompiler = promisify(compiler.run.bind(compiler) as typeof compiler.run);
+  const stats = await runCompiler();
+
+  console.info(
+    stats.toString({
+      chunks: false,
+      colors: true
+    })
+  );
+}
+
+/**
+ * Task: Inject the template markup.
+ */
+async function taskInjectTemplateMarkup(
+  labelPrefix: string,
+  tempPath: string,
+  markupFile: string,
+  targetFile: string
+): Promise<void> {
+  const fileExtension = getFileExtension(markupFile);
+
+  return (
+    !validMarkupFileTypes.includes(fileExtension)
+    ? Promise.reject(new Error(`Cannot process markup files of type "${fileExtension}"`))
+    : runTaskInjectTemplateHTML(
+        labelPrefix,
+        tempPath,
+        targetFile,
+        markupFile
+      )
+  );
+}
+
+/**
+ * Task: Inject the template style.
+ */
+async function taskInjectTemplateStyle(
+  labelPrefix: string,
+  tempPath: string,
+  markupFile: string,
+  targetFile: string
+): Promise<void> {
+  const fileExtension = getFileExtension(markupFile);
+
+  return (
+    !validStyleFileTypes.includes(fileExtension)
+    ? Promise.reject(new Error(`Cannot process style files of type "${fileExtension}"`))
+    : runTaskInjectTemplateCSS(
+        labelPrefix,
+        tempPath,
+        targetFile,
+        markupFile
+      )
+  );
+}
+
+/**
+ * Task: Inject the template html.
+ */
+async function taskInjectTemplateHTML(
+  _labelPrefix: string,
+  tempPath: string,
+  markupFile: string,
+  targetFile: string
+): Promise<void> {
+  const htmlFile = `${tempPath}/${markupFile}`;
 
   const [element, html] = await Promise.all(
     [targetFile, htmlFile].map(async (filepath) =>
@@ -661,69 +1218,19 @@ async function injectTemplateHTML(
 
   await ensureDir(getDirName(targetFile));
   await writeFile(targetFile, injectedElement);
-
-  logTaskSuccessful(subTaskLabel, labelPrefix);
 }
 
 /**
- * Inject the template style.
- *
- * @param config - Config settings
- * @param file - The file to inject into
- * @param labelPrefix - A prefix to print before the label
+ * Task: Inject the template css.
  */
-async function injectTemplateStyle(
-  config: IConfig,
-  file: string,
-  labelPrefix: string
-): Promise<void> {
-  const subTaskLabel = 'style';
-
-
-  if (
-    config.src.template === undefined ||
-    config.src.template.style === undefined
-  ) {
-    logTaskInfo(`skipping ${subTaskLabel} - no styles to inject.`, labelPrefix);
-    return;
-  }
-
-  const fileExtension = getFileExtension(config.src.template.style);
-  if (!validStyleFileTypes.includes(fileExtension)) {
-    throw new Error(`Cannot process style files of type "${fileExtension}"`);
-  }
-
-  return injectTemplateCSS(
-    config,
-    file,
-    config.src.template.style,
-    labelPrefix
-  );
-}
-
-/**
- * Inject the template css.
- *
- * @param config - Config settings
- * @param targetFile - The file to inject into
- * @param labelPrefix - A prefix to print before the label
- */
-async function injectTemplateCSS(
-  config: IConfig,
+async function taskInjectTemplateCSS(
+  _labelPrefix: string,
+  tempPath: string,
   targetFile: string,
-  styleFile: string,
-  labelPrefix: string
+  styleFile: string
 ): Promise<void> {
-  const subTaskLabel = 'css';
-
-
-  logTaskStarting(subTaskLabel, labelPrefix);
-
-  const styleFileBasename = styleFile.substring(
-    0,
-    styleFile.length - getFileExtension(styleFile).length
-  );
-  const cssFile = `./${config.temp.path}/${tempSubpath}/${styleFileBasename}.css`;
+  const styleFileBasename = getFileBasename(styleFile);
+  const cssFile = `${tempPath}/${styleFileBasename}.css`;
 
   const [element, css] = await Promise.all(
     [targetFile, cssFile].map(async (filepath) =>
@@ -741,351 +1248,114 @@ async function injectTemplateCSS(
 
   await ensureDir(getDirName(targetFile));
   await writeFile(targetFile, injectedElement);
-  logTaskSuccessful(subTaskLabel, labelPrefix);
 }
 
 /**
- * Inject the template into the element.
- *
- * @param config - Config settings
- * @param file - The element's file
- * @param labelPrefix - A prefix to print before the label
+ * Task: Copy over other wanted files into the distribution folder.
  */
-async function injectTemplate(
-  config: IConfig,
-  file: string,
-  labelPrefix: string
+async function taskDistributionCopyFiles(
+  _labelPrefix: string,
+  distPath: string
 ): Promise<void> {
-  const subTaskLabel = 'inject template';
+  // TODO: extrat out to config.
+  const filesToCopy = [
+    './README.md',
+    './LICENSE'
+  ];
+  const files = await glob(filesToCopy);
 
-
-  try {
-    const subTaskLabelPrefix = logTaskStarting(subTaskLabel, labelPrefix);
-
-    await injectTemplateMarkup(config, file, subTaskLabelPrefix);
-    await injectTemplateStyle(config, file, subTaskLabelPrefix);
-
-    logTaskSuccessful(subTaskLabel, labelPrefix);
-  } catch (error) {
-    logTaskFailed(subTaskLabel, labelPrefix);
-    throw error;
-  }
-}
-
-/**
- * Inject the template into the module.
- *
- * @param config - Config settings
- * @param labelPrefix - A prefix to print before the label
- */
-async function injectTemplateModule(
-  config: IConfig,
-  componentName: string,
-  labelPrefix: string
-): Promise<void> {
-  await injectTemplate(
-    config,
-    `./${config.temp.path}/${tempSubpath}/${componentName}${
-      config.build.module.extension
-    }`,
-    labelPrefix
+  await Promise.all(
+    files.map(async (file) => copy(file, `${distPath}/${file}`))
   );
 }
 
 /**
- * Inject the template into the script.
- *
- * @param config - Config settings
- * @param labelPrefix - A prefix to print before the label
+ * Task: Create the package.json file for the distribution.
  */
-async function injectTemplateScript(
-  config: IConfig,
+async function taskDistributionPackageJson(
+  _labelPrefix: string,
   componentName: string,
-  labelPrefix: string
+  moduleExtension: string,
+  distPath: string
 ): Promise<void> {
+  const fileContents = await readFile('./package.json', {
+    encoding: 'utf8',
+    flag: 'r'
+  });
 
-  await injectTemplate(
-    config,
-    `./${config.temp.path}/${tempSubpath}/${componentName}${
-      config.build.script.extension
-    }`,
-    labelPrefix
+  const modifiedContent = {
+    ...JSON.parse(fileContents),
+    version: undefined,
+    main: `${componentName}${moduleExtension}`
+  };
+
+  const updatedContent = Object.keys(modifiedContent)
+    .filter(
+      (key) =>
+        !['scripts', 'directories', 'devDependencies', 'engines'].includes(
+          key
+        )
+    )
+    .reduce<INodePackage>((reducedContent, key) => ({
+      ...reducedContent,
+      [key]: modifiedContent[key]
+    }), {});
+
+  await ensureDir(distPath);
+  await writeFile(
+    `${distPath}/package.json`,
+    JSON.stringify(updatedContent, undefined, 2)
   );
 }
 
 /**
- * Finalize the module.
- *
- * @param config - Config settings
- * @param labelPrefix - A prefix to print before the label
+ * Task: Build symlinks at the root of the project to the distribution files.
  */
-async function finalizeModule(
-  config: IConfig,
+async function taskBuildSymlinks(
+  _labelPrefix: string,
   componentName: string,
-  labelPrefix: string
+  distPath: string
 ): Promise<void> {
-  const subTaskLabel = 'finalize';
+  const files = await glob(`${distPath}/${componentName}**.?(m)js`);
 
-
-  try {
-    logTaskStarting(subTaskLabel, labelPrefix);
-
-    await copy(
-      `./${config.temp.path}/${tempSubpath}/${componentName}${
-        config.build.module.extension
-      }`,
-      `./${config.dist.path}/${componentName}${config.build.module.extension}`
-    );
-
-    logTaskSuccessful(subTaskLabel, labelPrefix);
-  } catch (error) {
-    logTaskFailed(subTaskLabel, labelPrefix);
-    throw error;
-  }
+  await Promise.all(
+    files.map(async (file) => {
+      const outFile = `./${getFileBasename(file)}`;
+      await del(outFile)
+        .finally(async () => {
+          await symlink(file, outFile, 'file');
+        });
+    })
+  );
 }
 
-/**
- * Finalize the script.
- *
- * @param config - Config settings
- * @param labelPrefix - A prefix to print before the label
- */
-async function finalizeScript(
-  config: IConfig,
-  componentName: string,
-  labelPrefix: string
-): Promise<void> {
-  const subTaskLabel = 'finalize';
-
-
-  try {
-    logTaskStarting(subTaskLabel, labelPrefix);
-
-    const compiler = webpack({
-      mode: 'none',
-      entry: `./${config.temp.path}/${tempSubpath}/${componentName}${
-        config.build.script.extension
-      }`,
-      output: {
-        path: joinPaths(process.cwd(), config.dist.path),
-        chunkFilename: `${componentName}.part-[id]${
-          config.build.script.extension
-        }`,
-        filename: `${componentName}${config.build.script.extension}`
-      },
-      resolve: {
-        extensions: ['.js', '.mjs']
-      },
-      plugins: getWebpackPlugIns(),
-      target: 'web'
-    });
-
-    const runCompiler = promisify(compiler.run.bind(
-      compiler
-    ) as typeof compiler.run);
-    const stats = await runCompiler();
-    console.info(
-      stats.toString({
-        chunks: false,
-        colors: true
-      })
-    );
-
-    logTaskSuccessful(subTaskLabel, labelPrefix);
-  } catch (error) {
-    logTaskFailed(subTaskLabel, labelPrefix);
-    throw error;
-  }
-}
-
-/**
- * Copy over other wanted files into the distribution folder.
- *
- * @param config - Config settings
- * @param labelPrefix - A prefix to print before the label
- */
-async function finalizeCopyFiles(
-  config: IConfig,
-  labelPrefix: string
-): Promise<void> {
-  const subTaskLabel = 'copy files';
-
-
-  try {
-    logTaskStarting(subTaskLabel, labelPrefix);
-
-    const files = await glob(['./README.md', './LICENSE']);
-    await Promise.all(
-      files.map(async (file) => copy(file, `./${config.dist.path}/${file}`))
-    );
-
-    logTaskSuccessful(subTaskLabel, labelPrefix);
-  } catch (error) {
-    logTaskFailed(subTaskLabel, labelPrefix);
-    throw error;
-  }
-}
-
-/**
- * Create the package.json file for the distribution.
- *
- * @param config - Config settings
- * @param labelPrefix - A prefix to print before the label
- */
-async function finalizePackageJson(
-  config: IConfig,
-  componentName: string,
-  labelPrefix: string
-): Promise<void> {
-  const subTaskLabel = 'package.json';
-
-
-  try {
-    logTaskStarting(subTaskLabel, labelPrefix);
-
-    const fileContents = await readFile('./package.json', {
-      encoding: 'utf8',
-      flag: 'r'
-    });
-    const modifiedContent = {
-      ...JSON.parse(fileContents),
-      version: undefined,
-      main: `${componentName}${config.build.module.extension}`
-    };
-
-    const updatedContent = Object.keys(modifiedContent)
-      .filter(
-        (key) =>
-          !['scripts', 'directories', 'devDependencies', 'engines'].includes(
-            key
-          )
-      )
-      .reduce<INodePackage>((reducedContent, key) => {
-        return {
-          ...reducedContent,
-          [key]: modifiedContent[key]
-        };
-      }, {});
-
-    const destDir = `./${config.dist.path}`;
-    await ensureDir(destDir);
-    await writeFile(
-      `${destDir}/package.json`,
-      JSON.stringify(updatedContent, undefined, 2)
-    );
-
-    logTaskSuccessful(subTaskLabel, labelPrefix);
-  } catch (error) {
-    logTaskFailed(subTaskLabel, labelPrefix);
-    throw error;
-  }
-}
-
-/**
- * Get the build ready for distribution.
- *
- * @param config - Config settings
- * @param labelPrefix - A prefix to print before the label
- */
-async function finalize(
-  config: IConfig,
-  componentName: string,
-  labelPrefix: string
-): Promise<void> {
-  const subTaskLabel = 'finalize';
-
-
-  try {
-    const subTaskLabelPrefix = logTaskStarting(subTaskLabel, labelPrefix);
-
-    await runTasksParallel([
-      finalizeCopyFiles(config, subTaskLabelPrefix),
-      finalizePackageJson(config, componentName, subTaskLabelPrefix)
-    ]);
-
-    logTaskSuccessful(subTaskLabel, labelPrefix);
-  } catch (error) {
-    logTaskFailed(subTaskLabel, labelPrefix);
-    throw error;
-  }
-}
-
-/**
- * Build symlinks at the root of the project to the distribution files.
- *
- * @param config - Config settings
- * @param labelPrefix - A prefix to print before the label
- */
-async function buildSymlinks(
-  config: IConfig,
-  componentName: string,
-  labelPrefix: string
-): Promise<void> {
-  const subTaskLabel = 'symlinks';
-
-
-  try {
-    logTaskStarting(subTaskLabel, labelPrefix);
-
-    const files = await glob(`./${config.dist.path}/${componentName}**.?(m)js`);
-
-    await Promise.all(
-      files.map(async (file) => {
-        const outFile = `./${getFileBasename(file)}`;
-        if (existsSync(outFile)) {
-          await del(outFile);
-        }
-        await symlink(file, outFile, 'file');
-      })
-    );
-
-    logTaskSuccessful(subTaskLabel, labelPrefix);
-  } catch (error) {
-    logTaskFailed(subTaskLabel, labelPrefix);
-    throw error;
-  }
-}
-
+//#endregion
 
 //#region Helper Functions
 
 /**
  * Get the indexes of the imports and exports out of the parse code.
  *
- * Note: Bundled imports will not be returned.
- *
- * @param program - The parsed code.
+ * Note: Imports will be empty if they are to be bundled.
  */
 function getImportsAndExports(
-  config: IConfig,
-  program: Program
+  program: Program,
+  bundleImports: boolean
 ): {
-  readonly esImports: ReadonlyArray<number>;
-  readonly esExports: ReadonlyArray<number>;
+  readonly esImports: Array<number>;
+  readonly esExports: Array<number>;
 } {
-
-  // Get info about the code.
   const [esImports, esExports] = Array.from(program.body.entries())
-    .reduce<ImportsAndExportsWrapper>(
-      (reducedDetails, nodeInfo) => {
+    .reduce<ImportsAndExports>(
+      (reduced, nodeInfo) => {
         const [nodeIndex, node] = nodeInfo;
 
-        switch (node.type) {
-          case 'ImportDeclaration':
-            // Don't process imports that are to be bundled.
-            if (config.build.script.bundleImports) {
-              return reducedDetails;
-            }
-
-            ensureProcessableImport(node);
-            return [[...reducedDetails[0], nodeIndex], reducedDetails[1]];
-
-          case 'ExportNamedDeclaration':
-            return [reducedDetails[0], [...reducedDetails[1], nodeIndex]];
-
-          default:
-            return reducedDetails;
-        }
+        return processNodeForImportsAndExports(
+          reduced,
+          node,
+          nodeIndex,
+          bundleImports
+        );
       },
       [[], []]
     );
@@ -1097,35 +1367,56 @@ function getImportsAndExports(
 }
 
 /**
- * Ensure the given import declaration is processable.
- * If it is not, an error will be thrown.
+ * Check if a node is and import or export.
+ * If it is, return an updated version of `importsAndExports`.
  */
-function ensureProcessableImport(importDeclaration: ImportDeclaration): void {
-  importDeclaration.specifiers.forEach(
-    (specifier): void => {
-      const importedName =
-        specifier.type === 'ImportDefaultSpecifier'
-          ? specifier.local.name
-          : specifier.type === 'ImportSpecifier'
-            ? specifier.imported.name
-            : undefined;
+function processNodeForImportsAndExports(
+  importsAndExports: ImportsAndExports,
+  node: Program['body'][0],
+  index: number,
+  bundleImports: boolean
+): ImportsAndExports {
+  switch (node.type) {
+    case 'ImportDeclaration':
+      return (
+        // Don't process imports if they are to be bundled.
+        bundleImports
+        ? importsAndExports
+        // Mark this index as an import.
+        : [[...importsAndExports[0], index], importsAndExports[1]]
+      );
 
-      if (importedName === undefined) {
-        throw new Error(
-          `Cannot automatically process import declaration specifier.`
-        );
-      }
-      // tslint:disable-next-line:early-exit
-      if (
-        !importedName
-          .toLowerCase()
-          .startsWith('catalyst')
-      ) {
-        throw new Error(
-          `Cannot automatically process import "${importedName}".`
-        );
-      }
-    }
+    case 'ExportNamedDeclaration':
+      return [importsAndExports[0], [...importsAndExports[1], index]];
+
+    default:
+      return importsAndExports;
+  }
+}
+
+/**
+ * Check if the given import declaration is processable by this job.
+ */
+function isProcessableImport(
+  importDeclaration: ImportDeclaration
+): undefined | Error {
+  return importDeclaration.specifiers.reduce<undefined | Error>(
+    (reduced, specifier) =>
+      reduced instanceof Error
+      ? reduced
+      : specifier.type === 'ImportNamespaceSpecifier'
+      ? new ExternalError(`Cannot automatically process import declaration namespace specifiers.`)
+      : specifier.type === 'ImportDefaultSpecifier'
+      ? new ExternalError(`Do not use default imports. "${specifier.local.name}".`)
+      : (
+          specifier.type === 'ImportSpecifier' &&
+          !specifier.imported.name
+            .toLowerCase()
+            .startsWith('catalyst')
+        )
+      ? new ExternalError(`Cannot automatically process import "${specifier.imported.name}".`)
+      : undefined,
+    undefined
   );
 }
 
@@ -1140,172 +1431,104 @@ function ensureProcessableImport(importDeclaration: ImportDeclaration): void {
 function processImports(
   program: Program,
   esImports: ReadonlyArray<number>
-): Program {
-  const updatedBody = esImports.reduce((reducedBody, index) => {
-    const declaration = reducedBody[index] as ImportDeclaration;
-    return declaration.specifiers.reduce(
-      (reducedBodyInfo, specifier) => {
-        if (specifier.type === 'ImportDefaultSpecifier') {
-          throw new Error(
-            `Cannot automatically process default imports - "${
-              specifier.local.name
-            }."`
-          );
-        }
-        if (specifier.type === 'ImportNamespaceSpecifier') {
-          throw new Error(
-            `Cannot automatically process namespace imports - "${
-              specifier.local.name
-            }."`
-          );
-        }
+): Program | Error {
+  const updatedBody =
+    esImports.reduce<Program['body'] | Error>(
+      (reduced, index) =>
+        reduced instanceof Error
+        ? reduced
+        : reduced[index].type !== 'ImportDeclaration'
+        ? new Error('Non-ImportDeclaration node given as ImportDeclaration node.')
+        : processImportsPart2(reduced, reduced[index] as ImportDeclaration, index),
+      program.body
+    );
 
-        const localName = specifier.local.name;
-        const importedName = specifier.imported.name;
-
-        if (
-          !importedName
-            .toLowerCase()
-            .startsWith('catalyst')
-        ) {
-          throw new Error(
-            `Cannot automatically process import "${importedName}."`
-          );
-        }
-
-        const importReplacement = parseScript(
-          `const ${localName} = window.CatalystElements.${importedName};`
-        ).body;
-        const offsetIndex = index + reducedBodyInfo.offset;
-
-        return {
-          offset: reducedBodyInfo.offset + importReplacement.length - 1,
-          body: [
-            ...reducedBodyInfo.body.slice(0, offsetIndex),
-            ...importReplacement,
-            ...reducedBodyInfo.body.slice(offsetIndex + 1)
-          ]
-        };
-      },
-      {
-        offset: 0,
-        body: reducedBody
+  return (
+    updatedBody instanceof Error
+    ? updatedBody
+    : {
+        ...program,
+        body: updatedBody
       }
-    ).body;
-  }, program.body);
+  );
+}
+
+/**
+ * Continuation of processImports.
+ * Separate the updated body from the meta data with it.
+ */
+function processImportsPart2(
+  body: Program['body'],
+  importDeclaration: ImportDeclaration,
+  index: number
+): Program['body'] | Error {
+  const updatedBody = importDeclaration.specifiers.reduce<IImportDetails | Error>(
+    (reduced, specifier) =>
+      reduced instanceof Error
+      ? reduced
+      : processImportsPart3(importDeclaration, specifier, index, reduced.offset, reduced.body),
+    {
+      offset: 0,
+      body
+    }
+  );
+
+  return (
+    updatedBody instanceof Error
+    ? updatedBody
+    : updatedBody.body
+  );
+}
+
+/**
+ * Continuation of processImports.
+ * Process the import.
+ */
+function processImportsPart3(
+  importDeclaration: ImportDeclaration,
+  specifier: ImportDeclaration['specifiers'][0],
+  index: number,
+  offset: number,
+  body: Program['body']
+): IImportDetails | Error {
+  const processableError = isProcessableImport(importDeclaration);
+
+  return (
+    processableError !== undefined
+    ? processableError
+    : processImportsPart4(
+        (specifier as ImportSpecifier).local.name,
+        (specifier as ImportSpecifier).imported.name,
+        index,
+        offset,
+        body
+      )
+  );
+}
+
+/**
+ * Continuation of processImports.
+ * Get the updated body.
+ */
+function processImportsPart4(
+  localImportName: string,
+  originalImportName: string,
+  index: number,
+  offset: number,
+  body: Program['body']
+): IImportDetails {
+  const importReplacement = parseScript(
+    `const ${localImportName} = window.CatalystElements.${originalImportName};`
+  ).body;
 
   return {
-    ...program,
-    body: updatedBody
+    offset: offset + importReplacement.length - 1,
+    body: [
+      ...body.slice(0, index + offset),
+      ...importReplacement,
+      ...body.slice(index + offset + 1)
+    ]
   };
-}
-
-/**
- * Process an export with specifiers (without a declaration).
- */
-function processExportWithSpecifiers(
-  specifiers: ReadonlyArray<ExportSpecifier>,
-  body: IExportDetails['body'],
-  exportNamesProcessed: IExportDetails['exportNamesProcessed'],
-  index: number
-): IExportDetails {
-  return specifiers.reduce(
-    (reducedBody, specifier) => {
-      const localName = specifier.local.name;
-      const exportedName = specifier.exported.name;
-
-      // Already processed? skip.
-      if (reducedBody.exportNamesProcessed[exportedName]) {
-        return reducedBody;
-      }
-
-      // Generate replacement.
-      const exportReplacement = parseScript(
-        `window.CatalystElements.${exportedName} = ${localName};`
-      ).body;
-      const offsetIndex = index + reducedBody.offset;
-
-      // Update.
-      return {
-        exportNamesProcessed: {
-          ...reducedBody.exportNamesProcessed,
-          [exportedName]: true
-        },
-        offset: reducedBody.offset + exportReplacement.length - 1,
-        body: [
-          ...reducedBody.body.slice(0, offsetIndex),
-          ...exportReplacement,
-          ...reducedBody.body.slice(offsetIndex + 1)
-        ]
-      };
-    },
-    {
-      exportNamesProcessed,
-      offset: 0,
-      body
-    }
-  );
-}
-
-/**
- * Process an export with a declaration.
- */
-function processExportWithDeclaration(
-  declaration: FunctionDeclaration | VariableDeclaration | ClassDeclaration,
-  body: IExportDetails['body'],
-  exportNamesProcessed: IExportDetails['exportNamesProcessed'],
-  insertIndex: number
-): IExportDetails {
-  const declarations = (declaration.type !== 'VariableDeclaration'
-    ? [declaration]
-    : [...declaration.declarations]) as ReadonlyArray<
-    FunctionDeclaration | ClassDeclaration | VariableDeclarator
-  >;
-
-  return declarations.reduce<IExportDetails>(
-    (reducedBody, dec) => {
-      if (dec.id === null) {
-        throw new Error(
-          `Cannot automatically process declaration (no id pressent)`
-        );
-      }
-      if (dec.id.type !== 'Identifier') {
-        throw new Error(
-          `Cannot automatically process declaration of type ${dec.id.type}`
-        );
-      }
-
-      // Already processed? skip.
-      if (reducedBody.exportNamesProcessed[dec.id.name]) {
-        return reducedBody;
-      }
-
-      // Generate replacement.
-      const exportReplacement = parseScript(
-        `window.CatalystElements.${dec.id.name} = ${dec.id.name};`
-      ).body;
-      const offsetIndex = insertIndex + reducedBody.offset;
-
-      // Update.
-      return {
-        exportNamesProcessed: {
-          ...reducedBody.exportNamesProcessed,
-          [dec.id.name]: true
-        },
-        offset: reducedBody.offset + exportReplacement.length - 1,
-        body: [
-          ...reducedBody.body.slice(0, offsetIndex),
-          ...exportReplacement,
-          ...reducedBody.body.slice(offsetIndex + 1)
-        ]
-      };
-    },
-    {
-      exportNamesProcessed,
-      offset: 0,
-      body
-    }
-  );
 }
 
 /**
@@ -1319,37 +1542,186 @@ function processExportWithDeclaration(
 function processExports(
   program: Program,
   esExports: ReadonlyArray<number>
-): Program {
-  const updatedBody = esExports.reduce<IExportDetails>(
-    (reducedDetails, index) => {
-      const exportDef = reducedDetails.body[index] as ExportNamedDeclaration;
-      const offsetIndex = index + reducedDetails.offset;
-
-      if (exportDef.declaration == undefined) {
-        return processExportWithSpecifiers(
-          exportDef.specifiers,
-          reducedDetails.body,
-          reducedDetails.exportNamesProcessed,
-          offsetIndex
-        );
-      }
-      return processExportWithDeclaration(
-        exportDef.declaration,
-        reducedDetails.body,
-        reducedDetails.exportNamesProcessed,
-        offsetIndex
-      );
-    },
+): Program | Error {
+  const updatedBody = esExports.reduce<IExportDetails | Error>(
+    (reduced, index) =>
+      reduced instanceof Error
+      ? reduced
+      : processExportsPart2(
+          reduced.body[index] as ExportNamedDeclaration,
+          index,
+          reduced.exportNamesProcessed,
+          reduced.body,
+          reduced.offset
+        ),
     {
       exportNamesProcessed: {},
       offset: 0,
       body: program.body
     }
+  );
+
+  return (
+    updatedBody instanceof Error
+    ? updatedBody
+    : {
+        ...program,
+        body: updatedBody.body
+      }
+  );
+}
+
+function processExportsPart2(
+  exportDef: ExportNamedDeclaration,
+  index: number,
+  exportNamesProcessed: IExportDetails['exportNamesProcessed'],
+  body: IExportDetails['body'],
+  offset: number
+): IExportDetails | Error {
+  return (
+    exportDef.declaration == undefined
+    ? processExportWithSpecifiers(
+        exportDef.specifiers,
+        body,
+        exportNamesProcessed,
+        index + offset
+      )
+    : processExportWithDeclaration(
+        exportDef.declaration,
+        body,
+        exportNamesProcessed,
+        index + offset
+      )
+  );
+}
+
+/**
+ * Process an export with specifiers (without a declaration).
+ */
+function processExportWithSpecifiers(
+  specifiers: ReadonlyArray<ExportSpecifier>,
+  body: IExportDetails['body'],
+  exportNamesProcessed: IExportDetails['exportNamesProcessed'],
+  index: number
+): IExportDetails {
+  return specifiers.reduce(
+    (reduced, specifier) =>
+      reduced.exportNamesProcessed[specifier.exported.name]
+      ? reduced
+      : processExportWithSpecifiersPart2(
+          specifier.local.name,
+          specifier.exported.name,
+          index,
+          reduced.exportNamesProcessed,
+          reduced.offset,
+          reduced.body
+        ),
+    {
+      exportNamesProcessed,
+      offset: 0,
+      body
+    }
+  );
+}
+
+/**
+ * Continuation of `processExportWithSpecifiers`.
+ */
+function processExportWithSpecifiersPart2(
+  localName: string,
+  exportedName: string,
+  index: number,
+  exportNamesProcessed: IExportDetails['exportNamesProcessed'],
+  offset: number,
+  body: Program['body']
+): IExportDetails {
+  // Generate replacement.
+  const exportReplacement = parseScript(
+    `window.CatalystElements.${exportedName} = ${localName};`
   ).body;
 
+  // Update.
   return {
-    ...program,
-    body: updatedBody as Array<Statement | ModuleDeclaration>
+    exportNamesProcessed: {
+      ...exportNamesProcessed,
+      [exportedName]: true
+    },
+    offset: offset + exportReplacement.length - 1,
+    body: [
+      ...body.slice(0, index + offset),
+      ...exportReplacement,
+      ...body.slice(index + offset + 1)
+    ]
+  };
+}
+
+/**
+ * Process an export with a declaration.
+ */
+function processExportWithDeclaration(
+  declaration: FunctionDeclaration | VariableDeclaration | ClassDeclaration,
+  body: IExportDetails['body'],
+  exportNamesProcessed: IExportDetails['exportNamesProcessed'],
+  insertIndex: number
+): IExportDetails | Error {
+  const declarations: Array<FunctionDeclaration | ClassDeclaration | VariableDeclarator> = (
+    declaration.type !== 'VariableDeclaration'
+    ? [declaration]
+    : [...declaration.declarations]
+  );
+
+  return declarations.reduce<IExportDetails | Error>(
+    (reduced, dec) =>
+      reduced instanceof Error
+      ? reduced
+      : dec.id === null
+      ? new Error(`Cannot automatically process declaration (no id pressent)`)
+      : dec.id.type !== 'Identifier'
+      ? new Error(`Cannot automatically process declaration of type ${dec.id.type}`)
+      : reduced.exportNamesProcessed[dec.id.name]
+      ? reduced
+      : processExportWithDeclarationPart2(
+          dec.id.name,
+          insertIndex,
+          reduced.exportNamesProcessed,
+          reduced.offset,
+          reduced.body
+        ),
+    {
+      exportNamesProcessed,
+      offset: 0,
+      body
+    }
+  );
+}
+
+/**
+ * Continuation of `processExportWithDeclaration`
+ */
+function processExportWithDeclarationPart2(
+  declarationName: string,
+  insertIndex: number,
+  exportNamesProcessed: IExportDetails['exportNamesProcessed'],
+  offset: number,
+  body: IExportDetails['body']
+): IExportDetails | Error {
+  // Generate replacement.
+  const exportReplacement = parseScript(
+    `window.CatalystElements.${declarationName} = ${declarationName};`
+  ).body;
+
+  // Update.
+  return {
+    exportNamesProcessed: {
+      ...exportNamesProcessed,
+      [declarationName]: true
+    },
+    offset: offset + exportReplacement.length - 1,
+    body: [
+      ...body.slice(0, insertIndex + offset),
+      ...exportReplacement,
+      ...body.slice(insertIndex + offset + 1)
+    ]
   };
 }
 
@@ -1357,12 +1729,17 @@ function processExports(
 
 //#region Types
 
-type ImportsAndExportsWrapper = [Array<number>, Array<number>];
+type ImportsAndExports = [Array<number>, Array<number>];
+
+interface IImportDetails {
+  readonly offset: number;
+  readonly body: Program['body'];
+}
 
 interface IExportDetails {
   readonly exportNamesProcessed: { readonly [key: string]: boolean };
   readonly offset: number;
-  readonly body: ReadonlyArray<Statement | ModuleDeclaration>;
+  readonly body: Array<Statement | ModuleDeclaration>;
 }
 
 //#endregion

@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 
 /**
- * The entry point file to run the tasks defined in ../lib/ from the commandline.
+ * The entry point file to run the jobs defined in ../lib/ from the commandline.
  */
 
 import { existsSync, readJSON } from 'fs-extra';
 
-import { getConfig, TASKS } from '../lib';
+import { getConfig, JOBS } from '../lib';
 import { MultiPromiseRejectionError } from '../lib/classes/MultiPromiseRejectionError';
 import { IConfig } from '../lib/config';
 import { ExternalError } from '../lib/util';
@@ -24,9 +24,9 @@ const commands = {
   fixDependencies: 'Fix known issues with some dependencies.'
 };
 
-type Task = Exclude<keyof typeof commands, 'help'>;
+type Job = Exclude<keyof typeof commands, 'help'>;
 interface IRunSettings {
-  readonly taskName?: Task;
+  readonly jobName?: Job;
   readonly help: boolean;
   readonly config: string;
 }
@@ -46,17 +46,17 @@ const flagMap: { readonly [key: string]: keyof typeof flags } = {
  */
 function run(args: ReadonlyArray<string>): void {
   if (args.length === 0) {
-    throw new ExternalError('No task name given. Use --help for more info.');
+    throw new ExternalError('No job name given. Use --help for more info.');
   }
 
   const settings = getSettings(args);
 
   // tslint:disable:no-floating-promises
-  if (settings.taskName !== undefined) {
+  if (settings.jobName !== undefined) {
     if (settings.help) {
       showHelp();
     } else {
-      runTask(settings.taskName, settings.config);
+      runJob(settings.jobName, settings.config);
     }
   } else if (settings.help) {
     showHelp();
@@ -87,7 +87,7 @@ function getSettings(args: ReadonlyArray<string>): IRunSettings {
 
         case false:
           if (!Object.prototype.hasOwnProperty.call(commands, arg)) {
-            throw new ExternalError(`No task with the name "${arg}" exists.`);
+            throw new ExternalError(`No job with the name "${arg}" exists.`);
           }
           if (arg === 'help') {
             return {
@@ -97,7 +97,7 @@ function getSettings(args: ReadonlyArray<string>): IRunSettings {
           }
           return {
             ...reduced,
-            taskName: arg as Task
+            jobName: arg as Job
           };
 
         default:
@@ -105,7 +105,7 @@ function getSettings(args: ReadonlyArray<string>): IRunSettings {
       }
     },
     {
-      taskName: undefined,
+      jobName: undefined,
       help: false,
       config: './build-config.json'
     }
@@ -113,26 +113,26 @@ function getSettings(args: ReadonlyArray<string>): IRunSettings {
 }
 
 /**
- * Run a task.
+ * Run a job.
  *
- * @param taskName The name of the task to run.
+ * @param jobName The name of the job to run.
  */
-async function runTask(taskName: Task, userConfigFile: string): Promise<void> {
-  const task = TASKS.get(taskName);
+async function runJob(jobName: Job, userConfigFile: string): Promise<void> {
+  const job = JOBS.get(jobName);
 
-  if (task === undefined) {
-    throw new Error(`No task with the name "${taskName}" exists.`);
+  if (job === undefined) {
+    throw new Error(`No job with the name "${jobName}" exists.`);
   }
 
   try {
     if (existsSync(userConfigFile)) {
       const userConfig = (await readJSON(userConfigFile)) as Partial<IConfig>;
-      await task(taskName, getConfig(userConfig));
+      await job(jobName, getConfig(userConfig));
     } else {
-      await task(taskName);
+      await job(jobName);
     }
   } catch (error) {
-    console.info('Task Failed.');
+    console.info('Job Failed.');
     if (error instanceof Error) {
       if (error instanceof MultiPromiseRejectionError) {
         console.info(`  - ${error.errors.join('\n  - ')}`);

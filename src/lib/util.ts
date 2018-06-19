@@ -32,35 +32,36 @@ export interface INodePackage {
 }
 
 // tslint:disable:max-line-length
-export async function runTask<T1>(subTaskLabel: string, labelPrefix: string, taskFunction: (lp: string, p1: T1) => Promise<void>, parameters: [T1]): Promise<void>;
-export async function runTask<T1, T2>(subTaskLabel: string, labelPrefix: string, taskFunction: (lp: string, p1: T1, p2: T2) => Promise<void>, parameters: [T1, T2]): Promise<void>;
-export async function runTask<T1, T2, T3>(subTaskLabel: string, labelPrefix: string, taskFunction: (lp: string, p1: T1, p2: T2, p3: T3) => Promise<void>, parameters: [T1, T2, T3]): Promise<void>;
-export async function runTask<T1, T2, T3, T4>(subTaskLabel: string, labelPrefix: string, taskFunction: (lp: string, p1: T1, p2: T2, p3: T3, p4: T4) => Promise<void>, parameters: [T1, T2, T3, T4]): Promise<void>;
-export async function runTask<T1, T2, T3, T4, T5>(subTaskLabel: string, labelPrefix: string, taskFunction: (lp: string, p1: T1, p2: T2, p3: T3, p4: T4, p5: T5) => Promise<void>, parameters: [T1, T2, T3, T4, T5]): Promise<void>;
-export async function runTask<T1, T2, T3, T4, T5, T6>(subTaskLabel: string, labelPrefix: string, taskFunction: (lp: string, p1: T1, p2: T2, p3: T3, p4: T4, p5: T5, p6: T6) => Promise<void>, parameters: [T1, T2, T3, T4, T5, T6]): Promise<void>;
-export async function runTask<T1, T2, T3, T4, T5, T6, T7>(subTaskLabel: string, labelPrefix: string, taskFunction: (lp: string, p1: T1, p2: T2, p3: T3, p4: T4, p5: T5, p6: T6, p7: T7) => Promise<void>, parameters: [T1, T2, T3, T4, T5, T6, T7]): Promise<void>;
-export async function runTask<T1, T2, T3, T4, T5, T6, T7, T8>(subTaskLabel: string, labelPrefix: string, taskFunction: (lp: string, p1: T1, p2: T2, p3: T3, p4: T4, p5: T5, p6: T6, p7: T7, p8: T8) => Promise<void>, parameters: [T1, T2, T3, T4, T5, T6, T7, T8]): Promise<void>;
-export async function runTask<T1, T2, T3, T4, T5, T6, T7, T8, T9>(subTaskLabel: string, labelPrefix: string, taskFunction: (lp: string, p1: T1, p2: T2, p3: T3, p4: T4, p5: T5, p6: T6, p7: T7, p8: T8, p9: T9) => Promise<void>, parameters: [T1, T2, T3, T4, T5, T6, T7, T8, T9]): Promise<void>;
-export async function runTask<T1, T2, T3, T4, T5, T6, T7, T8, T9, T10>(subTaskLabel: string, labelPrefix: string, taskFunction: (lp: string, p1: T1, p2: T2, p3: T3, p4: T4, p5: T5, p6: T6, p7: T7, p8: T8, p9: T9, p10: T10) => Promise<void>, parameters: [T1, T2, T3, T4, T5, T6, T7, T8, T9, T10]): Promise<void>;
+export async function runTask(taskFunction: (lp: string) => Promise<void>, taskParameters: Array<never>, taskLabel: string, taskLabelPrefix: string): Promise<void>;
+export async function runTask<T1>(taskFunction: (lp: string, p1: T1) => Promise<void>, taskParameters: [T1], taskLabel: string, taskLabelPrefix: string): Promise<void>;
+export async function runTask<T1, T2>(taskFunction: (lp: string, p1: T1, p2: T2) => Promise<void>, taskParameters: [T1, T2], taskLabel: string, taskLabelPrefix: string): Promise<void>;
+export async function runTask<T1, T2, T3>(taskFunction: (lp: string, p1: T1, p2: T2, p3: T3) => Promise<void>, taskParameters: [T1, T2, T3], taskLabel: string, taskLabelPrefix: string): Promise<void>;
+export async function runTask<T1, T2, T3, T4>(taskFunction: (lp: string, p1: T1, p2: T2, p3: T3, p4: T4) => Promise<void>, taskParameters: [T1, T2, T3, T4], taskLabel: string, taskLabelPrefix: string): Promise<void>;
+export async function runTask<T1, T2, T3, T4, T5>(taskFunction: (lp: string, p1: T1, p2: T2, p3: T3, p4: T4, p5: T5) => Promise<void>, taskParameters: [T1, T2, T3, T4, T5], taskLabel: string, taskLabelPrefix: string): Promise<void>;
+export async function runTask<T1, T2, T3, T4, T5, T6>(taskFunction: (lp: string, p1: T1, p2: T2, p3: T3, p4: T4, p5: T5, p6: T6) => Promise<void>, taskParameters: [T1, T2, T3, T4, T5, T6], taskLabel: string, taskLabelPrefix: string): Promise<void>;
+export async function runTask<T1, T2, T3, T4, T5, T6, T7>(taskFunction: (lp: string, p1: T1, p2: T2, p3: T3, p4: T4, p5: T5, p6: T6, p7: T7) => Promise<void>, taskParameters: [T1, T2, T3, T4, T5, T6, T7], taskLabel: string, taskLabelPrefix: string): Promise<void>;
+export async function runTask<T1, T2, T3, T4, T5, T6, T7, T8>(taskFunction: (lp: string, p1: T1, p2: T2, p3: T3, p4: T4, p5: T5, p6: T6, p7: T7, p8: T8) => Promise<void>, taskParameters: [T1, T2, T3, T4, T5, T6, T7, T8], taskLabel: string, taskLabelPrefix: string): Promise<void>;
+export async function runTask<T1, T2, T3, T4, T5, T6, T7, T8, T9>(taskFunction: (lp: string, p1: T1, p2: T2, p3: T3, p4: T4, p5: T5, p6: T6, p7: T7, p8: T8, p9: T9) => Promise<void>, taskParameters: [T1, T2, T3, T4, T5, T6, T7, T8, T9], taskLabel: string, taskLabelPrefix: string): Promise<void>;
+export async function runTask<T1, T2, T3, T4, T5, T6, T7, T8, T9, T10>(taskFunction: (lp: string, p1: T1, p2: T2, p3: T3, p4: T4, p5: T5, p6: T6, p7: T7, p8: T8, p9: T9, p10: T10) => Promise<void>, taskParameters: [T1, T2, T3, T4, T5, T6, T7, T8, T9, T10], taskLabel: string, taskLabelPrefix: string): Promise<void>;
 // tslint:enable:max-line-length
 
 /**
  * Run a given function as a task.
  */
 export async function runTask<T>(
-  subTaskLabel: string,
-  labelPrefix: string,
-  taskFunction: (labelPrefix: string, ...params: Array<T>) => Promise<void>,
-  parameters: Array<T>
+  task: (labelPrefix: string, ...params: Array<T>) => Promise<void>,
+  taskParameters: Array<T>,
+  taskLabel: string,
+  taskLabelPrefix: string
 ): Promise<void> {
-  const subTaskLabelPrefix = logTaskStarting(subTaskLabel, labelPrefix);
+  const subTaskLabelPrefix = logTaskStarting(taskLabel, taskLabelPrefix);
 
-  return taskFunction(subTaskLabelPrefix, ...parameters)
+  return task(subTaskLabelPrefix, ...taskParameters)
     .then(() => {
-      logTaskSuccessful(subTaskLabel, labelPrefix);
+      logTaskSuccessful(taskLabel, taskLabelPrefix);
     })
     .catch((error) => {
-      logTaskFailed(subTaskLabel, labelPrefix);
+      logTaskFailed(taskLabel, taskLabelPrefix);
       return Promise.reject(error);
     });
 }

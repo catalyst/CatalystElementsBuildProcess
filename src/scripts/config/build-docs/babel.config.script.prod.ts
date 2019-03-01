@@ -1,0 +1,1 @@
+../build/babel.config.script.prod.ts

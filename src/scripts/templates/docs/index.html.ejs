@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <% preloadTags.forEach((tag) => { %>
+    <%- tag %>
+  <% }); %>
+
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, minimum-scale=1.0, initial-scale=1.0, user-scalable=yes">
+  <meta name="description" content="<%= description %>">
+  <meta name="theme-color" content="#ba2025">
+
+  <title><%= title %></title>
+
+  <% if (env === 'production') { %>
+  <script id="es5-adapter-loader" nomodule><%- es5AdapterLoaderScript %></script>
+  <% } %>
+  <% polyfillScriptsSrc.forEach((src) => { %>
+    <script src="<%= src %>" defer></script>
+  <% }); %>
+
+  <script type="module" src="<%= mainModuleSrc %>" defer></script>
+  <% if (env === 'production') { %>
+  <script nomodule src="<%= mainScriptSrc %>" defer></script>
+  <% } %>
+
+  <style><%- style %></style>
+</head>
+
+<body>
+  <iron-component-page></iron-component-page>
+</body>
+
+</html>

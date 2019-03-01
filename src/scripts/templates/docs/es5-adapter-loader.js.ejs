@@ -1,0 +1,6 @@
+const script = document.createElement('script');
+script.setAttribute('src', '<%- customElementsEs5AdapterPath %>');
+script.setAttribute('defer', '');
+
+const loader = document.getElementById('es5-adapter-loader');
+loader.parentElement.insertBefore(script, loader.nextSibling);

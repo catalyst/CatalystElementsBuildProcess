@@ -1,0 +1,7 @@
+{
+  "extends": [
+    "@rebeccastevens/tslint-rebeccastevens/ruleset-recommended"
+  ],
+  "rules": {
+  }
+}

@@ -1,0 +1,18 @@
+diff --git a/node_modules/terser/tools/terser.d.ts b/node_modules/terser/tools/terser.d.ts
+index d57ace7..47a292f 100644
+--- a/node_modules/terser/tools/terser.d.ts
++++ b/node_modules/terser/tools/terser.d.ts
+@@ -94,11 +94,11 @@ export interface OutputOptions {
+     comments?: boolean | 'all' | 'some' | RegExp;
+     ecma?: ECMA;
+     indent_level?: number;
+-    indent_start?: boolean;
++    indent_start?: number;
+     inline_script?: boolean;
+     ie8?: boolean;
+     keep_quoted_props?: boolean;
+-    max_line_len?: boolean;
++    max_line_len?: number | false;
+     preamble?: string;
+     quote_keys?: boolean;
+     quote_style?: OutputQuoteStyle;

@@ -1,0 +1,1 @@
+../build/terser.config.prod.ts

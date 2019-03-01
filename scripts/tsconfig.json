@@ -1,0 +1,26 @@
+{
+  "extends": "../tsconfig.common.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "rootDir": ".",
+    "resolveJsonModule": true,
+
+    // Coding style
+    "noFallthroughCasesInSwitch": false,
+    "noImplicitAny": false,
+    "noImplicitReturns": false,
+    "noImplicitThis": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "strictNullChecks": false,
+
+    // Output
+    "noEmitOnError": false,
+    "module": "commonjs",
+    "target": "es5"
+  },
+  "include": [
+    "**/*.ts",
+    "../custom_typings/**/*.d.ts"
+  ]
+}

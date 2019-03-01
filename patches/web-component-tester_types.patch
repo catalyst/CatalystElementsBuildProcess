@@ -1,0 +1,2867 @@
+diff --git a/node_modules/web-component-tester/package.json b/node_modules/web-component-tester/package.json
+index a3b3f5e..90d9d88 100644
+--- a/node_modules/web-component-tester/package.json
++++ b/node_modules/web-component-tester/package.json
+@@ -23,6 +23,7 @@
+     "web"
+   ],
+   "main": "runner.js",
++  "types": "runner.d.ts",
+   "bin": {
+     "wct": "./bin/wct",
+     "wct-st": "./bin/wct-st"
+diff --git a/node_modules/web-component-tester/runner/browserrunner.ts b/node_modules/web-component-tester/runner/browserrunner.ts
+deleted file mode 100644
+index 73044fe..0000000
+--- a/node_modules/web-component-tester/runner/browserrunner.ts
++++ /dev/null
+@@ -1,278 +0,0 @@
+-/**
+- * @license
+- * Copyright (c) 2014 The Polymer Project Authors. All rights reserved.
+- * This code may only be used under the BSD style license found at
+- * http://polymer.github.io/LICENSE.txt
+- * The complete set of authors may be found at
+- * http://polymer.github.io/AUTHORS.txt
+- * The complete set of contributors may be found at
+- * http://polymer.github.io/CONTRIBUTORS.txt
+- * Code distributed by Google as part of the polymer project is also
+- * subject to an additional IP rights grant found at
+- * http://polymer.github.io/PATENTS.txt
+- */
+-
+-import * as chalk from 'chalk';
+-import * as cleankill from 'cleankill';
+-import * as _ from 'lodash';
+-import * as wd from 'wd';
+-import {Config} from './config';
+-
+-export interface Stats {
+-  status: string;
+-  passing?: number;
+-  pending?: number;
+-  failing?: number;
+-}
+-
+-export interface BrowserDef extends wd.Capabilities {
+-  id: number;
+-  url: string;
+-  sessionId: string;
+-  deviceName?: string;
+-  variant?: string;
+-}
+-
+-// Browser abstraction, responsible for spinning up a browser instance via wd.js
+-// and executing runner.html test files passed in options.files
+-export class BrowserRunner {
+-  timeout: number;
+-  browser: wd.Browser;
+-  stats: Stats;
+-  sessionId: string;
+-  timeoutId: NodeJS.Timer;
+-  emitter: NodeJS.EventEmitter;
+-  def: BrowserDef;
+-  options: Config;
+-  donePromise: Promise<void>;
+-
+-  /**
+-   * The url of the initial page to load in the browser when starting tests.
+-   */
+-  url: string;
+-
+-  private _resolve: () => void;
+-  private _reject: (err: any) => void;
+-
+-  /**
+-   * @param emitter The emitter to send updates about test progress to.
+-   * @param def A BrowserDef describing and defining the browser to be run.
+-   *     Includes both metadata and a method for connecting/launching the
+-   *     browser.
+-   * @param options WCT options.
+-   * @param url The url of the generated index.html file that the browser should
+-   *     point at.
+-   * @param waitFor Optional. If given, we won't try to start/connect to the
+-   *     browser until this promise resolves. Used for serializing access to
+-   *     Safari webdriver, which can only have one instance running at once.
+-   */
+-  constructor(
+-      emitter: NodeJS.EventEmitter, def: BrowserDef, options: Config,
+-      url: string, waitFor?: Promise<void>) {
+-    this.emitter = emitter;
+-    this.def = def;
+-    this.options = options;
+-    this.timeout = options.testTimeout;
+-    this.emitter = emitter;
+-    this.url = url;
+-
+-    this.stats = {status: 'initializing'};
+-
+-    this.donePromise = new Promise<void>((resolve, reject) => {
+-      this._resolve = resolve;
+-      this._reject = reject;
+-    });
+-
+-    waitFor = waitFor || Promise.resolve();
+-    waitFor.then(() => {
+-      this.browser = wd.remote(this.def.url);
+-
+-      // never retry selenium commands
+-      this.browser.configureHttp({retries: -1});
+-
+-
+-      cleankill.onInterrupt(() => {
+-        return new Promise((resolve) => {
+-          if (!this.browser) {
+-            return resolve();
+-          }
+-
+-          this.donePromise.then(() => resolve(), () => resolve());
+-          this.done('Interrupting');
+-        });
+-      });
+-
+-      this.browser.on('command', (method: any, context: any) => {
+-        emitter.emit('log:debug', this.def, chalk.cyan(method), context);
+-      });
+-
+-      this.browser.on('http', (method: any, path: any, data: any) => {
+-        if (data) {
+-          emitter.emit(
+-              'log:debug',
+-              this.def,
+-              chalk.magenta(method),
+-              chalk.cyan(path),
+-              data);
+-        } else {
+-          emitter.emit(
+-              'log:debug', this.def, chalk.magenta(method), chalk.cyan(path));
+-        }
+-      });
+-
+-      this.browser.on('connection', (code: any, message: any, error: any) => {
+-        emitter.emit(
+-            'log:warn', this.def, 'Error code ' + code + ':', message, error);
+-      });
+-
+-      this.emitter.emit('browser-init', this.def, this.stats);
+-
+-      // Make sure that we are passing a pristine capabilities object to
+-      // webdriver. None of our screwy custom properties!
+-      const webdriverCapabilities = _.clone(this.def);
+-      delete webdriverCapabilities.id;
+-      delete webdriverCapabilities.url;
+-      delete webdriverCapabilities.sessionId;
+-
+-      // Reusing a session?
+-      if (this.def.sessionId) {
+-        this.browser.attach(this.def.sessionId, (error) => {
+-          this._init(error, this.def.sessionId);
+-        });
+-      } else {
+-        this.browser.init(webdriverCapabilities, this._init.bind(this));
+-      }
+-    });
+-  }
+-
+-  _init(error: any, sessionId: string) {
+-    if (!this.browser) {
+-      return;  // When interrupted.
+-    }
+-    if (error) {
+-      // TODO(nevir): BEGIN TEMPORARY CHECK.
+-      // https://github.com/Polymer/web-component-tester/issues/51
+-      if (this.def.browserName === 'safari' && error.data) {
+-        // debugger;
+-        try {
+-          const data = JSON.parse(error.data);
+-          if (data.value && data.value.message &&
+-              /Failed to connect to SafariDriver/i.test(data.value.message)) {
+-            error = 'Until Selenium\'s SafariDriver supports ' +
+-                'Safari 6.2+, 7.1+, & 8.0+, you must\n' +
+-                'manually install it. Follow the steps at:\n' +
+-                'https://github.com/SeleniumHQ/selenium/' +
+-                'wiki/SafariDriver#getting-started';
+-          }
+-        } catch (error) {
+-          // Show the original error.
+-        }
+-      }
+-      // END TEMPORARY CHECK
+-      this.done(error.data || error);
+-    } else {
+-      this.sessionId = sessionId;
+-      this.startTest();
+-      this.extendTimeout();
+-    }
+-  }
+-
+-  startTest() {
+-    const paramDelim = (this.url.indexOf('?') === -1 ? '?' : '&');
+-    const extra = `${paramDelim}cli_browser_id=${this.def.id}`;
+-    this.browser.get(this.url + extra, (error) => {
+-      if (error) {
+-        this.done(error.data || error);
+-      } else {
+-        this.extendTimeout();
+-      }
+-    });
+-  }
+-
+-  onEvent(event: string, data: any) {
+-    this.extendTimeout();
+-    if (event === 'browser-start') {
+-      // Always assign, to handle re-runs (no browser-init).
+-      this.stats = {
+-        status: 'running',
+-        passing: 0,
+-        pending: 0,
+-        failing: 0,
+-      };
+-    } else if (event === 'test-end') {
+-      this.stats[data.state] = this.stats[data.state] + 1;
+-    }
+-
+-    if (event === 'browser-end' || event === 'browser-fail') {
+-      this.done(data);
+-    } else {
+-      this.emitter.emit(event, this.def, data, this.stats, this.browser);
+-    }
+-  }
+-
+-  done(error: any) {
+-    // No quitting for you!
+-    if (this.options.persistent) {
+-      return;
+-    }
+-
+-    if (this.timeoutId) {
+-      clearTimeout(this.timeoutId);
+-    }
+-    // Don't double-quit.
+-    if (!this.browser) {
+-      return;
+-    }
+-    const browser = this.browser;
+-    this.browser = null;
+-
+-    this.stats.status = error ? 'error' : 'complete';
+-    if (!error && this.stats.failing > 0) {
+-      error = this.stats.failing + ' failed tests';
+-    }
+-
+-    this.emitter.emit(
+-        'browser-end', this.def, error, this.stats, this.sessionId, browser);
+-
+-    // Nothing to quit.
+-    if (!this.sessionId) {
+-      error ? this._reject(error) : this._resolve();
+-    }
+-
+-    browser.quit((quitError) => {
+-      if (quitError) {
+-        this.emitter.emit(
+-            'log:warn',
+-            this.def,
+-            'Failed to quit:',
+-            quitError.data || quitError);
+-      }
+-      if (error) {
+-        this._reject(error);
+-      } else {
+-        this._resolve();
+-      }
+-    });
+-  }
+-
+-  extendTimeout() {
+-    if (this.options.persistent) {
+-      return;
+-    }
+-    if (this.timeoutId) {
+-      clearTimeout(this.timeoutId);
+-    }
+-    this.timeoutId = setTimeout(() => {
+-      this.done('Timed out');
+-    }, this.timeout);
+-  }
+-
+-  quit() {
+-    this.done('quit was called');
+-  }
+-
+-  // HACK
+-  static BrowserRunner = BrowserRunner;
+-}
+-
+-module.exports = BrowserRunner;
+diff --git a/node_modules/web-component-tester/runner/cli.ts b/node_modules/web-component-tester/runner/cli.ts
+deleted file mode 100644
+index 9691918..0000000
+--- a/node_modules/web-component-tester/runner/cli.ts
++++ /dev/null
+@@ -1,136 +0,0 @@
+-/**
+- * @license
+- * Copyright (c) 2014 The Polymer Project Authors. All rights reserved.
+- * This code may only be used under the BSD style license found at
+- * http://polymer.github.io/LICENSE.txt
+- * The complete set of authors may be found at
+- * http://polymer.github.io/AUTHORS.txt
+- * The complete set of contributors may be found at
+- * http://polymer.github.io/CONTRIBUTORS.txt
+- * Code distributed by Google as part of the polymer project is also
+- * subject to an additional IP rights grant found at
+- * http://polymer.github.io/PATENTS.txt
+- */
+-
+-import * as chalk from 'chalk';
+-import * as events from 'events';
+-import * as _ from 'lodash';
+-
+-import {CliReporter} from './clireporter';
+-import * as config from './config';
+-import {Context} from './context';
+-import {Plugin} from './plugin';
+-import {test} from './test';
+-
+-const PACKAGE_INFO = require('../package.json');
+-const noopNotifier = {
+-  notify: () => {}
+-};
+-let updateNotifier = noopNotifier;
+-
+-(function() {
+-try {
+-  updateNotifier = require('update-notifier')({pkg: PACKAGE_INFO});
+-} catch (error) {
+-  // S'ok if we don't have update-notifier. It's optional.
+-}
+-})();
+-
+-export async function run(
+-    _env: any, args: string[], output: NodeJS.WritableStream): Promise<void> {
+-  await wrapResult(output, _run(args, output));
+-}
+-
+-async function _run(args: string[], output: NodeJS.WritableStream) {
+-  // If the "--version" or "-V" flag is ever present, just print
+-  // the current version. Useful for globally installed CLIs.
+-  if (args.includes('--version') || args.includes('-V')) {
+-    output.write(`${PACKAGE_INFO.version}\n`);
+-    return Promise.resolve();
+-  }
+-
+-  // Options parsing is a two phase affair. First, we need an initial set of
+-  // configuration so that we know which plugins to load, etc:
+-  let options = config.preparseArgs(args) as config.Config;
+-  // Depends on values from the initial merge:
+-  options = config.merge(options, <config.Config>{
+-    output: output,
+-    ttyOutput: !process.env.CI && output['isTTY'] && !options.simpleOutput,
+-  });
+-  const context = new Context(options);
+-
+-  if (options.skipUpdateCheck) {
+-    updateNotifier = noopNotifier;
+-  }
+-
+-  // `parseArgs` merges any new configuration into `context.options`.
+-  await config.parseArgs(context, args);
+-  await test(context);
+-}
+-
+-// Note that we're cheating horribly here. Ideally all of this logic is within
+-// wct-sauce. The trouble is that we also want WCT's configuration lookup logic,
+-// and that's not (yet) cleanly exposed.
+-export async function runSauceTunnel(
+-    _env: any, args: string[], output: NodeJS.WritableStream): Promise<void> {
+-  await wrapResult(output, _runSauceTunnel(args, output));
+-}
+-
+-async function _runSauceTunnel(args: string[], output: NodeJS.WritableStream) {
+-  const cmdOptions = config.preparseArgs(args) as config.Config;
+-  const context = new Context(cmdOptions);
+-
+-  const diskOptions = context.options;
+-  const baseOptions: config.Config =
+-      (diskOptions.plugins && diskOptions.plugins['sauce']) ||
+-      diskOptions.sauce || {};
+-
+-  const plugin = await Plugin.get('sauce');
+-  const parser = require('nomnom');
+-  parser.script('wct-st');
+-  parser.options(_.omit(plugin.cliConfig, 'browsers', 'tunnelId'));
+-  const options = _.merge(baseOptions, parser.parse(args));
+-
+-  const wctSauce = require('wct-sauce');
+-  wctSauce.expandOptions(options);
+-
+-  const emitter = new events.EventEmitter();
+-  new CliReporter(emitter, output, <config.Config>{});
+-  const tunnelId = await new Promise<string>((resolve, reject) => {
+-    wctSauce.startTunnel(
+-        options,
+-        emitter,
+-        (error: any, tunnelId: string) =>
+-            error ? reject(error) : resolve(tunnelId));
+-  });
+-
+-  output.write('\n');
+-  output.write(
+-      'The tunnel will remain active while this process is running.\n');
+-  output.write(
+-      'To use this tunnel for other WCT runs, export the following:\n');
+-  output.write('\n');
+-  output.write(chalk.cyan('export SAUCE_TUNNEL_ID=' + tunnelId) + '\n');
+-  output.write('Press CTRL+C to close the sauce tunnel\n');
+-}
+-
+-async function wrapResult(
+-    output: NodeJS.WritableStream, promise: Promise<void>) {
+-  let error: any;
+-  try {
+-    await promise;
+-  } catch (e) {
+-    error = e;
+-  }
+-
+-  if (!process.env.CI) {
+-    updateNotifier.notify();
+-  }
+-
+-  if (error) {
+-    output.write('\n');
+-    output.write(chalk.red(error) + '\n');
+-    output.write('\n');
+-    throw error;
+-  }
+-}
+diff --git a/node_modules/web-component-tester/runner/clireporter.ts b/node_modules/web-component-tester/runner/clireporter.ts
+deleted file mode 100644
+index 42a6f89..0000000
+--- a/node_modules/web-component-tester/runner/clireporter.ts
++++ /dev/null
+@@ -1,348 +0,0 @@
+-/**
+- * @license
+- * Copyright (c) 2014 The Polymer Project Authors. All rights reserved.
+- * This code may only be used under the BSD style license found at
+- * http://polymer.github.io/LICENSE.txt
+- * The complete set of authors may be found at
+- * http://polymer.github.io/AUTHORS.txt
+- * The complete set of contributors may be found at
+- * http://polymer.github.io/CONTRIBUTORS.txt
+- * Code distributed by Google as part of the polymer project is also
+- * subject to an additional IP rights grant found at
+- * http://polymer.github.io/PATENTS.txt
+- */
+-
+-import * as chalk from 'chalk';
+-import * as cleankill from 'cleankill';
+-import * as events from 'events';
+-import * as _ from 'lodash';
+-import * as stacky from 'stacky';
+-import * as tty from 'tty';
+-import * as util from 'util';
+-
+-import {BrowserDef, Stats} from './browserrunner';
+-import * as config from './config';
+-
+-const STACKY_CONFIG = {
+-  indent: '    ',
+-  locationStrip: [
+-    /^https?:\/\/[^\/]+/,
+-    /\?[\d\.]+$/,
+-  ],
+-  unimportantLocation: [
+-    /^\/web-component-tester\//,
+-  ]
+-};
+-
+-export type State = 'passing'|'pending'|'failing'|'unknown'|'error';
+-export type CompletedState = 'passing'|'failing'|'pending'|'unknown';
+-type Formatter = (value: string) => string;
+-
+-const STATE_ICONS = {
+-  passing: '✓',
+-  pending: '✖',
+-  failing: '✖',
+-  unknown: '?',
+-};
+-
+-const STATE_COLORS: {[state: string]: Formatter} = {
+-  passing: chalk.green,
+-  pending: chalk.yellow,
+-  failing: chalk.red,
+-  unknown: chalk.red,
+-  error: chalk.red,
+-};
+-
+-
+-const SHORT = {
+-  'internet explorer': 'IE',
+-};
+-
+-const BROWSER_PAD = 24;
+-const STATUS_PAD = 38;
+-
+-
+-export interface TestEndData {
+-  state: CompletedState;
+-  /**
+-   * The titles of the tests that ran.
+-   */
+-  test: string[];
+-  duration: number;
+-  error: any;
+-}
+-
+-export class CliReporter {
+-  prettyBrowsers: {[id: number]: string} = {};
+-  browserStats: {[id: number]: Stats} = {};
+-  emitter: events.EventEmitter;
+-  stream: NodeJS.WritableStream;
+-  options: config.Config;
+-
+-  /**
+-   * The number of lines written the last time writeLines was called.
+-   */
+-  private linesWritten: number;
+-
+-  constructor(
+-      emitter: events.EventEmitter, stream: NodeJS.WritableStream,
+-      options: config.Config) {
+-    this.emitter = emitter;
+-    this.stream = stream;
+-    this.options = options;
+-    cleankill.onInterrupt(() => {
+-      return new Promise((resolve) => {
+-        this.flush();
+-        resolve();
+-      });
+-    });
+-
+-    emitter.on('log:error', this.log.bind(this, chalk.red));
+-
+-    if (!this.options.quiet) {
+-      emitter.on('log:warn', this.log.bind(this, chalk.yellow));
+-      emitter.on('log:info', this.log.bind(this));
+-      if (this.options.verbose) {
+-        emitter.on('log:debug', this.log.bind(this, chalk.dim));
+-      }
+-    }
+-
+-    emitter.on('browser-init', (browser: BrowserDef, stats: Stats) => {
+-      this.browserStats[browser.id] = stats;
+-      this.prettyBrowsers[browser.id] = this.prettyBrowser(browser);
+-      this.updateStatus();
+-    });
+-
+-    emitter.on(
+-        'browser-start',
+-        (browser: BrowserDef, data: {url: string}, stats: Stats) => {
+-          this.browserStats[browser.id] = stats;
+-          this.log(browser, 'Beginning tests via', chalk.magenta(data.url));
+-          this.updateStatus();
+-        });
+-
+-    emitter.on(
+-        'test-end', (browser: BrowserDef, data: TestEndData, stats: Stats) => {
+-          this.browserStats[browser.id] = stats;
+-          if (data.state === 'failing') {
+-            this.writeTestError(browser, data);
+-          } else if (this.options.expanded || this.options.verbose) {
+-            this.log(
+-                browser, this.stateIcon(data.state), this.prettyTest(data));
+-          }
+-
+-          this.updateStatus();
+-        });
+-
+-    emitter.on(
+-        'browser-end', (browser: BrowserDef, error: any, stats: Stats) => {
+-          this.browserStats[browser.id] = stats;
+-          if (error) {
+-            this.log(chalk.red, browser, 'Tests failed:', error);
+-          } else {
+-            this.log(chalk.green, browser, 'Tests passed');
+-          }
+-        });
+-
+-    emitter.on('run-end', (error: any) => {
+-      if (error) {
+-        this.log(chalk.red, 'Test run ended in failure:', error);
+-      } else {
+-        this.log(chalk.green, 'Test run ended with great success');
+-      }
+-
+-      if (!this.options.ttyOutput) {
+-        this.updateStatus(true);
+-      }
+-    });
+-  }
+-
+-  // Specialized Reporting
+-  updateStatus(force?: boolean) {
+-    if (!this.options.ttyOutput && !force) {
+-      return;
+-    }
+-    // EXTREME TERMINOLOGY FAIL, but here's a glossary:
+-    //
+-    // stats:  An object containing test stats (total, passing, failing, etc).
+-    // state:  The state that the run is in (running, etc).
+-    // status: A string representation of above.
+-    const statuses = Object.keys(this.browserStats).map((browserIdStr) => {
+-      const browserId = parseInt(browserIdStr, 10);
+-      const pretty = this.prettyBrowsers[browserId];
+-      const stats = this.browserStats[browserId];
+-
+-      let status = '';
+-      const counts = [stats.passing, stats.pending, stats.failing];
+-      if (counts[0] > 0 || counts[1] > 0 || counts[2] > 0) {
+-        if (counts[0] > 0) {
+-          counts[0] = <any>chalk.green(counts[0].toString());
+-        }
+-        if (counts[1] > 0) {
+-          counts[1] = <any>chalk.yellow(counts[1].toString());
+-        }
+-        if (counts[2] > 0) {
+-          counts[2] = <any>chalk.red(counts[2].toString());
+-        }
+-        status = counts.join('/');
+-      }
+-      if (stats.status === 'error') {
+-        status = status + (status === '' ? '' : ' ') + chalk.red('error');
+-      }
+-
+-      return padRight(pretty + ' (' + status + ')', STATUS_PAD);
+-    });
+-
+-    this.writeWrapped(statuses, '  ');
+-  }
+-
+-  writeTestError(browser: BrowserDef, data: TestEndData) {
+-    this.log(browser, this.stateIcon(data.state), this.prettyTest(data));
+-
+-    const error = data.error || {};
+-    this.write('\n');
+-
+-    let prettyMessage = error.message || error;
+-    if (typeof prettyMessage !== 'string') {
+-      prettyMessage = util.inspect(prettyMessage);
+-    }
+-    this.write(chalk.red('  ' + prettyMessage));
+-
+-    if (error.stack) {
+-      try {
+-        this.write(stacky.pretty(data.error.stack, STACKY_CONFIG));
+-      } catch (err) {
+-        // If we couldn't extract a stack (i.e. there was no stack), the message
+-        // is enough.
+-      }
+-    }
+-    this.write('\n');
+-  }
+-
+-  // Object Formatting
+-
+-  stateIcon(state: State) {
+-    const color = STATE_COLORS[state] || STATE_COLORS['unknown'];
+-    return color(STATE_ICONS[state] || STATE_ICONS.unknown);
+-  }
+-
+-  prettyTest(data: TestEndData) {
+-    const color = STATE_COLORS[data.state] || STATE_COLORS['unknown'];
+-    return color(data.test.join(' » ') || '<unknown test>');
+-  }
+-
+-  prettyBrowser(browser: BrowserDef) {
+-    const parts: string[] = [];
+-
+-    if (browser.platform && !browser.deviceName) {
+-      parts.push(browser.platform);
+-    }
+-
+-    const name = browser.deviceName || browser.browserName;
+-    parts.push(SHORT[name] || name);
+-
+-    if (browser.version) {
+-      parts.push(browser.version);
+-    }
+-
+-    if (browser.variant) {
+-      parts.push(`[${browser.variant}]`);
+-    }
+-
+-    return chalk.blue(parts.join(' '));
+-  }
+-
+-  // General Output Formatting
+-
+-  log(...values: any[]): void;
+-  log() {
+-    let values = Array.from(arguments);
+-    let format: (line: string) => string;
+-    if (_.isFunction(values[0])) {
+-      format = values[0];
+-      values = values.slice(1);
+-    }
+-    if (values[0] && values[0].browserName) {
+-      values[0] = padRight(this.prettyBrowser(values[0]), BROWSER_PAD);
+-    }
+-
+-    let line =
+-        _.toArray(values)
+-            .map((value) => _.isString(value) ? value : util.inspect(value))
+-            .join(' ');
+-    line = line.replace(/[\s\n\r]+$/, '');
+-    if (format) {
+-      line = format(line);
+-    }
+-    this.write(line);
+-  }
+-
+-  writeWrapped(blocks: string[], separator: string) {
+-    if (blocks.length === 0) {
+-      return;
+-    }
+-
+-    const lines = [''];
+-    const width = (<tty.WriteStream>this.stream).columns || 0;
+-    for (const block of blocks) {
+-      const line = lines[lines.length - 1];
+-      const combined = line + separator + block;
+-      if (line === '') {
+-        lines[lines.length - 1] = block;
+-      } else if (chalk.stripColor(combined).length <= width) {
+-        lines[lines.length - 1] = combined;
+-      } else {
+-        lines.push(block);
+-      }
+-    }
+-
+-    this.writeLines(['\n'].concat(lines));
+-    if (this.options.ttyOutput) {
+-      this.stream.write('\r');
+-      this.stream.write('\u001b[' + (lines.length + 1) + 'A');
+-    }
+-  }
+-
+-  write(line: string) {
+-    this.writeLines([line]);
+-    this.updateStatus();
+-  }
+-
+-  writeLines(lines: string[]) {
+-    for (let line of lines) {
+-      if (line[line.length - 1] !== '\n') {
+-        line = line + '\n';
+-      }
+-      if (this.options.ttyOutput) {
+-        line = '\u001b[J' + line;
+-      }
+-      this.stream.write(line);
+-    }
+-    this.linesWritten = lines.length;
+-  }
+-
+-  flush() {
+-    if (!this.options.ttyOutput) {
+-      return;
+-    }
+-    // Add an extra line for padding.
+-    for (let i = 0; i <= this.linesWritten; i++) {
+-      this.stream.write('\n');
+-    }
+-  }
+-
+-  // HACK
+-  static CliReporter = CliReporter;
+-}
+-// Yeah, yeah.
+-function padRight(str: string, length: number) {
+-  let currLength = chalk.stripColor(str).length;
+-  while (currLength < length) {
+-    currLength = currLength + 1;
+-    str = str + ' ';
+-  }
+-  return str;
+-}
+-
+-
+-module.exports = CliReporter;
+diff --git a/node_modules/web-component-tester/runner/config.ts b/node_modules/web-component-tester/runner/config.ts
+deleted file mode 100644
+index a91a18b..0000000
+--- a/node_modules/web-component-tester/runner/config.ts
++++ /dev/null
+@@ -1,646 +0,0 @@
+-/**
+- * @license
+- * Copyright (c) 2014 The Polymer Project Authors. All rights reserved.
+- * This code may only be used under the BSD style license found at
+- * http://polymer.github.io/LICENSE.txt
+- * The complete set of authors may be found at
+- * http://polymer.github.io/AUTHORS.txt
+- * The complete set of contributors may be found at
+- * http://polymer.github.io/CONTRIBUTORS.txt
+- * Code distributed by Google as part of the polymer project is also
+- * subject to an additional IP rights grant found at
+- * http://polymer.github.io/PATENTS.txt
+- */
+-
+-import * as findup from 'findup-sync';
+-import * as fs from 'fs';
+-import * as _ from 'lodash';
+-import * as nomnom from 'nomnom';
+-import * as path from 'path';
+-import * as resolve from 'resolve';
+-import {Capabilities} from 'wd';
+-
+-import {BrowserDef} from './browserrunner';
+-import {Context} from './context';
+-import * as paths from './paths';
+-import {Plugin} from './plugin';
+-
+-
+-const HOME_DIR = path.resolve(
+-    process.env.HOME || process.env.HOMEPATH || process.env.USERPROFILE);
+-const JSON_MATCHER = 'wct.conf.json';
+-const CONFIG_MATCHER = 'wct.conf.*';
+-
+-export type Browser = string|{browserName: string, platform: string};
+-
+-export interface Config {
+-  suites?: string[];
+-  output?: NodeJS.WritableStream;
+-  ttyOutput?: boolean;
+-  verbose?: boolean;
+-  quiet?: boolean;
+-  expanded?: boolean;
+-  root?: string;
+-  testTimeout?: number;
+-  persistent?: boolean;
+-  extraScripts?: string[];
+-  wctPackageName?: string;
+-  clientOptions?:
+-      {root?: string; verbose?: boolean; environmentScripts?: string[]};
+-  activeBrowsers?: BrowserDef[];
+-  browserOptions?: {[name: string]: Capabilities};
+-  plugins?: (string|boolean)[]|{[key: string]: ({disabled: boolean} | boolean)};
+-  registerHooks?: (wct: Context) => void;
+-  enforceJsonConf?: boolean;
+-  webserver?: {
+-    // The port that the main webserver should run on. A port will be
+-    // determined at runtime if none is provided.
+-    port: number;
+-
+-    // The hostname used when generating URLs for the webdriver client.
+-    hostname: string;
+-
+-    _generatedIndexContent?: string;
+-    _servers?: {variant: string, url: string}[];
+-  };
+-  npm?: boolean;
+-  moduleResolution?: 'none'|'node';
+-  packageName?: string;
+-  skipPlugins?: string[];
+-  sauce?: {};
+-  remote?: {};
+-  origSuites?: string[];
+-  compile?: 'auto'|'always'|'never';
+-  skipCleanup?: boolean;
+-  simpleOutput?: boolean;
+-  skipUpdateCheck?: boolean;
+-  configFile?: string;
+-  proxy?: {
+-    // Top-level path that should be redirected to the proxy-target.  E.g.
+-    // `api/v1` when you want to redirect all requests of
+-    // `https://localhost/api/v1/`.
+-    path: string;
+-    // Host URL to proxy to, for example `https://myredirect:8080/foo`.
+-    target: string;
+-  };
+-  /** A deprecated option */
+-  browsers?: Browser[]|Browser;
+-}
+-
+-/**
+- * config helper: A basic function to synchronously read JSON,
+- * log any errors, and return null if no file or invalid JSON
+- * was found.
+- */
+-function readJsonSync(filename: string, dir?: string): any|null {
+-  const configPath = path.resolve(dir || '', filename);
+-  let config: any;
+-  try {
+-    config = fs.readFileSync(configPath, 'utf-8');
+-  } catch (e) {
+-    return null;
+-  }
+-  try {
+-    return JSON.parse(config);
+-  } catch (e) {
+-    console.error(`Could not parse ${configPath} as JSON`);
+-    console.error(e);
+-  }
+-  return null;
+-}
+-
+-/**
+- * Determines the package name by reading from the following sources:
+- *
+- * 1. `options.packageName`
+- * 2. bower.json or package.json, depending on options.npm
+- */
+-export function getPackageName(options: Config): string|undefined {
+-  if (options.packageName) {
+-    return options.packageName;
+-  }
+-  const manifestName = (options.npm ? 'package.json' : 'bower.json');
+-  const manifest = readJsonSync(manifestName, options.root);
+-  if (manifest !== null) {
+-    return manifest.name;
+-  }
+-  const basename = path.basename(options.root);
+-  console.warn(
+-      `no ${manifestName} found, defaulting to packageName=${basename}`);
+-  return basename;
+-}
+-
+-/**
+- * Return the root package directory of the given NPM package.
+- */
+-function resolvePackageDir(
+-    packageName: string, opts?: resolve.SyncOpts): string {
+-  // package.json files are always in the root directory of a package, so we can
+-  // resolve that and then drop the filename.
+-  return path.dirname(
+-      resolve.sync(path.join(packageName, 'package.json'), opts));
+-}
+-
+-// The full set of options, as a reference.
+-export function defaults(): Config {
+-  return {
+-    // The test suites that should be run.
+-    suites: ['test/'],
+-    // Output stream to write log messages to.
+-    output: process.stdout,
+-    // Whether the output stream should be treated as a TTY (and be given more
+-    // complex output formatting). Defaults to `output.isTTY`.
+-    ttyOutput: undefined,
+-    // Spew all sorts of debugging messages.
+-    verbose: false,
+-    // Silence output
+-    quiet: false,
+-    // Display test results in expanded form. Verbose implies expanded.
+-    expanded: false,
+-    // The on-disk path where tests & static files should be served from. Paths
+-    // (such as `suites`) are evaluated relative to this.
+-    //
+-    // Defaults to the project directory.
+-    root: undefined,
+-    // Idle timeout for tests.
+-    testTimeout: 90 * 1000,
+-    // Whether the browser should be closed after the tests run.
+-    persistent: false,
+-    // Additional .js files to include in *generated* test indexes.
+-    extraScripts: [],
+-    // Configuration options passed to the browser client.
+-    clientOptions: {
+-      root: '/components/',
+-    },
+-    compile: 'auto',
+-
+-    // Webdriver capabilities objects for each browser that should be run.
+-    //
+-    // Capabilities can also contain a `url` value which is either a string URL
+-    // for the webdriver endpoint, or {hostname:, port:, user:, pwd:}.
+-    //
+-    // Most of the time you will want to rely on the WCT browser plugins to fill
+-    // this in for you (e.g. via `--local`, `--sauce`, etc).
+-    activeBrowsers: [],
+-    // Default capabilities to use when constructing webdriver connections (for
+-    // each browser specified in `activeBrowsers`). A handy place to hang common
+-    // configuration.
+-    //
+-    // Selenium: https://github.com/SeleniumHQ/selenium/wiki/DesiredCapabilities
+-    // Sauce:    https://docs.saucelabs.com/reference/test-configuration/
+-    browserOptions: {},
+-    // The plugins that should be loaded, and their configuration.
+-    //
+-    // When an array, the named plugins will be loaded with their default
+-    // configuration. When an object, each key maps to a plugin, and values are
+-    // configuration values to be merged.
+-    //
+-    //   plugins: {
+-    //     local: {browsers: ['firefox', 'chrome']},
+-    //   }
+-    //
+-    plugins: ['local', 'sauce'],
+-    // Callback that allows you to perform advanced configuration of the WCT
+-    // runner.
+-    //
+-    // The hook is given the WCT context, and can generally be written like a
+-    // plugin. For example, to serve custom content via the internal webserver:
+-    //
+-    //     registerHooks: function(wct) {
+-    //       wct.hook('prepare:webserver', function(app) {
+-    //         app.use(...);
+-    //         return Promise.resolve();
+-    //       });
+-    //     }
+-    //
+-    registerHooks: function(_wct) {},
+-    // Whether `wct.conf.*` is allowed, or only `wct.conf.json`.
+-    //
+-    // Handy for CI suites that want to be locked down.
+-    enforceJsonConf: false,
+-    // Configuration options for the webserver that serves up your test files
+-    // and dependencies.
+-    //
+-    // Typically, you will not need to modify these values.
+-    webserver: {
+-      // The port that the webserver should run on. A port will be determined at
+-      // runtime if none is provided.
+-      port: undefined,
+-      hostname: 'localhost',
+-    },
+-    // The name of the NPM package that is vending wct's browser.js will be
+-    // determined automatically if no name is specified.
+-    wctPackageName: undefined,
+-
+-    moduleResolution: 'node'
+-  };
+-}
+-
+-/**
+- * nomnom configuration for command line arguments.
+- *
+- * This might feel like duplication with `defaults()`, and out of place (why not
+- * in `cli.js`?). But, not every option matches a configurable value, and it is
+- * best to keep the configuration for these together to help keep them in sync.
+- */
+-const ARG_CONFIG = {
+-  persistent: {
+-    help: 'Keep browsers active (refresh to rerun tests).',
+-    abbr: 'p',
+-    flag: true,
+-  },
+-  root: {
+-    help: 'The root directory to serve tests from.',
+-    transform: path.resolve,
+-  },
+-  plugins: {
+-    help: 'Plugins that should be loaded.',
+-    metavar: 'NAME',
+-    full: 'plugin',
+-    list: true,
+-  },
+-  skipPlugins: {
+-    help: 'Configured plugins that should _not_ be loaded.',
+-    metavar: 'NAME',
+-    full: 'skip-plugin',
+-    list: true,
+-  },
+-  expanded: {
+-    help: 'Log a status line for each test run.',
+-    flag: true,
+-  },
+-  verbose: {
+-    help: 'Turn on debugging output.',
+-    flag: true,
+-  },
+-  quiet: {
+-    help: 'Silence output.',
+-    flag: true,
+-  },
+-  simpleOutput: {
+-    help: 'Avoid fancy terminal output.',
+-    full: 'simple-output',
+-    flag: true,
+-  },
+-  skipUpdateCheck: {
+-    help: 'Don\'t check for updates.',
+-    full: 'skip-update-check',
+-    flag: true,
+-  },
+-  configFile: {
+-    help: 'Config file that needs to be used by wct. ie: wct.config-sauce.js',
+-    full: 'config-file',
+-  },
+-  npm: {
+-    help: 'Use node_modules instead of bower_components for all browser ' +
+-        'components and packages.  Uses polyserve with `--npm` flag.',
+-    flag: true,
+-  },
+-  moduleResolution: {
+-    // kebab case to match the polyserve flag
+-    full: 'module-resolution',
+-    help: 'Algorithm to use for resolving module specifiers in import ' +
+-        'and export statements when rewriting them to be web-compatible. ' +
+-        'Valid values are "none" and "node". "none" disables module ' +
+-        'specifier rewriting. "node" uses Node.js resolution to find modules.',
+-    // type: 'string',
+-    choices: ['none', 'node'],
+-  },
+-  version: {
+-    help: 'Display the current version of web-component-tester.  Ends ' +
+-        'execution immediately (not useable with other options.)',
+-    abbr: 'V',
+-    flag: true,
+-  },
+-  'webserver.port': {
+-    help: 'A port to use for the test webserver.',
+-    full: 'webserver-port',
+-  },
+-  'webserver.hostname': {
+-    full: 'webserver-hostname',
+-    hidden: true,
+-  },
+-  // Managed by supports-color; let's not freak out if we see it.
+-  color: {flag: true},
+-
+-  compile: {
+-    help: 'Whether to compile ES2015 down to ES5. ' +
+-        'Options: "always", "never", "auto". Auto means that we will ' +
+-        'selectively compile based on the requesting user agent.'
+-  },
+-  wctPackageName: {
+-    full: 'wct-package-name',
+-    help: 'NPM package name that contains web-component-tester\'s browser ' +
+-        'code.  By default, WCT will detect the installed package, but ' +
+-        'this flag allows explicitly naming the package. ' +
+-        'This is only to be used with --npm option.'
+-  },
+-
+-  // Deprecated
+-
+-  browsers: {
+-    abbr: 'b',
+-    hidden: true,
+-    list: true,
+-  },
+-  remote: {
+-    abbr: 'r',
+-    hidden: true,
+-    flag: true,
+-  },
+-};
+-
+-// Values that should be extracted when pre-parsing args.
+-const PREPARSE_ARGS =
+-    ['plugins', 'skipPlugins', 'simpleOutput', 'skipUpdateCheck', 'configFile'];
+-
+-export interface PreparsedArgs {
+-  plugins?: string[];
+-  skipPlugins?: string[];
+-  simpleOutput?: boolean;
+-  skipUpdateCheck?: boolean;
+-}
+-
+-/**
+- * Discovers appropriate config files (global, and for the project), merging
+- * them, and returning them.
+- *
+- * @param {string} matcher
+- * @param {string} root
+- * @return {!Object} The merged configuration.
+- */
+-export function fromDisk(matcher: string, root?: string): Config {
+-  const globalFile = path.join(HOME_DIR, matcher);
+-  const projectFile = findup(matcher, {nocase: true, cwd: root});
+-  // Load a shared config from the user's home dir, if they have one, and then
+-  // try the project-specific path (starting at the current working directory).
+-  const paths = _.union([globalFile, projectFile]);
+-  const configs =
+-      _.filter(paths, fs.existsSync).map((f) => loadProjectFile(f as string));
+-  const options: Config = merge.apply(null, configs);
+-
+-  if (!options.root && projectFile && projectFile !== globalFile) {
+-    options.root = path.dirname(projectFile);
+-  }
+-
+-  return options;
+-}
+-
+-/**
+- * @param {string} file
+- * @return {Object?}
+- */
+-function loadProjectFile(file: string) {
+-  // If there are _multiple_ configs at this path, prefer `json`
+-  if (path.extname(file) === '.js' && fs.existsSync(file + 'on')) {
+-    file = file + 'on';
+-  }
+-
+-  try {
+-    if (path.extname(file) === '.json') {
+-      return JSON.parse(fs.readFileSync(file, 'utf-8'));
+-    } else {
+-      return require(file);
+-    }
+-  } catch (error) {
+-    throw new Error(`Failed to load WCT config "${file}": ${error.message}`);
+-  }
+-}
+-
+-/**
+- * Runs a simplified options parse over the command line arguments, extracting
+- * any values that are necessary for a full parse.
+- *
+- * See const: PREPARSE_ARGS for the values that are extracted.
+- *
+- * @param {!Array<string>} args
+- * @return {!Object}
+- */
+-export function preparseArgs(args: string[]): PreparsedArgs {
+-  // Don't let it short circuit on help.
+-  args = _.difference(args, ['--help', '-h']);
+-
+-  const parser = nomnom();
+-  parser.options(<any>ARG_CONFIG);
+-  parser.printer(function() {});  // No-op output & errors.
+-  const options = parser.parse(args);
+-
+-  return _expandOptionPaths(_.pick(options, PREPARSE_ARGS));
+-}
+-
+-/**
+- * Runs a complete options parse over the args, respecting plugin options.
+- *
+- * @param {!Context} context The context, containing plugin state and any base
+- *     options to merge into.
+- * @param {!Array<string>} args The args to parse.
+- */
+-export async function parseArgs(
+-    context: Context, args: string[]): Promise<void> {
+-  const parser = nomnom();
+-  parser.script('wct');
+-  parser.options(<any>ARG_CONFIG);
+-
+-  const plugins = await context.plugins();
+-  plugins.forEach(_configurePluginOptions.bind(null, parser));
+-  const options = <any>_expandOptionPaths(normalize(parser.parse(args)));
+-  if (options._ && options._.length > 0) {
+-    options.suites = options._;
+-  }
+-
+-  context.options = merge(context.options, options);
+-}
+-
+-function _configurePluginOptions(
+-    parser: NomnomInternal.Parser, plugin: Plugin) {
+-  /** HACK(rictic): this looks wrong, cliConfig shouldn't have a length. */
+-  if (!plugin.cliConfig || (<any>plugin.cliConfig).length === 0) {
+-    return;
+-  }
+-
+-  // Group options per plugin. It'd be nice to also have a header, but that ends
+-  // up shifting all the options over.
+-  parser.option('plugins.' + plugin.name + '.', {string: ' '});
+-
+-  _.each(plugin.cliConfig, function(config, key) {
+-    // Make sure that we don't expose the name prefixes.
+-    if (!config['full']) {
+-      config['full'] = key;
+-    }
+-    parser.option(
+-        'plugins.' + plugin.name + '.' + key,
+-        config as NomnomInternal.Parser.Option);
+-  });
+-}
+-
+-function _expandOptionPaths(options: {[key: string]: any}): any {
+-  const result = {};
+-  _.each(options, function(value, key) {
+-    let target = result;
+-    const parts = key.split('.');
+-    for (const part of parts.slice(0, -1)) {
+-      target = target[part] = target[part] || {};
+-    }
+-    target[_.last(parts)] = value;
+-  });
+-  return result;
+-}
+-
+-/**
+- * @param {!Object...} configs Configuration objects to merge.
+- * @return {!Object} The merged configuration, where configuration objects
+- *     specified later in the arguments list are given precedence.
+- */
+-export function merge(...configs: Config[]): Config;
+-export function merge(): Config {
+-  let configs: Config[] = Array.prototype.slice.call(arguments);
+-  const result = <Config>{};
+-  configs = configs.map(normalize);
+-  _.merge.apply(_, [result, ...configs]);
+-
+-  // false plugin configs are preserved.
+-  configs.forEach(function(config) {
+-    _.each(config.plugins, function(value, key) {
+-      if (typeof value === 'boolean' && value === false) {
+-        result.plugins[key] = false;
+-      }
+-    });
+-  });
+-
+-  return result;
+-}
+-
+-export function normalize(config: Config): Config {
+-  if (_.isArray(config.plugins)) {
+-    const pluginConfigs = <{[key: string]: {disabled: boolean}}>{};
+-    for (let i = 0, name: string; name = <string>config.plugins[i]; i++) {
+-      // A named plugin is explicitly enabled (e.g. --plugin foo).
+-      pluginConfigs[name] = {disabled: false};
+-    }
+-    config.plugins = pluginConfigs;
+-  }
+-
+-  // Always wins.
+-  if (config.skipPlugins) {
+-    config.plugins = config.plugins || {};
+-    for (let i = 0, name: string; name = config.skipPlugins[i]; i++) {
+-      config.plugins[name] = false;
+-    }
+-  }
+-
+-  return config;
+-}
+-
+-/**
+- * Expands values within the configuration based on the current environment.
+- *
+- * @param {!Context} context The context for the current run.
+- */
+-export async function expand(context: Context): Promise<void> {
+-  const options = context.options;
+-  let root = context.options.root || process.cwd();
+-  context.options.root = root = path.resolve(root);
+-
+-  options.origSuites = _.clone(options.suites);
+-
+-  expandDeprecated(context);
+-
+-  options.suites = await paths.expand(root, options.suites);
+-}
+-
+-/**
+- * Expands any options that have been deprecated, and warns about it.
+- *
+- * @param {!Context} context The context for the current run.
+- */
+-function expandDeprecated(context: Context) {
+-  const options = context.options;
+-  // We collect configuration fragments to be merged into the options object.
+-  const fragments = [];
+-
+-  let browsers: Browser[] = <any>(
+-      _.isArray(options.browsers) ? options.browsers : [options.browsers]);
+-  browsers = <any>_.compact(<any>browsers);
+-  if (browsers.length > 0) {
+-    context.emit(
+-        'log:warn',
+-        'The --browsers flag/option is deprecated. Please use ' +
+-            '--local and --sauce instead, or configure via plugins.' +
+-            '[local|sauce].browsers.');
+-    const fragment: {
+-      plugins: {[name: string]: {browsers?: Browser[]}}
+-    } = {plugins: {sauce: {}, local: {}}};
+-    fragments.push(fragment);
+-
+-    for (const browser of browsers) {
+-      const name = (<any>browser).browserName || browser;
+-      const plugin = (<any>browser).platform || name.indexOf('/') !== -1 ?
+-          'sauce' :
+-          'local';
+-      fragment.plugins[plugin].browsers =
+-          fragment.plugins[plugin].browsers || [];
+-      fragment.plugins[plugin].browsers.push(browser);
+-    }
+-
+-    delete options.browsers;
+-  }
+-
+-  if (options.sauce) {
+-    context.emit(
+-        'log:warn',
+-        'The sauce configuration key is deprecated. Please use ' +
+-            'plugins.sauce instead.');
+-    fragments.push({
+-      plugins: {sauce: options.sauce},
+-    });
+-    delete options.sauce;
+-  }
+-
+-  if (options.remote) {
+-    context.emit(
+-        'log:warn',
+-        'The --remote flag is deprecated. Please use ' +
+-            '--sauce default instead.');
+-    fragments.push({
+-      plugins: {sauce: {browsers: ['default']}},
+-    });
+-    delete options.remote;
+-  }
+-
+-  if (fragments.length > 0) {
+-    // We are careful to modify context.options in place.
+-    _.merge(context.options, merge.apply(null, fragments as any));
+-  }
+-}
+-
+-/**
+- * @param {!Object} options The configuration to validate.
+- */
+-export async function validate(options: Config): Promise<void> {
+-  if (options['webRunner']) {
+-    throw new Error(
+-        'webRunner is no longer a supported configuration option. ' +
+-        'Please list the files you wish to test as arguments, ' +
+-        'or as `suites` in a configuration object.');
+-  }
+-  if (options['component']) {
+-    throw new Error(
+-        'component is no longer a supported configuration option. ' +
+-        'Please list the files you wish to test as arguments, ' +
+-        'or as `suites` in a configuration object.');
+-  }
+-
+-  if (options.activeBrowsers.length === 0) {
+-    throw new Error('No browsers configured to run');
+-  }
+-  if (options.suites.length === 0) {
+-    const root = options.root || process.cwd();
+-    const globs = options.origSuites.join(', ');
+-    throw new Error(
+-        'No test suites were found matching your configuration\n' +
+-        '\n' +
+-        '  WCT searched for .js and .html files matching: ' + globs + '\n' +
+-        '\n' +
+-        '  Relative paths were resolved against: ' + root);
+-  }
+-}
+diff --git a/node_modules/web-component-tester/runner/context.ts b/node_modules/web-component-tester/runner/context.ts
+deleted file mode 100644
+index 3edeea6..0000000
+--- a/node_modules/web-component-tester/runner/context.ts
++++ /dev/null
+@@ -1,226 +0,0 @@
+-/**
+- * @license
+- * Copyright (c) 2014 The Polymer Project Authors. All rights reserved.
+- * This code may only be used under the BSD style license found at
+- * http://polymer.github.io/LICENSE.txt
+- * The complete set of authors may be found at
+- * http://polymer.github.io/AUTHORS.txt
+- * The complete set of contributors may be found at
+- * http://polymer.github.io/CONTRIBUTORS.txt
+- * Code distributed by Google as part of the polymer project is also
+- * subject to an additional IP rights grant found at
+- * http://polymer.github.io/PATENTS.txt
+- */
+-
+-import * as events from 'events';
+-import * as express from 'express';
+-import * as _ from 'lodash';
+-import {ExpressAppMapper, ServerOptions} from 'polyserve/lib/start_server';
+-import * as socketIO from 'socket.io';
+-import * as http from 'spdy';
+-import * as util from 'util';
+-
+-import {BrowserRunner} from './browserrunner';
+-import * as config from './config';
+-import {Plugin} from './plugin';
+-
+-const JSON_MATCHER = 'wct.conf.json';
+-const CONFIG_MATCHER = 'wct.conf.*';
+-
+-export type Handler =
+-    ((...args: any[]) => Promise<any>)|((done: (err?: any) => void) => void)|
+-    ((arg1: any, done: (err?: any) => void) => void)|
+-    ((arg1: any, arg2: any, done: (err?: any) => void) => void)|
+-    ((arg1: any, arg2: any, arg3: any, done: (err?: any) => void) => void);
+-
+-/**
+- * Exposes the current state of a WCT run, and emits events/hooks for anyone
+- * downstream to listen to.
+- *
+- * TODO(rictic): break back-compat with plugins by moving hooks entirely away
+- *     from callbacks to promises. Easiest way to do this would be to rename
+- *     the hook-related methods on this object, so that downstream callers would
+- *     break in obvious ways.
+- *
+- * @param {Object} options Any initially specified options.
+- */
+-export class Context extends events.EventEmitter {
+-  options: config.Config;
+-  private _hookHandlers: {[key: string]: Handler[]} = {};
+-  _socketIOServers: SocketIO.Server[];
+-  _httpServers: http.Server[];
+-  _testRunners: BrowserRunner[];
+-
+-  constructor(options?: config.Config) {
+-    super();
+-    options = options || {};
+-
+-    let matcher: string;
+-    if (options.configFile) {
+-      matcher = options.configFile;
+-    } else if (options.enforceJsonConf) {
+-      matcher = JSON_MATCHER;
+-    } else {
+-      matcher = CONFIG_MATCHER;
+-    }
+-
+-    /**
+-     * The configuration for the current WCT run.
+-     *
+-     * We guarantee that this object is never replaced (e.g. you are free to
+-     * hold a reference to it, and make changes to it).
+-     */
+-    this.options = config.merge(
+-        config.defaults(), config.fromDisk(matcher, options.root), options);
+-  }
+-
+-  // Hooks
+-  //
+-  // In addition to emitting events, a context also exposes "hooks" that
+-  // interested parties can use to inject behavior.
+-
+-  /**
+-   * Registers a handler for a particular hook. Hooks are typically configured
+-   * to run _before_ a particular behavior.
+-   */
+-  hook(name: string, handler: Handler) {
+-    this._hookHandlers[name] = this._hookHandlers[name] || [];
+-    this._hookHandlers[name].unshift(handler);
+-  }
+-
+-  /**
+-   * Registers a handler that will run after any handlers registered so far.
+-   *
+-   * @param {string} name
+-   * @param {function(!Object, function(*))} handler
+-   */
+-  hookLate(name: string, handler: Handler) {
+-    this._hookHandlers[name] = this._hookHandlers[name] || [];
+-    this._hookHandlers[name].push(handler);
+-  }
+-
+-  /**
+-   * Once all registered handlers have run for the hook, your callback will be
+-   * triggered. If any of the handlers indicates an error state, any subsequent
+-   * handlers will be canceled, and the error will be passed to the callback for
+-   * the hook.
+-   *
+-   * Any additional arguments passed between `name` and `done` will be passed to
+-   * hooks (before the callback).
+-   *
+-   * @param {string} name
+-   * @param {function(*)} done
+-   * @return {!Context}
+-   */
+-  emitHook(
+-      name: 'define:webserver', app: express.Express,
+-      // The `mapper` param is a function the client of the hook uses to
+-      // substitute a new app for the one given.  This enables, for example,
+-      // mounting the polyserve app on a custom app to handle requests or mount
+-      // middleware that needs to sit in front of polyserve's own handlers.
+-      mapper: (app: Express.Application) => void, options: ServerOptions,
+-      done?: (err?: any) => void): Promise<void>;
+-  emitHook(
+-      name: 'prepare:webserver', app: express.Express,
+-      done?: (err?: any) => void): Promise<void>;
+-  emitHook(name: 'configure', done?: (err?: any) => void): Promise<void>;
+-  emitHook(name: 'prepare', done?: (err?: any) => void): Promise<void>;
+-  emitHook(name: 'cleanup', done?: (err?: any) => void): Promise<void>;
+-  emitHook(name: string, done?: (err?: any) => void): Promise<void>;
+-  emitHook(name: string, ...args: any[]): Promise<void>;
+-
+-  async emitHook(name: string, ...args: any[]): Promise<void> {
+-    this.emit('log:debug', 'hook:', name);
+-
+-    const hooks = (this._hookHandlers[name] || []);
+-    type BoundHook = (cb: (err: any) => void) => (void|Promise<any>);
+-    let boundHooks: BoundHook[];
+-    let done: (err?: any) => void = (_err: any) => {};
+-    let argsEnd = args.length - 1;
+-    if (args[argsEnd] instanceof Function) {
+-      done = args[argsEnd];
+-      argsEnd = argsEnd--;
+-    }
+-    const hookArgs = args.slice(0, argsEnd + 1);
+-    // Not really sure what's going on with typings here.
+-    boundHooks = hooks.map(
+-                     (hook) => hook.bind.apply(
+-                         hook as any, [null].concat(hookArgs) as any)) as any;
+-    if (!boundHooks) {
+-      boundHooks = <any>hooks;
+-    }
+-
+-    // A hook may return a promise or it may call a callback. We want to
+-    // treat hooks as though they always return promises, so this converts.
+-    const hookToPromise = (hook: BoundHook) => {
+-      return new Promise((resolve, reject) => {
+-        const maybePromise = hook((err) => {
+-          if (err) {
+-            reject(err);
+-          } else {
+-            resolve();
+-          }
+-        });
+-        if (maybePromise) {
+-          maybePromise.then(resolve, reject);
+-        }
+-      });
+-    };
+-
+-    // We execute the handlers _sequentially_. This may be slower, but it gives
+-    // us a lighter cognitive load and more obvious logs.
+-    try {
+-      for (const hook of boundHooks) {
+-        await hookToPromise(hook);
+-      }
+-    } catch (err) {
+-      // TODO(rictic): stop silently swallowing the error here and just below.
+-      //     Looks like we'll need to track down some error being thrown from
+-      //     deep inside the express router.
+-      try {
+-        done(err);
+-      } catch (_) {
+-      }
+-      throw err;
+-    }
+-    try {
+-      done();
+-    } catch (_) {
+-    }
+-  }
+-
+-  /**
+-   * @param {function(*, Array<!Plugin>)} done Asynchronously loads the plugins
+-   *     requested by `options.plugins`.
+-   */
+-  async plugins(): Promise<Plugin[]> {
+-    const plugins: Plugin[] = [];
+-    for (const name of this.enabledPlugins()) {
+-      plugins.push(await Plugin.get(name));
+-    }
+-    return plugins;
+-  }
+-
+-  /**
+-   * @return {!Array<string>} The names of enabled plugins.
+-   */
+-  enabledPlugins(): string[] {
+-    // Plugins with falsy configuration or disabled: true are _not_ loaded.
+-    const pairs = _.reject(
+-        (<any>_).pairs(this.options.plugins),
+-        (p: [string, {disabled: boolean}]) => !p[1] || p[1].disabled);
+-    return _.map(pairs, (p) => p[0]);
+-  }
+-
+-  /**
+-   * @param {string} name
+-   * @return {!Object}
+-   */
+-  pluginOptions(name: string) {
+-    return this.options.plugins[Plugin.shortName(name)];
+-  }
+-
+-  static Context = Context;
+-}
+-
+-module.exports = Context;
+diff --git a/node_modules/web-component-tester/runner/gulp.ts b/node_modules/web-component-tester/runner/gulp.ts
+deleted file mode 100644
+index 1d547de..0000000
+--- a/node_modules/web-component-tester/runner/gulp.ts
++++ /dev/null
+@@ -1,53 +0,0 @@
+-/**
+- * @license
+- * Copyright (c) 2014 The Polymer Project Authors. All rights reserved.
+- * This code may only be used under the BSD style license found at
+- * http://polymer.github.io/LICENSE.txt
+- * The complete set of authors may be found at
+- * http://polymer.github.io/AUTHORS.txt
+- * The complete set of contributors may be found at
+- * http://polymer.github.io/CONTRIBUTORS.txt
+- * Code distributed by Google as part of the polymer project is also
+- * subject to an additional IP rights grant found at
+- * http://polymer.github.io/PATENTS.txt
+- */
+-
+-import * as chalk from 'chalk';
+-import {Gulp} from 'gulp';
+-
+-import {test} from './test';
+-
+-
+-export function init(gulp: Gulp, dependencies?: string[]): void {
+-  if (!dependencies) {
+-    dependencies = [];
+-  }
+-
+-  gulp.task(
+-      'wct:local', gulp.series([
+-        ...dependencies,
+-        () => test(<any>{plugins: {local: {}, sauce: false}}).catch(cleanError)
+-      ]));
+-
+-  gulp.task(
+-      'wct:sauce', gulp.series([
+-        ...dependencies,
+-        () => test(<any>{plugins: {local: false, sauce: {}}}).catch(cleanError)
+-      ]));
+-
+-  // TODO(nevir): Migrate fully to wct:local/etc.
+-  gulp.task('test', gulp.series(['wct:local']));
+-  gulp.task('test:local', gulp.series(['wct:local']));
+-  gulp.task('test:remote', gulp.series(['wct:sauce']));
+-
+-  gulp.task('wct', gulp.series(['wct:local']));
+-}
+-
+-// Utility
+-
+-function cleanError(error: any) {
+-  // Pretty error for gulp.
+-  error = new Error(chalk.red(error.message || error));
+-  error.showStack = false;
+-  throw error;
+-}
+diff --git a/node_modules/web-component-tester/runner/httpbin.ts b/node_modules/web-component-tester/runner/httpbin.ts
+deleted file mode 100644
+index 90a6f17..0000000
+--- a/node_modules/web-component-tester/runner/httpbin.ts
++++ /dev/null
+@@ -1,112 +0,0 @@
+-/**
+- * @license
+- * Copyright (c) 2014 The Polymer Project Authors. All rights reserved.
+- * This code may only be used under the BSD style license found at
+- * http://polymer.github.io/LICENSE.txt
+- * The complete set of authors may be found at
+- * http://polymer.github.io/AUTHORS.txt
+- * The complete set of contributors may be found at
+- * http://polymer.github.io/CONTRIBUTORS.txt
+- * Code distributed by Google as part of the polymer project is also
+- * subject to an additional IP rights grant found at
+- * http://polymer.github.io/PATENTS.txt
+- */
+-
+-'use strict';
+-
+-import * as bodyParser from 'body-parser';
+-import * as cleankill from 'cleankill';
+-import * as express from 'express';
+-import * as http from 'http';
+-import * as multer from 'multer';
+-import * as serverDestroy from 'server-destroy';
+-
+-import {findPort} from './port-scanner';
+-import {Router} from 'express';
+-export {Router} from 'express';
+-
+-export const httpbin: Router = express.Router();
+-
+-function capWords(s: string) {
+-  return s.split('-')
+-      .map((word) => word[0].toUpperCase() + word.slice(1))
+-      .join('-');
+-}
+-
+-function formatRequest(req: express.Request) {
+-  const headers = {};
+-  for (const key in req.headers) {
+-    headers[capWords(key)] = req.headers[key];
+-  }
+-  const formatted = {
+-    headers: headers,
+-    url: req.originalUrl,
+-    data: req.body,
+-    files: (<any>req).files,
+-    form: {},
+-    json: {},
+-  };
+-  const contentType =
+-      (headers['Content-Type'] || '').toLowerCase().split(';')[0];
+-  const field = {
+-    'application/json': 'json',
+-    'application/x-www-form-urlencoded': 'form',
+-    'multipart/form-data': 'form'
+-  }[contentType];
+-  if (field) {
+-    formatted[field] = req.body;
+-  }
+-  return formatted;
+-}
+-
+-httpbin.use(bodyParser.urlencoded({extended: false}));
+-httpbin.use(bodyParser.json());
+-const storage = multer.memoryStorage();
+-const upload = multer({storage: storage});
+-httpbin.use(upload.any());
+-httpbin.use(bodyParser.text());
+-httpbin.use(bodyParser.text({type: 'html'}));
+-httpbin.use(bodyParser.text({type: 'xml'}));
+-
+-httpbin.get('/delay/:seconds', function(req, res) {
+-  setTimeout(function() {
+-    res.json(formatRequest(req));
+-  }, (req.params.seconds || 0) * 1000);
+-});
+-
+-httpbin.post('/post', function(req, res) {
+-  res.json(formatRequest(req));
+-});
+-
+-// Running this script directly with `node httpbin.js` will start up a server
+-// that just serves out /httpbin/...
+-// Useful for debugging only the httpbin functionality without the rest of
+-// wct.
+-async function main() {
+-  const app = express();
+-  const server = http.createServer(app) as serverDestroy.DestroyableServer;
+-
+-  app.use('/httpbin', httpbin);
+-
+-
+-  const port = await findPort([7777, 7000, 8000, 8080, 8888]);
+-
+-  server.listen(port);
+-  (<any>server).port = port;
+-  serverDestroy(server);
+-  cleankill.onInterrupt(() => {
+-    return new Promise((resolve) => {
+-      server.destroy();
+-      server.on('close', resolve);
+-    });
+-  });
+-
+-  console.log('Server running at http://localhost:' + port + '/httpbin/');
+-}
+-
+-if (require.main === module) {
+-  main().catch((err) => {
+-    console.error(err);
+-    process.exit(1);
+-  });
+-}
+diff --git a/node_modules/web-component-tester/runner/paths.ts b/node_modules/web-component-tester/runner/paths.ts
+deleted file mode 100644
+index b81b3e1..0000000
+--- a/node_modules/web-component-tester/runner/paths.ts
++++ /dev/null
+@@ -1,79 +0,0 @@
+-/**
+- * @license
+- * Copyright (c) 2014 The Polymer Project Authors. All rights reserved.
+- * This code may only be used under the BSD style license found at
+- * http://polymer.github.io/LICENSE.txt
+- * The complete set of authors may be found at
+- * http://polymer.github.io/AUTHORS.txt
+- * The complete set of contributors may be found at
+- * http://polymer.github.io/CONTRIBUTORS.txt
+- * Code distributed by Google as part of the polymer project is also
+- * subject to an additional IP rights grant found at
+- * http://polymer.github.io/PATENTS.txt
+- */
+-
+-import * as fs from 'fs';
+-import * as glob from 'glob';
+-import * as _ from 'lodash';
+-import * as path from 'path';
+-import {promisify} from 'util';
+-
+-/**
+- * Expands a series of path patterns (globs, files, directories) into a set of
+- * files that represent those patterns.
+- *
+- * @param baseDir The directory that patterns are relative to.
+- * @param patterns The patterns to expand.
+- * @returns The expanded paths.
+- */
+-export async function expand(
+-    baseDir: string, patterns: string[]): Promise<string[]> {
+-  return expandDirectories(baseDir, await unglob(baseDir, patterns));
+-}
+-
+-/**
+- * Expands any glob expressions in `patterns`.
+- */
+-async function unglob(baseDir: string, patterns: string[]): Promise<string[]> {
+-  const strs: string[][] = [];
+-  const pGlob: any = promisify(glob);
+-  for (const pattern of patterns) {
+-    strs.push(await pGlob(String(pattern), {cwd: baseDir, root: baseDir}));
+-  }
+-
+-  // for non-POSIX support, replacing path separators
+-  return _.union(_.flatten(strs)).map((str) => str.replace(/\//g, path.sep));
+-}
+-
+-/**
+- * Expands any directories in `patterns`, following logic similar to a web
+- * server.
+- *
+- * If a pattern resolves to a directory, that directory is expanded. If the
+- * directory contains an `index.html`, it is expanded to that. Otheriwse, the
+- * it expands into its children (recursively).
+- */
+-async function expandDirectories(baseDir: string, paths: string[]) {
+-  const listsOfPaths: string[][] = [];
+-  for (const aPath of paths) {
+-    listsOfPaths.push(await expandDirectory(baseDir, aPath));
+-  }
+-
+-  const files = _.union(_.flatten(listsOfPaths));
+-  return files.filter((file) => /\.(js|html)$/.test(file));
+-}
+-
+-async function expandDirectory(
+-    baseDir: string, aPath: string): Promise<string[]> {
+-  const stat = await promisify(fs.stat)(path.resolve(baseDir, aPath));
+-  if (!stat.isDirectory()) {
+-    return [aPath];
+-  }
+-  const files = await promisify(fs.readdir)(path.resolve(baseDir, aPath));
+-  // We have an index; defer to that.
+-  if (_.includes(files, 'index.html')) {
+-    return [path.join(aPath, 'index.html')];
+-  }
+-  const children = await expandDirectories(path.join(baseDir, aPath), files);
+-  return children.map((child) => path.join(aPath, child));
+-}
+diff --git a/node_modules/web-component-tester/runner/plugin.ts b/node_modules/web-component-tester/runner/plugin.ts
+deleted file mode 100644
+index c212a1f..0000000
+--- a/node_modules/web-component-tester/runner/plugin.ts
++++ /dev/null
+@@ -1,133 +0,0 @@
+-/**
+- * @license
+- * Copyright (c) 2014 The Polymer Project Authors. All rights reserved.
+- * This code may only be used under the BSD style license found at
+- * http://polymer.github.io/LICENSE.txt
+- * The complete set of authors may be found at
+- * http://polymer.github.io/AUTHORS.txt
+- * The complete set of contributors may be found at
+- * http://polymer.github.io/CONTRIBUTORS.txt
+- * Code distributed by Google as part of the polymer project is also
+- * subject to an additional IP rights grant found at
+- * http://polymer.github.io/PATENTS.txt
+- */
+-
+-import * as _ from 'lodash';
+-import * as path from 'path';
+-
+-import {Config} from './config';
+-import {Context} from './context';
+-
+-// Plugin module names can be prefixed by the following:
+-const PREFIXES = [
+-  'web-component-tester-',
+-  'wct-',
+-];
+-
+-export interface Metadata {}
+-
+-/**
+- * A WCT plugin. This constructor is private. Plugins can be retrieved via
+- * `Plugin.get`.
+- */
+-export class Plugin {
+-  name: string;
+-  cliConfig: Config;
+-  packageName: string;
+-  metadata: Metadata;
+-  constructor(packageName: string, metadata: Metadata) {
+-    this.packageName = packageName;
+-    this.metadata = metadata;
+-    this.name = Plugin.shortName(packageName);
+-
+-    this.cliConfig = this.metadata['cli-options'] || {};
+-  }
+-
+-  /**
+-   * @param {!Context} context The context that this plugin should be evaluated
+-   *     within.
+-   */
+-  async execute(context: Context): Promise<void> {
+-    try {
+-      const plugin = require(this.packageName);
+-      plugin(context, context.pluginOptions(this.name), this);
+-    } catch (error) {
+-      throw `Failed to load plugin "${this.name}": ${error}`;
+-    }
+-  }
+-
+-  /**
+-   * Retrieves a plugin by shorthand or module name (loading it as necessary).
+-   *
+-   * @param {string} name
+-   */
+-  static async get(name: string): Promise<Plugin> {
+-    const shortName = Plugin.shortName(name);
+-    if (_loadedPlugins[shortName]) {
+-      return _loadedPlugins[shortName];
+-    }
+-
+-    const names = [shortName].concat(PREFIXES.map((p) => p + shortName));
+-    const loaded = _.compact(names.map(_tryLoadPluginPackage));
+-    if (loaded.length > 1) {
+-      const prettyNames = loaded.map((p) => p.packageName).join(' ');
+-      throw `Loaded conflicting WCT plugin packages: ${prettyNames}`;
+-    }
+-    if (loaded.length < 1) {
+-      throw `Could not find WCT plugin named "${name}"`;
+-    }
+-
+-    return loaded[0];
+-  }
+-
+-  /**
+-   * @param {string} name
+-   * @return {string} The short form of `name`.
+-   */
+-  static shortName(name: string) {
+-    for (const prefix of PREFIXES) {
+-      if (name.indexOf(prefix) === 0) {
+-        return name.substr(prefix.length);
+-      }
+-    }
+-    return name;
+-  }
+-
+-  // HACK(rictic): Makes es6 style imports happy, so that we can do, e.g.
+-  //     import {Plugin} from './plugin';
+-  static Plugin = Plugin;
+-}
+-
+-// Plugin Loading
+-
+-// We maintain an identity map of plugins, keyed by short name.
+-const _loadedPlugins: {[name: string]: Plugin} = {};
+-
+-/**
+- * @param {string} packageName Attempts to load a package as a WCT plugin.
+- * @return {Plugin}
+- */
+-function _tryLoadPluginPackage(packageName: string) {
+-  let packageInfo: Object;
+-  try {
+-    packageInfo = require(path.join(packageName, 'package.json'));
+-  } catch (error) {
+-    if (error.code !== 'MODULE_NOT_FOUND') {
+-      console.log(error);
+-    }
+-    return null;
+-  }
+-
+-  // Plugins must have a (truthy) wct-plugin field.
+-  if (!packageInfo['wct-plugin']) {
+-    return null;
+-  }
+-  // Allow {"wct-plugin": true} as a shorthand.
+-  const metadata =
+-      _.isObject(packageInfo['wct-plugin']) ? packageInfo['wct-plugin'] : {};
+-
+-  return new Plugin(packageName, metadata);
+-}
+-
+-
+-module.exports = Plugin;
+diff --git a/node_modules/web-component-tester/runner/port-scanner.ts b/node_modules/web-component-tester/runner/port-scanner.ts
+deleted file mode 100644
+index 704756f..0000000
+--- a/node_modules/web-component-tester/runner/port-scanner.ts
++++ /dev/null
+@@ -1,63 +0,0 @@
+-/**
+- * @license
+- * Copyright (c) 2014 The Polymer Project Authors. All rights reserved.
+- * This code may only be used under the BSD style license found at
+- * http://polymer.github.io/LICENSE.txt
+- * The complete set of authors may be found at
+- * http://polymer.github.io/AUTHORS.txt
+- * The complete set of contributors may be found at
+- * http://polymer.github.io/CONTRIBUTORS.txt
+- * Code distributed by Google as part of the polymer project is also
+- * subject to an additional IP rights grant found at
+- * http://polymer.github.io/PATENTS.txt
+- */
+-
+-import * as net from 'net';
+-
+-function checkPort(port: number): Promise<boolean> {
+-  return new Promise<boolean>(function(resolve) {
+-    const server = net.createServer();
+-    let hasPort = false;
+-
+-    // if server is listening, we have the port!
+-    server.on('listening', function(_err: any) {
+-      hasPort = true;
+-      server.close();
+-    });
+-
+-    // callback on server close to free up the port before report it can be used
+-    server.on('close', function(_err: any) {
+-      resolve(hasPort);
+-    });
+-
+-    // our port is busy, ignore it
+-    server.on('error', function(_err: any) {
+-      // docs say the server should close, this doesn't seem to be the case :(
+-      server.close();
+-    });
+-
+-    server.listen(port);
+-  });
+-}
+-
+-interface PromiseGetter<T> {
+-  (val: T): Promise<boolean>;
+-}
+-
+-async function detectSeries<T>(
+-    values: T[], promiseGetter: PromiseGetter<T>): Promise<T> {
+-  for (const value of values) {
+-    if (await promiseGetter(value)) {
+-      return value;
+-    }
+-  }
+-  throw new Error('Couldn\'t find a good value in detectSeries');
+-}
+-
+-export async function findPort(ports: number[]): Promise<number> {
+-  try {
+-    return await detectSeries(ports, checkPort);
+-  } catch (error) {
+-    throw new Error('no port found!');
+-  }
+-}
+diff --git a/node_modules/web-component-tester/runner/steps.ts b/node_modules/web-component-tester/runner/steps.ts
+deleted file mode 100644
+index 614b942..0000000
+--- a/node_modules/web-component-tester/runner/steps.ts
++++ /dev/null
+@@ -1,188 +0,0 @@
+-/**
+- * @license
+- * Copyright (c) 2014 The Polymer Project Authors. All rights reserved.
+- * This code may only be used under the BSD style license found at
+- * http://polymer.github.io/LICENSE.txt
+- * The complete set of authors may be found at
+- * http://polymer.github.io/AUTHORS.txt
+- * The complete set of contributors may be found at
+- * http://polymer.github.io/CONTRIBUTORS.txt
+- * Code distributed by Google as part of the polymer project is also
+- * subject to an additional IP rights grant found at
+- * http://polymer.github.io/PATENTS.txt
+- */
+-import * as http from 'http';
+-import * as _ from 'lodash';
+-import * as socketIO from 'socket.io';
+-
+-import {BrowserRunner} from './browserrunner';
+-import * as config from './config';
+-import {Context} from './context';
+-import {Plugin} from './plugin';
+-import {webserver} from './webserver';
+-
+-interface ClientMessage<T> {
+-  browserId: number;
+-  event: string;
+-  data: T;
+-}
+-
+-// Steps (& Hooks)
+-
+-export async function setupOverrides(context: Context): Promise<void> {
+-  if (context.options.registerHooks) {
+-    context.options.registerHooks(context);
+-  }
+-}
+-
+-export async function loadPlugins(context: Context): Promise<Plugin[]> {
+-  context.emit('log:debug', 'step: loadPlugins');
+-
+-  const plugins = await context.plugins();
+-
+-  // built in quasi-plugin.
+-  webserver(context);
+-
+-  // Actual plugins.
+-  await Promise.all(plugins.map((plugin) => plugin.execute(context)));
+-  return plugins;
+-}
+-
+-export async function configure(context: Context): Promise<void> {
+-  context.emit('log:debug', 'step: configure');
+-  const options = context.options;
+-
+-  await config.expand(context);
+-
+-  // Note that we trigger the configure hook _after_ filling in the `options`
+-  // object.
+-  //
+-  // If you want to modify options prior to this; do it during plugin init.
+-  await context.emitHook('configure');
+-
+-  // Even if the options don't validate; useful debugging info.
+-  const cleanOptions = _.omit(options, 'output');
+-  context.emit('log:debug', 'configuration:', cleanOptions);
+-
+-  await config.validate(options);
+-}
+-
+-/**
+- * The prepare step is where a lot of the runner's initialization occurs. This
+- * is also typically where a plugin will want to spin up any long-running
+- * process it requires.
+- *
+- * Note that some "plugins" are also built directly into WCT (webserver).
+- */
+-export async function prepare(context: Context): Promise<void> {
+-  await context.emitHook('prepare');
+-}
+-
+-export async function runTests(context: Context): Promise<void> {
+-  context.emit('log:debug', 'step: runTests');
+-
+-  const result = runBrowsers(context);
+-  const runners = result.runners;
+-  context._testRunners = runners;
+-
+-  context._socketIOServers = context._httpServers.map((httpServer) => {
+-    const socketIOServer = socketIO(httpServer);
+-    socketIOServer.on('connection', function(socket) {
+-      context.emit('log:debug', 'Test client opened sideband socket');
+-      socket.on('client-event', function(data: ClientMessage<any>) {
+-        const runner = runners[data.browserId];
+-        if (!runner) {
+-          throw new Error(
+-              `Unable to find browser runner for ` +
+-              `browser with id: ${data.browserId}`);
+-        }
+-        runner.onEvent(data.event, data.data);
+-      });
+-    });
+-    return socketIOServer;
+-  });
+-
+-  await result.completionPromise;
+-}
+-
+-export function cancelTests(context: Context): void {
+-  if (!context._testRunners) {
+-    return;
+-  }
+-  context._testRunners.forEach(function(tr) {
+-    tr.quit();
+-  });
+-}
+-
+-// Helpers
+-
+-function runBrowsers(context: Context) {
+-  const options = context.options;
+-  const numActiveBrowsers = options.activeBrowsers.length;
+-  if (numActiveBrowsers === 0) {
+-    throw new Error('No browsers configured to run');
+-  }
+-
+-  // TODO(nevir): validate browser definitions.
+-
+-  // Up the socket limit so that we can maintain more active requests.
+-  // TODO(nevir): We should be queueing the browsers above some limit too.
+-  http.globalAgent.maxSockets =
+-      Math.max(http.globalAgent.maxSockets, numActiveBrowsers * 2);
+-
+-  context.emit('run-start', options);
+-
+-  const errors: any[] = [];
+-
+-  const promises: Promise<void>[] = [];
+-
+-  const runners: BrowserRunner[] = [];
+-  let id = 0;
+-  for (const originalBrowserDef of options.activeBrowsers) {
+-    let waitFor: undefined|Promise<void> = undefined;
+-    for (const server of options.webserver._servers) {
+-      // Needed by both `BrowserRunner` and `CliReporter`.
+-      const browserDef = _.clone(originalBrowserDef);
+-      browserDef.id = id++;
+-      browserDef.variant = server.variant;
+-      _.defaultsDeep(browserDef, options.browserOptions);
+-
+-      const runner =
+-          new BrowserRunner(context, browserDef, options, server.url, waitFor);
+-      promises.push(runner.donePromise.then(
+-          () => {
+-            context.emit('log:debug', browserDef, 'BrowserRunner complete');
+-          },
+-          (error) => {
+-            context.emit('log:debug', browserDef, 'BrowserRunner complete');
+-            errors.push(error);
+-          }));
+-      runners.push(runner);
+-      if (browserDef.browserName === 'safari') {
+-        // Control to Safari must be serialized. We can't launch two instances
+-        // simultaneously, because security lol.
+-        // https://webkit.org/blog/6900/webdriver-support-in-safari-10/
+-        waitFor = runner.donePromise.catch(() => {
+-          // The next runner doesn't care about errors, just wants to know when
+-          // it can start.
+-          return undefined;
+-        });
+-      }
+-    }
+-  }
+-
+-  return {
+-    runners,
+-    completionPromise: (async function() {
+-      await Promise.all(promises);
+-      const error = errors.length > 0 ? _.union(errors).join(', ') : null;
+-      context.emit('run-end', error);
+-      // TODO(nevir): Better rationalize run-end and hook.
+-      await context.emitHook('cleanup');
+-
+-      if (error) {
+-        throw new Error(error);
+-      }
+-    }())
+-  };
+-}
+diff --git a/node_modules/web-component-tester/runner/test.ts b/node_modules/web-component-tester/runner/test.ts
+deleted file mode 100644
+index c8321f1..0000000
+--- a/node_modules/web-component-tester/runner/test.ts
++++ /dev/null
+@@ -1,92 +0,0 @@
+-/**
+- * @license
+- * Copyright (c) 2014 The Polymer Project Authors. All rights reserved.
+- * This code may only be used under the BSD style license found at
+- * http://polymer.github.io/LICENSE.txt
+- * The complete set of authors may be found at
+- * http://polymer.github.io/AUTHORS.txt
+- * The complete set of contributors may be found at
+- * http://polymer.github.io/CONTRIBUTORS.txt
+- * Code distributed by Google as part of the polymer project is also
+- * subject to an additional IP rights grant found at
+- * http://polymer.github.io/PATENTS.txt
+- */
+-import * as cleankill from 'cleankill';
+-
+-import {CliReporter} from './clireporter';
+-import {Config} from './config';
+-import {Context} from './context';
+-import * as steps from './steps';
+-
+-/**
+- * Runs a suite of web component tests.
+- *
+- * The returned Context (a kind of EventEmitter) fires various events to allow
+- * you to track the progress of the tests:
+- *
+- * Lifecycle Events:
+- *
+- * `run-start`
+- *   WCT is ready to begin spinning up browsers.
+- *
+- * `browser-init` {browser} {stats}
+- *   WCT is ready to begin spinning up browsers.
+- *
+- * `browser-start` {browser} {metadata} {stats}
+- *   The browser has begun running tests. May fire multiple times (i.e. when
+- *   manually refreshing the tests).
+- *
+- * `sub-suite-start` {browser} {sharedState} {stats}
+- *   A suite file has begun running.
+- *
+- * `test-start` {browser} {test} {stats}
+- *   A test has begun.
+- *
+- * `test-end` {browser} {test} {stats}
+- *  A test has ended.
+- *
+- * `sub-suite-end` {browser} {sharedState} {stats}
+- *   A suite file has finished running all of its tests.
+- *
+- * `browser-end` {browser} {error} {stats}
+- *   The browser has completed, and it shutting down.
+- *
+- * `run-end` {error}
+- *   WCT has run all browsers, and is shutting down.
+- *
+- * Generic Events:
+- *
+- *  * log:debug
+- *  * log:info
+- *  * log:warn
+- *  * log:error
+- *
+- * @param {!Config|!Context} options The configuration or an already formed
+- *     `Context` object.
+- */
+-export async function test(options: Config|Context): Promise<void> {
+-  const context = (options instanceof Context) ? options : new Context(options);
+-
+-  // We assume that any options related to logging are passed in via the initial
+-  // `options`.
+-  if (context.options.output) {
+-    new CliReporter(context, context.options.output, context.options);
+-  }
+-
+-  try {
+-    await steps.setupOverrides(context);
+-    await steps.loadPlugins(context);
+-    await steps.configure(context);
+-    await steps.prepare(context);
+-    await steps.runTests(context);
+-  } finally {
+-    if (!context.options.skipCleanup) {
+-      await cleankill.close();
+-    }
+-  }
+-}
+-
+-// HACK
+-test['test'] = test;
+-
+-module.exports = test;
+diff --git a/node_modules/web-component-tester/runner/webserver.ts b/node_modules/web-component-tester/runner/webserver.ts
+deleted file mode 100644
+index 00394e4..0000000
+--- a/node_modules/web-component-tester/runner/webserver.ts
++++ /dev/null
+@@ -1,375 +0,0 @@
+-/**
+- * @license
+- * Copyright (c) 2014 The Polymer Project Authors. All rights reserved.
+- * This code may only be used under the BSD style license found at
+- * http://polymer.github.io/LICENSE.txt
+- * The complete set of authors may be found at
+- * http://polymer.github.io/AUTHORS.txt
+- * The complete set of contributors may be found at
+- * http://polymer.github.io/CONTRIBUTORS.txt
+- * Code distributed by Google as part of the polymer project is also
+- * subject to an additional IP rights grant found at
+- * http://polymer.github.io/PATENTS.txt
+- */
+-
+-import * as bowerConfig from 'bower-config';
+-import * as cleankill from 'cleankill';
+-import * as express from 'express';
+-import * as fs from 'fs';
+-import * as _ from 'lodash';
+-import * as path from 'path';
+-import {MainlineServer, PolyserveServer, RequestHandler, ServerOptions, startServers, VariantServer} from 'polyserve';
+-import * as resolve from 'resolve';
+-import * as semver from 'semver';
+-import * as send from 'send';
+-import * as serverDestroy from 'server-destroy';
+-
+-import {getPackageName} from './config';
+-import {Context} from './context';
+-
+-// Template for generated indexes.
+-const INDEX_TEMPLATE = _.template(fs.readFileSync(
+-    path.resolve(__dirname, '../data/index.html'), {encoding: 'utf-8'}));
+-
+-const DEFAULT_HEADERS = {
+-  'Cache-Control': 'no-cache, no-store, must-revalidate',
+-  'Pragma': 'no-cache',
+-  'Expires': '0',
+-};
+-
+-function relativeFrom(fromPath: string, toPath: string): string {
+-  return path.relative(fromPath, toPath).replace(/\\/g, '/');
+-}
+-
+-function resolveFrom(fromPath: string, moduleId: string): string {
+-  try {
+-    return resolve.sync(moduleId, {basedir: fromPath, preserveSymlinks: true});
+-  } catch (e) {
+-    return '';
+-  }
+-}
+-
+-/**
+- * The webserver module is a quasi-plugin. This ensures that it is hooked in a
+- * sane way (for other plugins), and just follows the same flow.
+- *
+- * It provides a static HTTP server for serving the desired tests and WCT's
+- * `browser.js`/`environment.js`.
+- */
+-export function webserver(wct: Context): void {
+-  const options = wct.options;
+-
+-  wct.hook('configure', async function() {
+-    // For now, you should treat all these options as an implementation detail
+-    // of WCT. They may be opened up for public configuration, but we need to
+-    // spend some time rationalizing interactions with external webservers.
+-    options.webserver = _.merge(options.webserver, {});
+-
+-    if (options.verbose) {
+-      options.clientOptions.verbose = true;
+-    }
+-
+-    // Hacky workaround for Firefox + Windows issue where FF screws up pathing.
+-    // Bug: https://github.com/Polymer/web-component-tester/issues/194
+-    options.suites = options.suites.map((cv) => cv.replace(/\\/g, '/'));
+-
+-    // The generated index needs the correct "browser.js" script. When using
+-    // npm, the wct-browser-legacy package may be used, so we test for that
+-    // package and will use its "browser.js" if present.
+-    let browserScript = 'web-component-tester/browser.js';
+-
+-    const scripts: string[] = [], extraScripts: string[] = [];
+-    const modules: string[] = [], extraModules: string[] = [];
+-
+-    if (options.npm) {
+-      options.clientOptions = options.clientOptions || {};
+-      options.clientOptions.environmentScripts =
+-          options.clientOptions.environmentScripts || [];
+-
+-      browserScript = '';
+-
+-      const fromPath = path.resolve(options.root || process.cwd());
+-      options.wctPackageName = options.wctPackageName ||
+-          ['wct-mocha', 'wct-browser-legacy', 'web-component-tester'].find(
+-              (p) => !!resolveFrom(fromPath, p));
+-
+-      const npmPackageRootPath = path.dirname(
+-          resolveFrom(fromPath, options.wctPackageName + '/package.json'));
+-
+-      if (npmPackageRootPath) {
+-        const wctPackageScriptName =
+-            ['web-component-tester', 'wct-browser-legacy'].includes(
+-                options.wctPackageName) ?
+-            'browser.js' :
+-            `${options.wctPackageName}.js`;
+-        browserScript = `${npmPackageRootPath}/${wctPackageScriptName}`.slice(
+-            npmPackageRootPath.length - options.wctPackageName.length);
+-      }
+-
+-      const packageName = getPackageName(options);
+-      const isPackageScoped = packageName && packageName[0] === '@';
+-
+-      const rootNodeModules =
+-          path.resolve(path.join(options.root, 'node_modules'));
+-
+-      // WCT used to try to bundle a lot of packages for end-users, but
+-      // because of `node_modules` layout, these need to actually be resolved
+-      // from the package as installed, to ensure the desired version is
+-      // loaded.  Here we list the legacy packages and attempt to resolve them
+-      // from the WCT package.
+-      if (['web-component-tester', 'wct-browser-legacy'].includes(
+-              options.wctPackageName)) {
+-        const legacyNpmSupportPackageScripts: string[] = [
+-          'stacky/browser.js',
+-          'async/lib/async.js',
+-          'lodash/index.js',
+-          'mocha/mocha.js',
+-          'chai/chai.js',
+-          '@polymer/sinonjs/sinon.js',
+-          'sinon-chai/lib/sinon-chai.js',
+-          'accessibility-developer-tools/dist/js/axs_testing.js',
+-          '@polymer/test-fixture/test-fixture.js',
+-        ];
+-
+-        const resolvedLegacyNpmSupportPackageScripts: string[] =
+-            legacyNpmSupportPackageScripts
+-                .map((script) => resolveFrom(npmPackageRootPath, script))
+-                .filter((script) => script !== '');
+-
+-        options.clientOptions.environmentScripts.push(
+-            ...resolvedLegacyNpmSupportPackageScripts.map(
+-                (script) => relativeFrom(rootNodeModules, script)));
+-
+-      } else {
+-        // We need to load Mocha in the generated index.
+-        const resolvedMochaScript =
+-            resolveFrom(npmPackageRootPath, 'mocha/mocha.js');
+-        if (resolvedMochaScript) {
+-          options.clientOptions.environmentScripts.push(
+-              relativeFrom(rootNodeModules, resolvedMochaScript));
+-        }
+-      }
+-
+-      if (browserScript && isPackageScoped) {
+-        browserScript = `../${browserScript}`;
+-      }
+-    }
+-
+-    if (browserScript) {
+-      scripts.push(`../${browserScript}`);
+-    }
+-
+-    if (!options.npm) {
+-      scripts.push('web-component-tester/data/a11ysuite.js');
+-    }
+-
+-    options.webserver._generatedIndexContent =
+-        INDEX_TEMPLATE({scripts, extraScripts: [], modules, ...options});
+-  });
+-
+-  wct.hook('prepare', async function() {
+-    const wsOptions = options.webserver;
+-    const additionalRoutes = new Map<string, RequestHandler>();
+-
+-    const packageName = getPackageName(options);
+-    let componentDir;
+-
+-    // Check for client-side compatibility.
+-
+-    // Non-npm case.
+-    if (!options.npm) {
+-      componentDir = bowerConfig.read(options.root).directory;
+-      const pathToLocalWct =
+-          path.join(options.root, componentDir, 'web-component-tester');
+-      let version: string|undefined = undefined;
+-      const mdFilenames = ['package.json', 'bower.json', '.bower.json'];
+-      for (const mdFilename of mdFilenames) {
+-        const pathToMetadata = path.join(pathToLocalWct, mdFilename);
+-        try {
+-          if (!version) {
+-            version = require(pathToMetadata).version;
+-          }
+-        } catch (e) {
+-          // Handled below, where we check if we found a version.
+-        }
+-      }
+-      if (!version) {
+-        throw new Error(`
+-The web-component-tester Bower package is not installed as a dependency of this project (${
+-            packageName}).
+-
+-Please run this command to install:
+-    bower install --save-dev web-component-tester
+-
+-Web Component Tester >=6.0 requires that support files needed in the browser are installed as part of the project's dependencies or dev-dependencies. This is to give projects greater control over the versions that are served, while also making Web Component Tester's behavior easier to understand.
+-
+-Expected to find a ${mdFilenames.join(' or ')} at: ${pathToLocalWct}/
+-`);
+-      }
+-
+-      const allowedRange =
+-          require(path.join(
+-              __dirname,
+-              '..',
+-              'package.json'))['--private-wct--']['client-side-version-range'] as
+-          string;
+-      if (!semver.satisfies(version, allowedRange)) {
+-        throw new Error(`
+-    The web-component-tester Bower package installed is incompatible with the
+-    wct node package you're using.
+-
+-    The test runner expects a version that satisfies ${allowedRange} but the
+-    bower package you have installed is ${version}.
+-`);
+-      }
+-
+-      let hasWarnedBrowserJs = false;
+-      additionalRoutes.set('/browser.js', function(request, response) {
+-        if (!hasWarnedBrowserJs) {
+-          console.warn(`
+-
+-          WARNING:
+-          Loading WCT's browser.js from /browser.js is deprecated.
+-
+-          Instead load it from ../web-component-tester/browser.js
+-          (or with the absolute url /components/web-component-tester/browser.js)
+-        `);
+-          hasWarnedBrowserJs = true;
+-        }
+-        const browserJsPath = path.join(pathToLocalWct, 'browser.js');
+-        send(request, browserJsPath).pipe(response);
+-      });
+-    }
+-
+-    const pathToGeneratedIndex =
+-        `/components/${packageName}/generated-index.html`;
+-    additionalRoutes.set(pathToGeneratedIndex, (_request, response) => {
+-      response.set(DEFAULT_HEADERS);
+-      response.send(options.webserver._generatedIndexContent);
+-    });
+-
+-    const appMapper = async (app: express.Express, options: ServerOptions) => {
+-      // Using the define:webserver hook to provide a mapper function that
+-      // allows user to substitute their own app for the generated polyserve
+-      // app.
+-      await wct.emitHook(
+-          'define:webserver', app, (substitution: express.Express) => {
+-            app = substitution;
+-          }, options);
+-      return app;
+-    };
+-
+-    // Serve up project & dependencies via polyserve
+-    const polyserveResult = await startServers(
+-        {
+-          root: options.root,
+-          componentDir,
+-          compile: options.compile,
+-          hostname: options.webserver.hostname,
+-          port: options.webserver.port,
+-          headers: DEFAULT_HEADERS,
+-          packageName,
+-          additionalRoutes,
+-          npm: !!options.npm,
+-          moduleResolution: options.moduleResolution,
+-          proxy: options.proxy,
+-        },
+-        appMapper);
+-
+-    let servers: Array<MainlineServer|VariantServer>;
+-
+-    const onDestroyHandlers: Array<() => Promise<void>> = [];
+-    const registerServerTeardown = (serverInfo: PolyserveServer) => {
+-      const destroyableServer = serverInfo.server as any;
+-      serverDestroy(destroyableServer);
+-      onDestroyHandlers.push(() => {
+-        destroyableServer.destroy();
+-        return new Promise<void>(
+-            (resolve) => serverInfo.server.on('close', () => resolve()));
+-      });
+-    };
+-
+-    if (polyserveResult.kind === 'mainline') {
+-      servers = [polyserveResult];
+-      registerServerTeardown(polyserveResult);
+-      const address = polyserveResult.server.address();
+-      if (typeof address !== 'string') {
+-        wsOptions.port = address.port;
+-      }
+-    } else if (polyserveResult.kind === 'MultipleServers') {
+-      servers = [polyserveResult.mainline];
+-      servers = servers.concat(polyserveResult.variants);
+-      const address = polyserveResult.mainline.server.address();
+-      if (typeof address !== 'string') {
+-        wsOptions.port = address.port;
+-      }
+-      for (const server of polyserveResult.servers) {
+-        registerServerTeardown(server);
+-      }
+-    } else {
+-      const never: never = polyserveResult;
+-      throw new Error(
+-          'Internal error: Got unknown response from polyserve.startServers: ' +
+-          `${never}`);
+-    }
+-
+-    wct._httpServers = servers.map((s) => s.server);
+-
+-    // At this point, we allow other plugins to hook and configure the
+-    // webservers as they please.
+-    for (const server of servers) {
+-      await wct.emitHook('prepare:webserver', server.app);
+-    }
+-
+-    options.webserver._servers = servers.map((s) => {
+-      const address = s.server.address();
+-      const port = typeof address === 'string' ? '' : `:${address.port}`;
+-      const hostname = s.options.hostname;
+-      const url = `http://${hostname}${port}${pathToGeneratedIndex}`;
+-      return {url, variant: s.kind === 'mainline' ? '' : s.variantName};
+-    });
+-
+-    // TODO(rictic): re-enable this stuff. need to either move this code
+-    // into polyserve or let the polyserve API expose this stuff.
+-    // app.use('/httpbin', httpbin.httpbin);
+-
+-    // app.get('/favicon.ico', function(request, response) {
+-    //   response.end();
+-    // });
+-
+-    // app.use(function(request, response, next) {
+-    //   wct.emit('log:warn', '404', chalk.magenta(request.method),
+-    //   request.url);
+-    //   next();
+-    // });
+-
+-    async function interruptHandler() {
+-      // close the socket IO server directly if it is spun up
+-      for (const io of (wct._socketIOServers || [])) {
+-        // we will close the underlying server ourselves
+-        (<any>io).httpServer = null;
+-        io.close();
+-      }
+-      await Promise.all(onDestroyHandlers.map((f) => f()));
+-    }
+-    cleankill.onInterrupt(() => {
+-      return new Promise((resolve) => {
+-        interruptHandler().then(() => resolve(), resolve);
+-      });
+-    });
+-  });
+-}
+-
+-function exists(path: string): boolean {
+-  try {
+-    fs.statSync(path);
+-    return true;
+-  } catch (_err) {
+-    return false;
+-  }
+-}
+-
+-// HACK(rictic): remove this ES6-compat hack and export webserver itself
+-webserver['webserver'] = webserver;
+-
+-module.exports = webserver;
+diff --git a/node_modules/web-component-tester/runner.d.ts b/node_modules/web-component-tester/runner.d.ts
+new file mode 100644
+index 0000000..35ff134
+--- /dev/null
++++ b/node_modules/web-component-tester/runner.d.ts
+@@ -0,0 +1,42 @@
++import * as _cli from './runner/cli';
++import * as _config from './runner/config';
++import * as _gulp from './runner/gulp';
++import * as _steps from './runner/steps';
++import * as _test from './runner/test';
++
++export { Browser, Config } from './runner/config'
++
++export const cli = {
++  run: _cli.run,
++  runSauceTunnel: _cli.runSauceTunnel
++};
++
++export const config = {
++  getPackageName: _config.getPackageName,
++  defaults: _config.defaults,
++  PreparsedArgs: _config.PreparsedArgs,
++  fromDisk: _config.fromDisk,
++  preparseArgs: _config.preparseArgs,
++  parseArgs: _config.parseArgs,
++  merge: _config.merge,
++  normalize: _config.normalize,
++  expand: _config.expand,
++  validate: _config.validate
++};
++
++export const gulp = {
++  init: _gulp.init
++};
++
++export const steps = {
++  setupOverrides: _steps.setupOverrides,
++  loadPlugins: _steps.loadPlugins,
++  configure: _steps.configure,
++  prepare: _steps.prepare,
++  runTests: _steps.runTests,
++  cancelTests: _steps.cancelTests
++};
++
++export const test = {
++  test: _test.test
++};

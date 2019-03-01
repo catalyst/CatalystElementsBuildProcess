@@ -4,6 +4,8 @@
 
 Feel free to submit any issues you find 😃
 
+* When submitting a browser bug, please include the browser, version, operating system, and operating system version.
+
 ## Pull Requests
 
 How to:

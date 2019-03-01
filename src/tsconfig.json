@@ -1,0 +1,33 @@
+{
+  "extends": "../tsconfig.common.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "rootDir": ".",
+
+    // Coding style
+    "noFallthroughCasesInSwitch": false,
+    "noImplicitAny": false,
+    "noImplicitReturns": false,
+    "noImplicitThis": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "strictNullChecks": false,
+
+    // Output
+    "noEmitOnError": false,
+    "module": "esnext",
+    "target": "es2017",
+    "removeComments": true,
+    "isolatedModules": false,
+    "outDir": "../dist",
+    "declarationDir": "../dist",
+    "declaration": true
+  },
+  "include": [
+    "**/*.ts",
+    "../custom_typings/**/*.d.ts"
+  ],
+  "exclude": [
+    "scripts/templates/**"
+  ]
+}

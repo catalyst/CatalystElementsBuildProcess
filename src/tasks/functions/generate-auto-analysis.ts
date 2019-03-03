@@ -7,8 +7,8 @@ import {
   PackageUrlResolver
 } from 'polymer-analyzer';
 
+import { Config } from '../../config';
 import { glob } from '../../utils';
-import { Config } from '../config';
 
 /**
  * Generate an analysis of the component from it's dist files.

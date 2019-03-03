@@ -5,8 +5,8 @@ import { resolve as resolvePath } from 'path';
 import { rollup, RollupOptions, RollupWatchOptions, watch as rollupWatch } from 'rollup';
 import sortPackage from 'sort-package-json';
 
+import { Config } from '../../config';
 import { Options } from '../../types/Options';
-import { BuildToolsEnvConfig, Config } from '../config';
 
 /**
  * Build for the development environment.
@@ -52,7 +52,7 @@ export async function buildProduction(options: Options, config: Config): Promise
  * @returns the filenames output.
  */
 export async function buildComponent(
-  config: BuildToolsEnvConfig
+  config: Config['build']['tools']['production'] | Config['build']['tools']['development']
 // tslint:disable-next-line: readonly-array
 ): Promise<Array<string>> {
   const outputFiles = await Promise.all(

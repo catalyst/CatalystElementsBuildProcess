@@ -1,6 +1,7 @@
-import { Options } from '../../types';
 import { Config } from '../config';
-import { lint } from '../functions/lint';
+import { Options } from '../types';
+
+import { lint } from './functions/lint';
 
 /**
  * Run the build process.

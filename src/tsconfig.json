@@ -28,6 +28,6 @@
     "../custom_typings/**/*.d.ts"
   ],
   "exclude": [
-    "scripts/templates/**"
+    "./templates/**/*"
   ]
 }

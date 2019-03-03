@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-const command = process.argv[2] as string | undefined;
+const command = process.argv[2];
 
 // tslint:disable-next-line: no-magic-numbers
 const args = process.argv.slice(3);
@@ -19,10 +19,7 @@ process.on('unhandledRejection', (error) => {
   throw error;
 });
 
-import { resolve as resolvePath } from 'path';
-
-import { EnvironmentError, ExternalError } from '../errors';
-import { Config, load as getConfig } from '../scripts/config';
+import { loadConfig } from '../config';
 import {
   autoAnalyzeCommands,
   buildCommands,
@@ -30,13 +27,9 @@ import {
   helpCommands,
   lintCommands,
   testCommands
-} from '../scripts/config/commands';
-import { run as build } from '../scripts/runners/build';
-import { run as buildDocs } from '../scripts/runners/buildDocs';
-import { run as autoAnalyze } from '../scripts/runners/generate-auto-analysis';
-import { run as lint } from '../scripts/runners/lint';
-import { run as test } from '../scripts/runners/test';
-import { DeepPartial } from '../types/DeepPartial';
+} from '../config/commands';
+import { EnvironmentError, ExternalError } from '../errors';
+import { analyze, build, buildDocs, lint, test } from '../tasks';
 import { Options } from '../types/Options';
 
 // Start
@@ -66,25 +59,7 @@ import { Options } from '../types/Options';
     return Promise.reject(options);
   }
 
-  const userConfigFileAbsPath =
-    options.userConfigFile === false
-      ? false
-      : resolvePath(options.userConfigFile);
-
-  const userConfig =
-    userConfigFileAbsPath === false
-      ? {}
-      : (
-          await import(userConfigFileAbsPath)
-            .catch(async (error) => {
-              return Promise.reject(`Unable to load config "${userConfigFileAbsPath}"\n${error}`);
-            }) as {
-              // tslint:disable-next-line: completed-docs no-reserved-keywords
-              readonly default: DeepPartial<Config>;
-            }
-          ).default;
-
-  const config = await getConfig(options, userConfig, commandToRun);
+  const config = await loadConfig(options, commandToRun);
 
   // tslint:disable: one-line
 
@@ -102,7 +77,7 @@ import { Options } from '../types/Options';
   }
   // Auto Analyze.
   else if (autoAnalyzeCommands.includes(commandToRun)) {
-    await autoAnalyze(options, config);
+    await analyze(options, config);
   }
   // Test.
   else if (testCommands.includes(commandToRun)) {

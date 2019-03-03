@@ -13,7 +13,7 @@ import { terser as rollupPluginTerser } from 'rollup-plugin-terser';
 import rollupPluginTypescript from 'rollup-plugin-typescript2';
 
 import { Config } from '..';
-import { DeepPartial } from '../../../types';
+import { DeepPartial } from '../../types';
 import babelConfigModule from '../build/babel.config.module.prod';
 import {
   prettyModule as terserConfigModule

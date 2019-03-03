@@ -1,11 +1,11 @@
 import { all as deepMerge } from 'deepmerge';
 import { readFile } from 'fs-extra';
 import { PackageJson } from 'package-json'; // tslint:disable-line: no-implicit-dependencies
-import { dirname } from 'path';
+import { dirname, resolve as resolvePath } from 'path';
 
-import { ConfigError, EnvironmentError } from '../../errors';
-import { DeepPartial } from '../../types/DeepPartial';
-import { Options } from '../../types/Options';
+import { ConfigError, EnvironmentError } from '../errors';
+import { DeepPartial } from '../types/DeepPartial';
+import { Options } from '../types/Options';
 
 import { buildCommands, testCommands } from './commands';
 import { defaultStaticConfig } from './default';
@@ -21,7 +21,6 @@ import { Config } from './interface';
  */
 export async function load(
   options: Options,
-  userConfig?: DeepPartial<Config>,
   command?: string
 ): Promise<Config> {
   // Read and save the package.json file.
@@ -56,18 +55,18 @@ export async function load(
       ? splitName[0]
       : splitName[1];
 
+  const userConfig = await loadUserConfig(options);
+
   // Update the config.
   const staticConfig = deepMerge<DeepPartial<Config>>([
     defaultStaticConfig,
-    userConfig === undefined
-      ? {}
-      : userConfig
+    userConfig
   ]);
 
   // All the automatically set options in the config
   const autoLoadedConfig: DeepPartial<Config> = {
     package: projectPackage,
-    libraryRoot: dirname(require.resolve('@catalyst-elements/utils/package.json', { paths: [process.cwd()] })), // TODO: remove this
+    libraryRoot: dirname(require.resolve('@catalyst-elements/dev-utils/package.json', { paths: [process.cwd()] })),
     component: {
       name: componentName,
       scope: packageScope
@@ -81,9 +80,7 @@ export async function load(
   const config = deepMerge<DeepPartial<Config>>([
     defaultStaticConfig,
     autoLoadedConfig,
-    userConfig === undefined
-      ? {}
-      : userConfig
+    userConfig
   ]);
 
   const configError = checkConfig(options, config, command);
@@ -114,7 +111,7 @@ async function loadBuildToolsConfig(
     staticConfig.build !== undefined &&
     staticConfig.build.tools !== undefined &&
     staticConfig.build.tools[options.env] !== undefined &&
-    staticConfig.build.tools[options.env]!.rollup !== undefined; // tslint:disable-line: no-non-null-assertion
+    staticConfig.build.tools[options.env].rollup !== undefined;
 
   const rollupConfig = await (
       options.env === 'development'
@@ -178,7 +175,7 @@ function checkBuildConfig(
   options: Options,
   command?: string
 ): Error | undefined {
-  // tslint:disable:curly no-non-null-assertion
+  // tslint:disable:curly
 
   // If the build command is going to be run (or might be run), make sure the build config is all good.
   if (!(command === undefined || buildCommands.includes(command) || testCommands.includes(command))) {
@@ -194,7 +191,7 @@ function checkBuildConfig(
   if (build.script.extension === undefined)           return new Error('"config.build.script.extension" === undefined');
   if (build.tools === undefined)                      return new Error('"config.build.tools" === undefined');
   if (build.tools[options.env] === undefined)         return new Error(`"config.build.tools.${options.env}" === undefined`);
-  if (build.tools[options.env]!.rollup === undefined) return new Error(`"config.build.tools.${options.env}.rollup" === undefined`);
+  if (build.tools[options.env].rollup === undefined)  return new Error(`"config.build.tools.${options.env}.rollup" === undefined`);
 
   // Check for bad state.
   if (!(build.script.create || build.module.create)) {
@@ -205,7 +202,7 @@ function checkBuildConfig(
   }
 
   return undefined;
-  // tslint:enable:curly no-non-null-assertion
+  // tslint:enable:curly
 }
 
 /**
@@ -226,4 +223,25 @@ function checkTestConfig(
   }
 
   return undefined;
+}
+
+/**
+ * Load the user defined config.
+ */
+async function loadUserConfig(options: Options): Promise<DeepPartial<Config>> {
+  const userConfigFileAbsPath = options.userConfigFile === false
+    ? false
+    : resolvePath(options.userConfigFile);
+
+  return (
+    userConfigFileAbsPath === false
+      ? {}
+      : (await import(userConfigFileAbsPath)
+        .catch(async (error) => {
+          return Promise.reject(`Unable to load config "${userConfigFileAbsPath}"\n${error}`);
+        }) as {
+          // tslint:disable-next-line: completed-docs no-reserved-keywords
+          readonly default: DeepPartial<Config>;
+        }).default
+  );
 }

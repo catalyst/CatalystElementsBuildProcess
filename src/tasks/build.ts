@@ -1,7 +1,8 @@
-import { EnvironmentError } from '../../errors';
-import { Options } from '../../types';
 import { Config } from '../config';
-import { buildDevelopment, buildProduction } from '../functions/build';
+import { EnvironmentError } from '../errors';
+import { Options } from '../types';
+
+import { buildDevelopment, buildProduction } from './functions/build';
 
 /**
  * Run the build process.

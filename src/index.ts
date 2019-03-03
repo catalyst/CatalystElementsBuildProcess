@@ -1,1 +1,4 @@
-export { UserConfig as Config } from './scripts/config';
+export * from './config';
+export * from './tasks';
+export * from './types';
+export * from './utils';

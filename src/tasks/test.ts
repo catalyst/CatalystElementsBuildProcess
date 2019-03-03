@@ -1,8 +1,9 @@
-import { EnvironmentError } from '../../errors';
-import { Options } from '../../types';
 import { Config } from '../config';
-import { buildComponent, watchComponent } from '../functions/build';
-import { test } from '../functions/test';
+import { EnvironmentError } from '../errors';
+import { Options } from '../types';
+
+import { buildComponent, watchComponent } from './functions/build';
+import { test } from './functions/test';
 
 /**
  * Run the tests.

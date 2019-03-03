@@ -1,13 +1,9 @@
 import { join as joinPaths, resolve as resolvePath } from 'path';
-import WebpackPluginTerser from 'terser-webpack-plugin';
 import { Configuration } from 'webpack';
 
 import { Config } from '..';
-import { InternalError } from '../../../errors';
-import { DeepPartial } from '../../../types';
-
-import babelOptions from './babel.config.script.prod';
-import { minScript as terserConfig } from './terser.config.prod';
+import { InternalError } from '../../errors';
+import { DeepPartial } from '../../types';
 
 /**
  * The webpack config for development.
@@ -25,17 +21,13 @@ export async function getConfig(config: DeepPartial<Config>): Promise<Configurat
   }
 
   return {
-    mode: 'production',
+    mode: 'development',
     entry: joinPaths(config.libraryRoot, config.docs.templateFiles.entrypoint),
     module: {
       rules: [
         {
           test: /\.ts$/,
           use: [
-            {
-              loader: require.resolve('babel-loader'),
-              options: babelOptions
-            },
             {
               loader: require.resolve('ts-loader')
             }
@@ -46,24 +38,15 @@ export async function getConfig(config: DeepPartial<Config>): Promise<Configurat
     },
     output: {
       path: resolvePath(config.docs.path),
-      filename: 'main.min.js',
-      chunkFilename: `common/[hash:8].min.js`
+      filename: 'main.js',
+      chunkFilename: `common/[hash:8].js`
     },
     resolve: {
       extensions: ['.js', '.ts']
     },
     target: 'web',
-    optimization: {
-      minimizer: [
-        new WebpackPluginTerser({
-          terserOptions: terserConfig
-        })
-      ]
-    },
     performance: {
-      hints: 'warning',
-      maxEntrypointSize: 524288, // 0.5 MB
-      maxAssetSize: 524288 // 0.5 MB
+      hints: false
     }
   };
 }

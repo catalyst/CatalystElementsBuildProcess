@@ -12,8 +12,8 @@ import {
   LintResult as TsLintResult
 } from 'tslint';
 
+import { Config } from '../../config';
 import { transpose } from '../../utils';
-import { Config } from '../config';
 
 /**
  * The maximum length a severity string can be.
@@ -190,7 +190,7 @@ function formatTsLintResult(result: TsLintResult): LintingOutputResult {
       const existingFileErrors =
         errors[filename] === undefined
           ? []
-          : errors[filename] as ReadonlyArray<LintingError>;
+          : errors[filename];
 
       const {
         line,

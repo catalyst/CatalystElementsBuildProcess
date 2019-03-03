@@ -9,8 +9,8 @@ import rollupPluginNodeResolve from 'rollup-plugin-node-resolve';
 import rollupPluginTypescript from 'rollup-plugin-typescript2';
 
 import { Config } from '..';
-import { InternalError } from '../../../errors';
-import { DeepPartial } from '../../../types';
+import { InternalError } from '../../errors';
+import { DeepPartial } from '../../types';
 
 /**
  * The esm rollup config for development.

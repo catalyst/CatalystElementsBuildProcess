@@ -11,10 +11,10 @@ import { minify as minifyJS } from 'terser';
 import { promisify } from 'util';
 import webpack from 'webpack';
 
+import { Config } from '../../config';
+import { minScript as terserConfigScript } from '../../config/build/terser.config.prod';
 import { EnvironmentError } from '../../errors';
 import { Options } from '../../types';
-import { Config } from '../config';
-import { minScript as terserConfigScript } from '../config/build/terser.config.prod';
 
 const renderSass = promisify<SassOptions, SassResult>(renderSassCbf);
 
@@ -52,9 +52,9 @@ async function compile(options: Options, config: Config): Promise<void> {
 
   const rollupConfigs =
       options.env === 'production' || options.env === 'test'
-    ? await (await import('../config/build-docs/rollup.config.prod')).getAllConfigs(config)
+    ? await (await import('../../config/build-docs/rollup.config.prod')).getAllConfigs(config)
     : options.env === 'development'
-    ? await (await import('../config/build-docs/rollup.config.dev')).getAllConfigs(config)
+    ? await (await import('../../config/build-docs/rollup.config.dev')).getAllConfigs(config)
     : new EnvironmentError();
 
   if (rollupConfigs instanceof Error) {
@@ -86,9 +86,9 @@ async function compile(options: Options, config: Config): Promise<void> {
   // WebPack is used instead to generate the es5 version of the docs.
   const webpackConfig =
       options.env === 'production' || options.env === 'test'
-    ? await (await import('../config/build-docs/webpack.config.prod')).getConfig(config)
+    ? await (await import('../../config/build-docs/webpack.config.prod')).getConfig(config)
     : options.env === 'development'
-    ? await (await import('../config/build-docs/webpack.config.dev')).getConfig(config)
+    ? await (await import('../../config/build-docs/webpack.config.dev')).getConfig(config)
     : new EnvironmentError();
 
   if (webpackConfig instanceof Error) {
@@ -287,9 +287,9 @@ async function compileCSS(options: Options, config: Config): Promise<string> {
 
   const postcssConfig =
       options.env === 'production'
-    ? (await import('../config/build-docs/postcss.config.prod')).default
+    ? (await import('../../config/build-docs/postcss.config.prod')).default
     : options.env === 'development' || options.env === 'test'
-    ? (await import('../config/build-docs/postcss.config.dev')).default
+    ? (await import('../../config/build-docs/postcss.config.dev')).default
     : new EnvironmentError();
 
   if (postcssConfig instanceof Error) {

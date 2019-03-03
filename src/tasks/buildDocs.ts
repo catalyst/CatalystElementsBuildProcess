@@ -1,6 +1,7 @@
-import { Options } from '../../types';
 import { Config } from '../config';
-import { buildDocs } from '../functions/buildDocs';
+import { Options } from '../types';
+
+import { buildDocs } from './functions/buildDocs';
 
 /**
  * Run the build process.

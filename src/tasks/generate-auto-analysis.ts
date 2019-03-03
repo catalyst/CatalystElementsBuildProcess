@@ -1,6 +1,7 @@
-import { Options } from '../../types';
 import { Config } from '../config';
-import { generateAutoAnalysis } from '../functions/generate-auto-analysis';
+import { Options } from '../types';
+
+import { generateAutoAnalysis } from './functions/generate-auto-analysis';
 
 /**
  * Run the build process.

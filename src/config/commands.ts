@@ -10,7 +10,8 @@ export const buildCommands: ReadonlyArray<string> = [
  */
 export const buildDocsCommands: ReadonlyArray<string> = [
   'build-docs',
-  'buildDocs'
+  'buildDocs',
+  'docs'
 ];
 
 /**

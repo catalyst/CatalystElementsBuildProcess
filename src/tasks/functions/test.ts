@@ -1,6 +1,6 @@
 import { test as wctRunner } from 'web-component-tester';
 
-import { Config } from '../config';
+import { Config } from '../../config';
 
 /**
  * Run tests.

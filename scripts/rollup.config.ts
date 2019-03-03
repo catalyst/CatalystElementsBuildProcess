@@ -8,7 +8,7 @@ import { join as joinPath } from 'path';
 import { RollupOptions } from 'rollup';
 import rollupPluginBabel from 'rollup-plugin-babel';
 import rollupPluginCommonjs from 'rollup-plugin-commonjs';
-import rollupPluginCopy from 'rollup-plugin-cpy'
+import rollupPluginCopy from 'rollup-plugin-cpy';
 import rollupPluginHashbang from 'rollup-plugin-hashbang';
 import rollupPluginJson from 'rollup-plugin-json';
 import rollupPluginNodeResolve from 'rollup-plugin-node-resolve';
@@ -16,30 +16,54 @@ import rollupPluginTypescript from 'rollup-plugin-typescript2';
 
 import packageJson from '../package.json';
 
-const indexConfig: RollupOptions = {
-  input: 'src/index.ts',
-
+const commonConfig = {
   output: {
     dir: 'dist',
-    entryFileNames: '[name].empty.mjs',
-    format: 'esm'
+    sourcemap: false
   },
 
+  external: [
+    // All the dependencies.
+    ...Object.keys(packageJson.dependencies)
+      .map((dependency) => {
+        try {
+          return require.resolve(dependency, { paths: [process.cwd()] });
+        } catch (e) {
+          return false;
+        }
+      })
+      .filter((dependency) => dependency !== false) as ReadonlyArray<string>
+  ],
+
+  treeshake: {
+    pureExternalModules: true,
+    propertyReadSideEffects: false,
+    annotations: true
+  }
+};
+
+const jsConfig: RollupOptions = {
+  ...commonConfig,
+
+  input: 'src/index.ts',
+
   plugins: [
+    rollupPluginHashbang(),
+    rollupPluginNodeResolve(),
+    rollupPluginCommonjs(),
     rollupPluginTypescript({
       tsconfig: 'src/tsconfig.json',
       useTsconfigDeclarationDir: true
+    }),
+    rollupPluginJson(),
+    rollupPluginBabel({
+      extensions: ['.js', '.mjs', '.ts']
     })
   ]
 };
 
 const cliConfig: RollupOptions = {
   input: 'src/bin/cli.ts',
-
-  output: {
-    dir: 'dist',
-    sourcemap: false
-  },
 
   plugins: [
     rollupPluginHashbang(),
@@ -49,7 +73,7 @@ const cliConfig: RollupOptions = {
       tsconfig: 'src/tsconfig.json',
       tsconfigOverride: {
         compilerOptions: {
-          declaration: false  // declarations are handled by the index config.
+          declaration: false  // declarations are handled by the js config.
         }
       }
     }),
@@ -67,18 +91,7 @@ const cliConfig: RollupOptions = {
         }
       }
     ])
-  ],
-
-  external: [
-    // All the dependencies.
-    ...Object.keys(packageJson.dependencies)
-  ],
-
-  treeshake: {
-    pureExternalModules: true,
-    propertyReadSideEffects: false,
-    annotations: true
-  }
+  ]
 };
 
 function setConfigOutput(
@@ -118,7 +131,7 @@ function setConfigOutput(
 // Copy the template files.
 const cliConfigCopyPlugin = rollupPluginCopy([
   {
-    files: 'scripts/templates/**/*',
+    files: 'templates/**/*',
     dest: joinPath(process.cwd(), 'dist'),
     options: {
       cwd: joinPath(process.cwd(), 'src'),
@@ -126,6 +139,14 @@ const cliConfigCopyPlugin = rollupPluginCopy([
     }
   }
 ]);
+
+const jsConfigEsm = setConfigOutput(jsConfig, '.', 'esm');
+const jsConfigCjs = setConfigOutput(jsConfig, '.', 'cjs');
+
+const jsConfigs = [
+  jsConfigEsm,
+  jsConfigCjs
+];
 
 const cliConfigEsm = setConfigOutput(cliConfig, 'bin', 'esm');
 const cliConfigCjs = setConfigOutput(cliConfig, 'bin', 'cjs');
@@ -145,6 +166,6 @@ const cliConfigs = [
 ];
 
 export default [
-  indexConfig,
+  ...jsConfigs,
   ...cliConfigs
 ];

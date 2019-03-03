@@ -1,5 +1,5 @@
 import colorGuard from 'colorguard';
-import postcssContainerQueryProlyfill from 'cq-prolyfill/postcss-plugin';
+import postcssContainerQuery from 'cq-prolyfill/postcss-plugin';
 import * as postcss from 'postcss';
 import postcssFontMagician from 'postcss-font-magician';
 import postcssPresetEnv from 'postcss-preset-env';
@@ -14,7 +14,7 @@ interface PostcssConfig {
 
 const config: PostcssConfig = {
   plugins: [
-    postcssContainerQueryProlyfill(),
+    postcssContainerQuery(),
     postcssFontMagician(),
     postcssPresetEnv({
       stage: 2,

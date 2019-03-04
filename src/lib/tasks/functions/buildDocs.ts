@@ -36,7 +36,7 @@ async function compile(options: Options, config: Config): Promise<void> {
 
   if (options.env === 'production') {
     const es5AdapterLoaderJs = renderEjs(
-      await readFile(joinPaths(config.libraryRoot, config.docs.templateFiles.es5AdapterLoader), 'utf-8'),
+      await readFile(joinPaths(config.packageRoot, config.docs.templateFiles.es5AdapterLoader), 'utf-8'),
       {
         customElementsEs5AdapterPath: joinPaths(webComponentsPolyfillsBaseDir, es5AdapterPath)
       },
@@ -240,7 +240,7 @@ async function compileHTML(
       ? (await readFile(resolvePath(config.temp.path, config.docs.path, 'es5-adapter-loader.min.js'), 'utf-8')).trim()
       : '';
 
-  const indexHtmlEjs = await readFile(joinPaths(config.libraryRoot, config.docs.templateFiles.indexHtml), 'utf-8');
+  const indexHtmlEjs = await readFile(joinPaths(config.packageRoot, config.docs.templateFiles.indexHtml), 'utf-8');
 
   const indexHTML = renderEjs(indexHtmlEjs, {
     env: options.env,
@@ -280,7 +280,7 @@ async function compileHTML(
 
 async function compileCSS(options: Options, config: Config): Promise<string> {
   const css = (await renderSass({
-      file: joinPaths(config.libraryRoot, config.docs.templateFiles.style),
+      file: joinPaths(config.packageRoot, config.docs.templateFiles.style),
       outputStyle: 'expanded'
     }))
       .css.toString('utf-8');

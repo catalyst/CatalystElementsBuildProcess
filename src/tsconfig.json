@@ -1,17 +1,23 @@
 {
-  "extends": "../tsconfig.common.json",
   "compilerOptions": {
     "baseUrl": ".",
     "rootDir": ".",
+    "moduleResolution": "node",
+    "lib": ["esnext"],
+    "skipLibCheck": true,
 
     // Coding style
-    "noFallthroughCasesInSwitch": false,
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "newLine": "LF",
+    "noFallthroughCasesInSwitch": true,
     "noImplicitAny": false,
-    "noImplicitReturns": false,
-    "noImplicitThis": false,
-    "noUnusedLocals": false,
-    "noUnusedParameters": false,
-    "strictNullChecks": false,
+    "noImplicitReturns": true,
+    "noImplicitThis": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "strictNullChecks": true,
 
     // Output
     "noEmitOnError": false,
@@ -19,15 +25,19 @@
     "target": "es2017",
     "removeComments": true,
     "isolatedModules": false,
-    "outDir": "../dist",
-    "declarationDir": "../dist",
-    "declaration": true
+    "declaration": true,
+
+    "plugins": [
+      {
+        "name": "typescript-tslint-plugin"
+      }
+    ],
   },
   "include": [
     "**/*.ts",
     "../custom_typings/**/*.d.ts"
   ],
   "exclude": [
-    "./templates/**/*"
+    "./lib/templates/**/*"
   ]
 }

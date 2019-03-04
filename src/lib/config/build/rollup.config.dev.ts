@@ -9,8 +9,8 @@ import rollupPluginNodeResolve from 'rollup-plugin-node-resolve';
 import rollupPluginTypescript from 'rollup-plugin-typescript2';
 
 import { Config } from '..';
-import { DeepPartial } from '../../../types';
-import { glob } from '../../../utils';
+import { DeepPartial } from '../../types';
+import { glob } from '../../utils';
 
 /**
  * The rollup configs for development.

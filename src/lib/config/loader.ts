@@ -66,7 +66,7 @@ export async function load(
   // All the automatically set options in the config
   const autoLoadedConfig: DeepPartial<Config> = {
     package: projectPackage,
-    libraryRoot: dirname(require.resolve('@catalyst-elements/dev-utils/package.json', { paths: [process.cwd()] })),
+    packageRoot: dirname(require.resolve('@catalyst-elements/dev-utils/package.json', { paths: [process.cwd()] })),
     component: {
       name: componentName,
       scope: packageScope
@@ -111,7 +111,7 @@ async function loadBuildToolsConfig(
     staticConfig.build !== undefined &&
     staticConfig.build.tools !== undefined &&
     staticConfig.build.tools[options.env] !== undefined &&
-    staticConfig.build.tools[options.env].rollup !== undefined;
+    staticConfig.build.tools[options.env]!.rollup !== undefined;
 
   const rollupConfig = await (
       options.env === 'development'
@@ -191,7 +191,7 @@ function checkBuildConfig(
   if (build.script.extension === undefined)           return new Error('"config.build.script.extension" === undefined');
   if (build.tools === undefined)                      return new Error('"config.build.tools" === undefined');
   if (build.tools[options.env] === undefined)         return new Error(`"config.build.tools.${options.env}" === undefined`);
-  if (build.tools[options.env].rollup === undefined)  return new Error(`"config.build.tools.${options.env}.rollup" === undefined`);
+  if (build.tools[options.env]!.rollup === undefined)  return new Error(`"config.build.tools.${options.env}.rollup" === undefined`);
 
   // Check for bad state.
   if (!(build.script.create || build.module.create)) {

@@ -19,7 +19,7 @@ process.on('unhandledRejection', (error) => {
   throw error;
 });
 
-import { loadConfig } from '../config';
+import { loadConfig } from '../lib/config';
 import {
   autoAnalyzeCommands,
   buildCommands,
@@ -27,10 +27,10 @@ import {
   helpCommands,
   lintCommands,
   testCommands
-} from '../config/commands';
-import { EnvironmentError, ExternalError } from '../errors';
-import { analyze, build, buildDocs, lint, test } from '../tasks';
-import { Options } from '../types/Options';
+} from '../lib/config/commands';
+import { EnvironmentError, ExternalError } from '../lib/errors';
+import { analyze, build, buildDocs, lint, test } from '../lib/tasks';
+import { Options } from '../lib/types/Options';
 
 // Start
 (async (): Promise<void> => {

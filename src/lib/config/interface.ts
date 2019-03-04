@@ -15,7 +15,7 @@ export interface Config extends UserConfigSettings.UserConfig {
   /**
    * The root path of this library.
    */
-  readonly libraryRoot: string;
+  readonly packageRoot: string;
 
   /**
    * Component settings.

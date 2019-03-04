@@ -37,7 +37,7 @@ export async function getAllConfigs(config: DeepPartial<Config>): Promise<Array<
  */
 // tslint:disable-next-line: readonly-array
 export async function getEsmConfig(config: DeepPartial<Config>): Promise<RollupOptions> {
-  if (config.libraryRoot === undefined) {
+  if (config.packageRoot === undefined) {
     return Promise.reject(new InternalError('Library root not set.'));
   }
   if (config.docs === undefined || config.docs.templateFiles  === undefined || config.docs.templateFiles.entrypoint === undefined) {
@@ -54,7 +54,7 @@ export async function getEsmConfig(config: DeepPartial<Config>): Promise<RollupO
   }
 
   return {
-    input: joinPaths(config.libraryRoot, config.docs.templateFiles.entrypoint),
+    input: joinPaths(config.packageRoot, config.docs.templateFiles.entrypoint),
 
     output: {
       dir: config.docs.path,
@@ -74,7 +74,7 @@ export async function getEsmConfig(config: DeepPartial<Config>): Promise<RollupO
       rollupPluginNodeResolve(),
       rollupPluginCommonjs(),
       rollupPluginTypescript({
-        tsconfig: joinPaths(config.libraryRoot, config.docs.templateFiles.tsconfig)
+        tsconfig: joinPaths(config.packageRoot, config.docs.templateFiles.tsconfig)
       }),
       rollupPluginBabel({
         babelrc: false,
@@ -91,7 +91,7 @@ export async function getEsmConfig(config: DeepPartial<Config>): Promise<RollupO
  */
 // tslint:disable-next-line: readonly-array
 export async function getEs5AdapterLoaderConfig(config: DeepPartial<Config>): Promise<RollupOptions> {
-  if (config.libraryRoot === undefined) {
+  if (config.packageRoot === undefined) {
     return Promise.reject(new InternalError('Library root not set.'));
   }
   if (config.docs === undefined || config.docs.path === undefined) {

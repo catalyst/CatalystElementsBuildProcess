@@ -187,10 +187,11 @@ function formatTsLintResult(result: TsLintResult): LintingOutputResult {
   const errorsByFile = result.failures.reduce<ErrorsByFile>(
     (errors, failure) => {
       const filename = failure.getFileName();
-      const existingFileErrors =
+      const existingFileErrors = (
         errors[filename] === undefined
           ? []
-          : errors[filename];
+          : errors[filename]
+      ) as ReadonlyArray<LintingError>;
 
       const {
         line,

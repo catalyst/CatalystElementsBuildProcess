@@ -12,8 +12,8 @@ import { terser as rollupPluginTerser } from 'rollup-plugin-terser';
 import rollupPluginTypescript from 'rollup-plugin-typescript2';
 
 import { Config } from '..';
-import { DeepPartial } from '../../../types';
-import { glob } from '../../../utils';
+import { DeepPartial } from '../../types';
+import { glob } from '../../utils';
 
 import babelConfigModule from './babel.config.module.prod';
 import babelConfigScript from './babel.config.script.prod';

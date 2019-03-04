@@ -1,5 +1,9 @@
+# Dist
+/bin
+/lib
+
+# Temp
 /.tmp/
-/dist/
 
 # Node
 node_modules/

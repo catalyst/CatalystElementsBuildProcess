@@ -1,7 +1,7 @@
-import { copy, outputFile } from 'fs-extra';
+import del from 'del';
+import { copy } from 'fs-extra';
 import { resolve as resolvePath } from 'path';
 import { rollup, RollupOptions } from 'rollup';
-import sortPackage from 'sort-package-json';
 
 import rollupBuildConfig from '../rollup.config';
 
@@ -9,26 +9,20 @@ import rollupBuildConfig from '../rollup.config';
  * Build everything.
  */
 export async function build(): Promise<void> {
+  await del(['lib', 'bin']);
   await buildRollup(rollupBuildConfig);
-  await Promise.all([
-    createPackageJson(),
-    copyDistFiles()
-  ]);
+  await copyTemplateFiles();
 }
 
 /**
  * @param rollupConfig The rollup config file to use.
  * @returns the filenames output.
  */
-export async function buildRollup(
+async function buildRollup(
   rollupConfig: ReadonlyArray<RollupOptions>
 // tslint:disable-next-line: readonly-array
 ): Promise<Array<string>> {
-  const rollupBuilds = await Promise.all(
-    rollupConfig.map(async (config) => {
-      return rollup(config);
-    })
-  );
+  const rollupBuilds = await Promise.all(rollupConfig.map(rollup));
 
   const buildOutputs = await Promise.all(
     rollupBuilds.map(async (rollupBuild, index) => {
@@ -45,34 +39,14 @@ export async function buildRollup(
 }
 
 /**
- * Create the package.json file for release.
+ * Copy over all the template files.
  */
-async function createPackageJson(): Promise<void> {
-  const pkg = (await import('../../package.json')).default;
-
-  // tslint:disable: no-object-mutation no-any
-  const distPkg = {
-    ...pkg
-  };
-  delete (distPkg as any).scripts;
-  delete (distPkg as any).devDependencies;
-  // tslint:enable: no-object-mutation no-any
-
-  await outputFile(resolvePath('dist/package.json'), JSON.stringify(sortPackage(distPkg), undefined, 2));
-}
-
-/**
- * Copy any other files to be released to the dist folder.
- */
-async function copyDistFiles(): Promise<void> {
+async function copyTemplateFiles(): Promise<void> {
   const files: ReadonlyArray<string> = [
-    'LICENSE',
-    'README.md'
+    'lib/templates'
   ];
 
   await Promise.all(
-    files.map(
-      async (file) => copy(resolvePath(file), resolvePath('dist', file))
-    )
+    files.map(async (file) => copy(resolvePath('src', file), resolvePath(file)))
   );
 }

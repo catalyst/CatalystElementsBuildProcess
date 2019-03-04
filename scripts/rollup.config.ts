@@ -4,21 +4,21 @@
  * Rollup Config.
  */
 
-import { join as joinPath } from 'path';
+import { resolve as resolvePath } from 'path';
 import { RollupOptions } from 'rollup';
 import rollupPluginBabel from 'rollup-plugin-babel';
-import rollupPluginCommonjs from 'rollup-plugin-commonjs';
-import rollupPluginCopy from 'rollup-plugin-cpy';
 import rollupPluginHashbang from 'rollup-plugin-hashbang';
 import rollupPluginJson from 'rollup-plugin-json';
-import rollupPluginNodeResolve from 'rollup-plugin-node-resolve';
 import rollupPluginTypescript from 'rollup-plugin-typescript2';
 
 import packageJson from '../package.json';
 
+const chuckFileNamePattern = 'lib/common/[hash]';
+const tsconfig = 'src/tsconfig.json';
+
 const commonConfig = {
   output: {
-    dir: 'dist',
+    dir: '.',
     sourcemap: false
   },
 
@@ -32,7 +32,17 @@ const commonConfig = {
           return false;
         }
       })
-      .filter((dependency) => dependency !== false) as ReadonlyArray<string>
+      .filter((dependency) => dependency !== false) as ReadonlyArray<string>,
+
+    // Dependencies not found by `require.resolve`.
+    ...[
+      'node_modules/cq-prolyfill/postcss-plugin.js'
+    ]
+    // tslint:disable-next-line: no-unnecessary-callback-wrapper
+      .map((file) => resolvePath(file)),
+
+    // Node builtins
+    'util'
   ],
 
   treeshake: {
@@ -42,18 +52,49 @@ const commonConfig = {
   }
 };
 
-const jsConfig: RollupOptions = {
+const jsConfigEsm: RollupOptions = {
   ...commonConfig,
 
-  input: 'src/index.ts',
+  input: 'src/lib/index.ts',
+
+  output: {
+    ...commonConfig.output,
+    entryFileNames: `lib/[name].mjs`,
+    chunkFileNames: `${chuckFileNamePattern}.mjs`,
+    format: 'esm'
+  },
 
   plugins: [
-    rollupPluginHashbang(),
-    rollupPluginNodeResolve(),
-    rollupPluginCommonjs(),
     rollupPluginTypescript({
-      tsconfig: 'src/tsconfig.json',
-      useTsconfigDeclarationDir: true
+      tsconfig
+    }),
+    rollupPluginJson(),
+    rollupPluginBabel({
+      extensions: ['.js', '.mjs', '.ts']
+    })
+  ]
+};
+
+const jsConfigCjs: RollupOptions = {
+  ...commonConfig,
+
+  input: 'src/lib/index.ts',
+
+  output: {
+    ...commonConfig.output,
+    entryFileNames: `lib/[name].js`,
+    chunkFileNames: `${chuckFileNamePattern}.js`,
+    format: 'cjs'
+  },
+
+  plugins: [
+    rollupPluginTypescript({
+      tsconfig,
+      tsconfigOverride: {
+        compilerOptions: {
+          declaration: false  // declarations are handled by jsConfigEsm.
+        }
+      }
     }),
     rollupPluginJson(),
     rollupPluginBabel({
@@ -63,109 +104,36 @@ const jsConfig: RollupOptions = {
 };
 
 const cliConfig: RollupOptions = {
+  ...commonConfig,
+
   input: 'src/bin/cli.ts',
+
+  output: {
+    ...commonConfig.output,
+    entryFileNames: `bin/[name].js`,
+    chunkFileNames: `${chuckFileNamePattern}.js`,
+    format: 'cjs'
+  },
 
   plugins: [
     rollupPluginHashbang(),
-    rollupPluginNodeResolve(),
-    rollupPluginCommonjs(),
     rollupPluginTypescript({
-      tsconfig: 'src/tsconfig.json',
+      tsconfig,
       tsconfigOverride: {
         compilerOptions: {
-          declaration: false  // declarations are handled by the js config.
+          declaration: false  // declarations are handled by jsConfigEsm.
         }
       }
     }),
     rollupPluginJson(),
     rollupPluginBabel({
       extensions: ['.js', '.mjs', '.ts']
-    }),
-    rollupPluginCopy([
-      {
-        files: '**/*.d.ts',
-        dest: joinPath(process.cwd(), 'dist'),
-        options: {
-          cwd: joinPath(process.cwd(), 'src'),
-          parents: true
-        }
-      }
-    ])
+    })
   ]
 };
-
-function setConfigOutput(
-  config: RollupOptions,
-  outPath: string,
-  format: RollupOptions['output']['format']
-): RollupOptions {
-  switch (format) {
-    case 'esm':
-      return {
-        ...config,
-        output: {
-          ...config.output,
-          entryFileNames: `${outPath}/[name].mjs`,
-          chunkFileNames: 'common/[hash].mjs',
-          format
-        }
-      };
-
-    case 'cjs':
-      return {
-        ...config,
-        output: {
-          ...config.output,
-          entryFileNames: `${outPath}/[name].js`,
-          chunkFileNames: 'common/[hash].js',
-          format
-        }
-      };
-
-    default:
-      // tslint:disable-next-line: no-throw
-      throw new Error(`Config is not set up to handle the format "${format}"`);
-  }
-}
-
-// Copy the template files.
-const cliConfigCopyPlugin = rollupPluginCopy([
-  {
-    files: 'templates/**/*',
-    dest: joinPath(process.cwd(), 'dist'),
-    options: {
-      cwd: joinPath(process.cwd(), 'src'),
-      parents: true
-    }
-  }
-]);
-
-const jsConfigEsm = setConfigOutput(jsConfig, '.', 'esm');
-const jsConfigCjs = setConfigOutput(jsConfig, '.', 'cjs');
-
-const jsConfigs = [
-  jsConfigEsm,
-  jsConfigCjs
-];
-
-const cliConfigEsm = setConfigOutput(cliConfig, 'bin', 'esm');
-const cliConfigCjs = setConfigOutput(cliConfig, 'bin', 'cjs');
-
-const cliConfigEsmWithCopy = {
-  ...cliConfigEsm,
-  plugins: [
-    ...cliConfigEsm.plugins,
-    cliConfigCopyPlugin
-  ]
-};
-
-// Only one of these plugins need the copy plugin.
-const cliConfigs = [
-  cliConfigEsmWithCopy,
-  cliConfigCjs
-];
 
 export default [
-  ...jsConfigs,
-  ...cliConfigs
+  jsConfigEsm,
+  jsConfigCjs,
+  cliConfig
 ];

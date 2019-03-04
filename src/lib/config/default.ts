@@ -46,18 +46,18 @@ export const defaultStaticConfig: DeepPartial<Config> = {
     path: 'demo'
   },
   dist: {
-    path: 'dist'
+    path: 'lib'
   },
   docs: {
     analysisFilename: 'analysis.json',
     nodeModulesPath: 'vendor',
     path: 'docs',
     templateFiles: {
-      entrypoint: 'templates/docs/main.ts',
-      indexHtml: 'templates/docs/index.html.ejs',
-      style: 'templates/docs/style.scss',
-      es5AdapterLoader: 'templates/docs/es5-adapter-loader.js.ejs',
-      tsconfig: 'templates/tsconfig.json'
+      entrypoint: 'lib/templates/docs/main.ts',
+      indexHtml: 'lib/templates/docs/index.html.ejs',
+      style: 'lib/templates/docs/style.scss',
+      es5AdapterLoader: 'lib/templates/docs/es5-adapter-loader.js.ejs',
+      tsconfig: 'lib/templates/tsconfig.json'
     }
   },
   publish: {

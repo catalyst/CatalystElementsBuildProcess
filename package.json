@@ -15,14 +15,20 @@
     "name": "Rebecca Stevens",
     "email": "rebeccastevens@catalyst.net.nz"
   },
+  "files": [
+    "/bin",
+    "/lib"
+  ],
+  "main": "lib/index.js",
+  "module": "lib/index.mjs",
+  "types": "lib/index.d.ts",
   "bin": {
     "catalyst-elements": "bin/cli.js"
   },
-  "types": "index.d.ts",
   "scripts": {
-    "build": "NODE_OPTIONS=--max_old_space_size=4096 ts-node -P scripts/tsconfig.json scripts/build.ts",
-    "patch": "find patches -type f -name '*.patch' -exec git apply --reject {} \\;",
-    "postinstall": "yarn patch"
+    "build": "ts-node -P scripts/tsconfig.json scripts/build.ts",
+    "postinstall": "yarn patch",
+    "patch": "find patches -type f -name '*.patch' -exec git apply --reject {} \\;"
   },
   "dependencies": {
     "@babel/core": "^7.3.4",
@@ -83,7 +89,6 @@
     "@types/node-sass": "^4.11.0",
     "@types/package-json": "^5.0.0",
     "@types/webpack": "^4.4.25",
-    "rollup-plugin-cpy": "^1.1.0",
     "rollup-plugin-hashbang": "^2.2.2",
     "rollup-plugin-json": "^3.1.0",
     "ts-node": "^8.0.2",

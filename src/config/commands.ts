@@ -27,7 +27,8 @@ export const lintCommands: ReadonlyArray<string> = [
 export const autoAnalyzeCommands: ReadonlyArray<string> = [
   'generate-auto-analysis',
   'generateAutoAnalysis',
-  'analyze'
+  'analyze',
+  'analyse'
 ];
 
 /**

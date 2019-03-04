@@ -1,3 +1,5 @@
+# This is a work in progress that is not ready to be used yet
+
 # Catalyst Elements Dev Utils
 
 [![Travis](https://img.shields.io/travis/catalyst/CatalystElementsDevUtils/master.svg?style=flat-square)](https://travis-ci.org/catalyst/CatalystElementsDevUtils)

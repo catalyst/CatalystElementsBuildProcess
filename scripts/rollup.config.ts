@@ -4,14 +4,11 @@
  * Rollup Config.
  */
 
-import { resolve as resolvePath } from 'path';
 import { RollupOptions } from 'rollup';
 import rollupPluginBabel from 'rollup-plugin-babel';
 import rollupPluginHashbang from 'rollup-plugin-hashbang';
 import rollupPluginJson from 'rollup-plugin-json';
 import rollupPluginTypescript from 'rollup-plugin-typescript2';
-
-import packageJson from '../package.json';
 
 const chuckFileNamePattern = 'lib/common/[hash]';
 const tsconfig = 'src/tsconfig.json';
@@ -22,28 +19,14 @@ const commonConfig = {
     sourcemap: false
   },
 
-  external: [
-    // All the dependencies.
-    ...Object.keys(packageJson.dependencies)
-      .map((dependency) => {
-        try {
-          return require.resolve(dependency, { paths: [process.cwd()] });
-        } catch (e) {
-          return false;
-        }
-      })
-      .filter((dependency) => dependency !== false) as ReadonlyArray<string>,
+  external: (id: string) => {
+    // Internal?
+    if (id.startsWith('.') || id.startsWith('/')) {
+      return false;
+    }
 
-    // Dependencies not found by `require.resolve`.
-    ...[
-      'node_modules/cq-prolyfill/postcss-plugin.js'
-    ]
-    // tslint:disable-next-line: no-unnecessary-callback-wrapper
-      .map((file) => resolvePath(file)),
-
-    // Node builtins
-    'util'
-  ],
+    return true;
+  },
 
   treeshake: {
     pureExternalModules: true,

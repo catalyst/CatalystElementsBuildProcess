@@ -46,7 +46,7 @@ export const defaultStaticConfig: DeepPartial<Config> = {
     path: 'demo'
   },
   dist: {
-    path: 'lib'
+    path: '.'
   },
   docs: {
     analysisFilename: 'analysis.json',

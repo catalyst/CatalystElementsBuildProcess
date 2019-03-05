@@ -1,9 +1,5 @@
 import * as assert from 'assert';
-import { copy, outputFile } from 'fs-extra';
-import { PackageJson } from 'package-json'; // tslint:disable-line: no-implicit-dependencies
-import { resolve as resolvePath } from 'path';
 import { rollup, RollupOptions, RollupWatchOptions, watch as rollupWatch } from 'rollup';
-import sortPackage from 'sort-package-json';
 
 import { Config } from '../../config';
 import { Options } from '../../types/Options';
@@ -33,15 +29,7 @@ export async function buildProduction(options: Options, config: Config): Promise
     }
   } else {
     const outputFiles = await buildComponent(config.build.tools.production);
-
     assert.strictEqual(outputFiles.length, 2, 'There should be two output files.');
-
-    const [moduleFile, scriptFile] = outputFiles;
-
-    await Promise.all([
-      createPackageJson(config, config.package, scriptFile, moduleFile),
-      copyDistFiles(config)
-    ]);
   }
 }
 
@@ -93,43 +81,13 @@ export async function buildComponent(
  * @param rollupConfig The rollup config to use
  */
 export function watchComponent(rollupConfig: ReadonlyArray<ReadonlyArray<RollupWatchOptions>>): void | Error {
-  if (rollupConfig.length !== 1) {
+  if (rollupConfig.length === 0) {
+    return Error('Cannot watch component; no build configs.');
+  }
+  if (rollupConfig.length > 1) {
     return Error('Cannot watch component; too many build configs.');
   }
 
   // tslint:disable-next-line: readonly-array
   rollupWatch(rollupConfig[0] as Array<RollupWatchOptions>);
-}
-
-/**
- * Create the package.json file for release.
- */
-async function createPackageJson(config: Config, pkg: PackageJson, mainFile: string, moduleFile: string): Promise<void> {
-  // tslint:disable: no-object-mutation no-any
-  const distPkg = {
-    ...pkg,
-    main: mainFile,
-    module: moduleFile
-  };
-  delete (distPkg).scripts;
-  delete (distPkg).devDependencies;
-  // tslint:enable: no-object-mutation no-any
-
-  await outputFile(resolvePath(config.dist.path, 'package.json'), JSON.stringify(sortPackage(distPkg), undefined, 2));
-}
-
-/**
- * Copy any other files to be released to the dist folder.
- */
-async function copyDistFiles(config: Config): Promise<void> {
-  const files: ReadonlyArray<string> = [
-    'LICENSE',
-    'README.md'
-  ];
-
-  await Promise.all(
-    files.map(
-      async (file) => copy(resolvePath(file), resolvePath(config.dist.path, file))
-    )
-  );
 }

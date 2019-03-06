@@ -1,3 +1,4 @@
+import { array as arrayUtils } from '@catalyst-elements/utils';
 import chalk from 'chalk';
 import {
   dirname,
@@ -14,7 +15,6 @@ import {
 
 import { Config } from '../config';
 import { Options } from '../types';
-import { transpose } from '../utils';
 
 /**
  * Run the build process.
@@ -332,7 +332,7 @@ function getFilepathOutputForLintingJob(filepath: string): string {
 
 function getLintingErrorsOutput(errors: ReadonlyArray<LintingError>): string {
   const [lineLength, colLength, ruleLength] = (() =>
-    transpose<number>(
+    arrayUtils.transpose<number>(
       errors
         .filter(isRuleVialationError)
         .map(

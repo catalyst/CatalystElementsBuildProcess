@@ -1,6 +1,6 @@
 # This is a work in progress that is not ready to be used yet
 
-# Catalyst Elements Dev Utils
+# Catalyst Elements Development Utilities
 
 [![Travis](https://img.shields.io/travis/catalyst/CatalystElementsDevUtils/master.svg?style=flat-square)](https://travis-ci.org/catalyst/CatalystElementsDevUtils)
 [![David](https://img.shields.io/david/catalyst/CatalystElementsDevUtils.svg?style=flat-square)](https://david-dm.org/catalyst/CatalystElementsDevUtils)
@@ -55,7 +55,7 @@ This package can be used in JavaScript to preform various [tasks](#tasks).
 Example of using `catalyst-elements` to build a component:
 
 ```js
-import * as catalystElements from "@catalyst-elements/dev-utils";
+import * as catalystElements from '@catalyst-elements/dev-utils';
 
 async function run() {
   const options = catalystElements.loadOptions();
@@ -65,8 +65,12 @@ async function run() {
 }
 
 run()
-  .then(() => { console.log("The build has finished."); })
-  .catch(() => { console.log("Something when wrong."); });
+  .then(() => {
+    console.log('The build has finished.');
+  })
+  .catch(() => {
+    console.log('Something when wrong.');
+  });
 ```
 
 ## Tasks
@@ -76,7 +80,7 @@ run()
 Build the component from the source files.
 
 **cli task name:** build  
-**js api function:** build  
+**js api function:** build
 
 ### Build Docs
 
@@ -87,7 +91,7 @@ Documentation should be contained in the file `analysis.json` which should be lo
 See [Automatic Analysis Generation](#automatic-analysis-generation) for details on creating the `analysis.json` file.
 
 **cli task name:** build-docs  
-**js api function:** buildDocs  
+**js api function:** buildDocs
 
 ### Lint
 
@@ -98,7 +102,7 @@ TypeScript files (`*.ts`) are linted with [TSLint](https://palantir.github.io/ts
 Sass files (`*.scss`) are linted with [stylelint](https://stylelint.io/).
 
 **cli task name:** lint  
-**js api function:** lint  
+**js api function:** lint
 
 ### Test
 
@@ -107,7 +111,7 @@ Run the tests for the component.
 Tests are run using [web component tester](https://www.npmjs.com/package/web-component-tester).
 
 **cli task name:** test  
-**js api function:** test  
+**js api function:** test
 
 ### Automatic Analysis Generation
 
@@ -116,7 +120,7 @@ Generates an analysis of the component (`auto-analysis.json`) from its distribut
 Note: The analysis created by this task is often not fully complete by it acts as a good starting point. Manual editing of the automatically generated analysis is recommended.
 
 **cli task name:** generate-auto-analysis  
-**js api function:** analyze  
+**js api function:** analyze
 
 ## Configuration
 
@@ -132,17 +136,9 @@ Note: A TypeScript file can be given instead if the script is run through [ts-no
 The following utility functions are available:  
 Note: these functions maybe moved to another repo in future.
 
-### Array functions
-
-Function | Description
---- | ---
-`transpose(array)` | Returns a new 2D array that is a transposed version of the original.
-
-### Other functions
-
-Function | Description
---- | ---
-`glob(pattern, options)` | Uses [node-glob](https://github.com/isaacs/node-glob) to do glob matching but with support for multiple patterns.
+| Function                 | Description                                                                                                       |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| `glob(pattern, options)` | Uses [node-glob](https://github.com/isaacs/node-glob) to do glob matching but with support for multiple patterns. |
 
 ## Contributions
 

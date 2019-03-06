@@ -7,7 +7,12 @@
 [![David](https://img.shields.io/david/dev/catalyst/CatalystElementsDevUtils.svg?style=flat-square)](https://david-dm.org/catalyst/CatalystElementsDevUtils?type=dev)
 [![npm (scoped)](https://img.shields.io/npm/v/@catalyst-elements/dev-utils.svg?style=flat-square)](https://www.npmjs.com/package/@catalyst-elements/dev-utils)
 
-This repository contains utilities that are helpful for developing custom web components. It is only intended to be uses as dev dependency.
+This package contains opinionated utilities that are helpful for developing custom web components.
+
+Many of the utilities this package contains make assumptions about the structure of the repository they are working on.
+Please follow the same repository structure that the Catalyst Elements use for best results.
+
+Please note this package is only intended to be uses as dev dependency.
 
 ## Installation
 

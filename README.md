@@ -82,7 +82,7 @@ Build the component from the source files.
 
 Build the documentation for the component.
 
-Documentation should be in contained in the file `analysis.json` at the top level of the repository of the component being build.
+Documentation should be contained in the file `analysis.json` which should be located at the root of the repository of the component being build.
 
 See [Automatic Analysis Generation](#automatic-analysis-generation) for details on creating the `analysis.json` file.
 

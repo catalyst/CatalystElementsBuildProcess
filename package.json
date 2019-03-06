@@ -1,7 +1,7 @@
 {
   "name": "@catalyst-elements/dev-utils",
   "version": "0.0.0",
-  "description": "The build process for catalyst elements and other such components.",
+  "description": "Development utilities for the catalyst elements and other such components.",
   "homepage": "https://github.com/catalyst/CatalystElementsDevUtils#readme",
   "bugs": {
     "url": "https://github.com/catalyst/CatalystElementsDevUtils/issues"

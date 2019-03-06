@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-const command = process.argv[2];
+const command = process.argv[2] as string | undefined;
 
 // tslint:disable-next-line: no-magic-numbers
 const args = process.argv.slice(3);

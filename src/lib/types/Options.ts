@@ -30,5 +30,5 @@ export interface Options {
      * Only compile don't run test.
      */
     readonly compileOnly: boolean;
-  }
+  };
 }

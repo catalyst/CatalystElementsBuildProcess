@@ -19,6 +19,9 @@ export async function glob(
   );
 }
 
+/**
+ * Do a glob matching with a string pattern.
+ */
 async function globString(
   pattern: string,
   options?: nodeGlob.IOptions
@@ -27,6 +30,9 @@ async function globString(
   return nodeGlobPromise(pattern, options);
 }
 
+/**
+ * Do a glob matching with an array of string pattern.
+ */
 async function globArray(
   pattern: ReadonlyArray<string>,
   options?: nodeGlob.IOptions

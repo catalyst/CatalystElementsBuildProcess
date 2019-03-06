@@ -2,6 +2,8 @@
  * Rollup Config.
  */
 
+// tslint:disable: no-unsafe-any
+
 import { join as joinPaths } from 'path';
 import { RollupOptions } from 'rollup';
 import rollupPluginCommonjs from 'rollup-plugin-commonjs';

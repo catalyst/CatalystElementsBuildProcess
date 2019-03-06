@@ -2,6 +2,8 @@
  * Terser Config.
  */
 
+// tslint:disable: no-unsafe-any
+
 import { MinifyOptions } from 'terser';
 
 const defaultConfig: Partial<MinifyOptions> = {

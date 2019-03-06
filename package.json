@@ -91,6 +91,7 @@
     "@types/node": "^8.10.40",
     "@types/node-sass": "^4.11.0",
     "@types/package-json": "^5.0.0",
+    "@types/stylelint": "^9.4.2",
     "@types/webpack": "^4.4.25",
     "rollup-plugin-hashbang": "^2.2.2",
     "rollup-plugin-json": "^3.1.0",

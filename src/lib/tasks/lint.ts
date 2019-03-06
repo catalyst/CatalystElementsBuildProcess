@@ -204,9 +204,6 @@ function formatTsLintResult(result: TsLintResult): LintingOutputResult {
       const {
         line,
         character
-      }: {
-        readonly line: number;
-        readonly character: number;
       } = failure
         .getStartPosition()
         .getLineAndCharacter();
@@ -252,11 +249,13 @@ function formatStyleLintResult(result: StyleLinterResult): LintingOutputResult {
 
       // Fix the typing of `lintResult.warnings`.
       const warnings = (lintResult.warnings as unknown as ReadonlyArray<{
+        // tslint:disable: completed-docs
         readonly line: number;
         readonly column: number;
         readonly rule: string;
         readonly severity: string;
         readonly text: string;
+        // tslint:enable: completed-docs
       }>);
 
       if (warnings.length > 0) {
@@ -405,6 +404,8 @@ function isRuleVialationError(
   return error.rule !== undefined && error.severity !== 'off';
 }
 
+// tslint:disable: completed-docs
+
 interface LintingResult {
   readonly ts?: {
     readonly filesLinted: ReadonlyArray<string>;
@@ -436,3 +437,5 @@ interface LintingError {
 interface ValidLintingError extends LintingError {
   readonly rule: string;
 }
+
+// tslint:enable: completed-docs

@@ -1,3 +1,5 @@
+// tslint:disable: no-unsafe-any
+
 export default (() => {
   // tslint:disable-next-line: no-any
   const presets: ReadonlyArray<string | [string, any]> = [

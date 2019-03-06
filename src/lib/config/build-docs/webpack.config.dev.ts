@@ -1,3 +1,5 @@
+// tslint:disable: no-unsafe-any
+
 import { join as joinPaths, resolve as resolvePath } from 'path';
 import { Configuration } from 'webpack';
 

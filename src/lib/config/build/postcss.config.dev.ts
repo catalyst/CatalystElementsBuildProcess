@@ -1,3 +1,5 @@
+// tslint:disable: no-unsafe-any
+
 import colorGuard from 'colorguard';
 import postcssContainerQuery from 'cq-prolyfill/postcss-plugin';
 import * as postcss from 'postcss';

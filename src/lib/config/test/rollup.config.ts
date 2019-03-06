@@ -2,6 +2,8 @@
  * Rollup Config.
  */
 
+// tslint:disable: no-unsafe-any
+
 import { join as joinPaths } from 'path';
 import { RollupOptions } from 'rollup';
 import rollupPluginBabel from 'rollup-plugin-babel';
@@ -37,7 +39,10 @@ export async function getTestFilesConfigs(config: DeepPartial<Config>): Promise<
   if (config.tests === undefined || config.tests.path === undefined) {
     return Promise.reject(new Error('Tests path not set.'));
   }
-  if (config.src === undefined || config.src.configFiles === undefined || config.src.configFiles.tsconfig === undefined) {
+  if (config.src === undefined || config.src.path === undefined) {
+    return Promise.reject(new Error('src path not set.'));
+  }
+  if (config.src.configFiles === undefined || config.src.configFiles.tsconfig === undefined) {
     return Promise.reject(new Error('tsconfig filepath for src files not set.'));
   }
 
@@ -62,7 +67,7 @@ export async function getTestFilesConfigs(config: DeepPartial<Config>): Promise<
       rollupPluginNodeResolve(),
       rollupPluginCommonjs(),
       rollupPluginTypescript({
-        tsconfig: joinPaths(config.src!.path!, config.src!.configFiles!.tsconfig!)
+        tsconfig: joinPaths(config.src.path, config.src.configFiles.tsconfig)
       }),
       rollupPluginBabel({
         babelrc: false,

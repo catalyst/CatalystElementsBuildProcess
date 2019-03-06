@@ -1,9 +1,9 @@
 /**
- * Transpose a 2D-array (flip diagonally).
+ * Returns a new 2D array that is a transposed version of the original.
  *
  * Note:
- * * All rows must have the same number of elements.
- * * All columns must have the same number of elements.
+ * * All rows must have the same number of elements as each other.
+ * * All columns must have the same number of elements as each other.
  */
 export function transpose<T>(
   array: ReadonlyArray<ReadonlyArray<T>>

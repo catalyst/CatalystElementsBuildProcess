@@ -19,7 +19,7 @@ process.on('unhandledRejection', (error) => {
   throw error;
 });
 
-import { loadConfig } from '../lib/config';
+import { loadConfig, loadOptions } from '../lib/config';
 import {
   autoAnalyzeCommands,
   buildCommands,
@@ -119,16 +119,16 @@ function getOptions(cliArgs: ReadonlyArray<string> = []): Options | ExternalErro
 
   const userConfigFile =
     configIndex < 0
-      ? false
+      ? undefined
       : cliArgs[configFileIndex];
 
-  return {
+  return loadOptions({
     watch: cliArgs.includes('--watch') || cliArgs.includes('-w'),
     debug: cliArgs.includes('--debug'),
     env: process.env.NODE_ENV as Options['env'],
-    userConfigFile,
+    configFile: userConfigFile,
     test: {
       compileOnly: cliArgs.includes('--compile-only')
     }
-  };
+  });
 }

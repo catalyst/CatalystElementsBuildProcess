@@ -20,7 +20,7 @@ export interface Options {
   /**
    * The user config file.
    */
-  readonly userConfigFile: string | false;
+  readonly configFile?: string;
 
   /**
    * Test options.

@@ -96,8 +96,8 @@
     "typescript-tslint-plugin": "^0.3.1"
   },
   "peerDependencies": {
-    "chai": "*",
-    "mocha": "*",
-    "wct-browser-legacy": "*"
+    "chai": "^4.2.0",
+    "mocha": "^6.0.2",
+    "wct-browser-legacy": "^1.0.2"
   }
 }

@@ -15,11 +15,10 @@ import { Config } from './interface';
  * Get the config for the build process.
  *
  * @param options - The cli options the user specified.
- * @param userConfig - Any changes to the default config.
  * @param command - The command about to be run.
  * @throws {Error}
  */
-export async function load(
+export async function loadConfig(
   options: Options,
   command?: string
 ): Promise<Config> {
@@ -229,12 +228,12 @@ function checkTestConfig(
  * Load the user defined config.
  */
 async function loadUserConfig(options: Options): Promise<DeepPartial<Config>> {
-  const userConfigFileAbsPath = options.userConfigFile === false
-    ? false
-    : resolvePath(options.userConfigFile);
+  const userConfigFileAbsPath = options.configFile === undefined
+    ? undefined
+    : resolvePath(options.configFile);
 
   return (
-    userConfigFileAbsPath === false
+    userConfigFileAbsPath === undefined
       ? {}
       : (await import(userConfigFileAbsPath)
         .catch(async (error) => {
@@ -244,4 +243,25 @@ async function loadUserConfig(options: Options): Promise<DeepPartial<Config>> {
           readonly default: DeepPartial<Config>;
         }).default
   );
+}
+
+/**
+ * Load the default options with and overrides specified.
+ */
+export function loadOptions(overrides?: DeepPartial<Options>): Options {
+  const defaultOptions: Options = {
+    watch: false,
+    debug: false,
+    env: process.env.NODE_ENV as Options['env'],
+    configFile: undefined,
+    test: {
+      compileOnly: false
+    }
+  };
+
+  if (overrides === undefined) {
+    return defaultOptions;
+  }
+
+  return deepMerge([defaultOptions, overrides]) as Options;
 }

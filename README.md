@@ -43,6 +43,27 @@ Example of using `catalyst-elements` in `package.json`'s `scripts`:
 }
 ```
 
+### JS API
+
+This package can be used in JavaScript to preform various [tasks](#tasks).
+
+Example of using `catalyst-elements` to build a component:
+
+```js
+import * as catalystElements from "@catalyst-elements/dev-utils";
+
+async function run() {
+  const options = catalystElements.loadOptions();
+  const config = await catalystElements.loadConfig(options);
+
+  await catalystElements.build(options, config);
+}
+
+run()
+  .then(() => { console.log("The build has finished."); })
+  .catch(() => { console.log("Something when wrong."); });
+```
+
 ## Tasks
 
 ### Build
@@ -94,11 +115,29 @@ Note: The analysis created by this task is often not fully complete by it acts a
 
 ## Configuration
 
-A config file can be specified with the `--config` flag.
+The cli, a config file can be specified with the `--config` flag.
+With the JS api, pass an object into the function `loadOptions()` with the key `configFile` and value of the path to the config file.
 
-The config file should be a JavaScript file that has a default export of type `UserConfig`; see [src/config/userConfig.ts](src/config/userConfig.ts) for details.
+The config file should be a JavaScript file that has a default export of type `UserConfig`; see the [type definition](src/lib/config/userConfig.ts) for details.
 
 Note: A TypeScript file can be given instead if the script is run through [ts-node](https://github.com/TypeStrong/ts-node) instead of node.
+
+## Utilities
+
+The following utility functions are available:  
+Note: these functions maybe moved to another repo in future.
+
+### Array functions
+
+Function | Description
+--- | ---
+`transpose(array)` | Returns a new 2D array that is a transposed version of the original.
+
+### Other functions
+
+Function | Description
+--- | ---
+`glob(pattern, options)` | Uses [node-glob](https://github.com/isaacs/node-glob) to do glob matching but with support for multiple patterns.
 
 ## Contributions
 

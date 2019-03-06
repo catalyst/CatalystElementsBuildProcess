@@ -6,7 +6,7 @@ import { RollupOptions } from 'rollup';
 
 import * as UserConfigSettings from './userConfig';
 
-// tslint:disable:no-reserved-keywords
+// tslint:disable:no-reserved-keywords readonly-array
 
 /**
  * The config for running all the scripts.
@@ -164,7 +164,6 @@ export interface BuildToolsEnvConfig extends UserConfigSettings.BuildToolsEnvCon
     /**
      * Plugins.
      */
-    // tslint:disable-next-line: readonly-array
     readonly plugins?: Array<postcss.AcceptedPlugin>;
 
     /**

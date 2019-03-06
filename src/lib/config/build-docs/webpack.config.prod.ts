@@ -14,7 +14,6 @@ import { minScript as terserConfig } from './terser.config.prod';
 /**
  * The webpack config for development.
  */
-// tslint:disable-next-line: readonly-array
 export async function getConfig(config: DeepPartial<Config>): Promise<Configuration> {
   if (config.packageRoot === undefined) {
     return Promise.reject(new InternalError('Library root not set.'));

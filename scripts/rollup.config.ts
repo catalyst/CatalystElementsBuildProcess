@@ -11,7 +11,7 @@ import rollupPluginJson from 'rollup-plugin-json';
 import rollupPluginTypescript from 'rollup-plugin-typescript2';
 
 const chuckFileNamePattern = 'lib/common/[hash]';
-const tsconfig = 'src/tsconfig.json';
+const tsconfig = 'tsconfig.json';
 
 const commonConfig = {
   output: {
@@ -51,10 +51,7 @@ const jsConfigEsm: RollupOptions = {
     rollupPluginTypescript({
       tsconfig
     }),
-    rollupPluginJson(),
-    rollupPluginBabel({
-      extensions: ['.js', '.mjs', '.ts']
-    })
+    rollupPluginJson()
   ]
 };
 

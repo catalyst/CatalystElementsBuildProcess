@@ -27,6 +27,7 @@
   },
   "scripts": {
     "build": "ts-node -P scripts/tsconfig.json scripts/build.ts",
+    "lint": "tslint -p tsconfig.json",
     "postinstall": "yarn patch",
     "patch": "find patches -type f -name '*.patch' -exec git apply --reject {} \\;"
   },

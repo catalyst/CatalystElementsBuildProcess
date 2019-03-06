@@ -4,7 +4,7 @@ import * as postcss from 'postcss';
 import { RollupOptions } from 'rollup';
 import { Config as WCTConfig } from 'web-component-tester';
 
-// tslint:disable:no-reserved-keywords
+// tslint:disable:no-reserved-keywords readonly-array
 
 /**
  * The config for running all the scripts.
@@ -132,7 +132,6 @@ export interface BuildToolsEnvConfig {
     /**
      * Plugins.
      */
-    // tslint:disable-next-line: readonly-array
     readonly plugins?: Array<postcss.AcceptedPlugin>;
 
     /**

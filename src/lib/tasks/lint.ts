@@ -167,11 +167,10 @@ async function lintTs(configFile: string, ignoreFiles: ReadonlyArray<string>): P
  * @param configFile tsconfig.json file.
  * @param filesGlobby The files to lint.
  */
-// tslint:disable-next-line: readonly-array
-async function lintSass(configFile: string, filesGlobby: string | Array<string>): Promise<LintingResult['sass']> {
+async function lintSass(configFile: string, filesGlobby: string | ReadonlyArray<string>): Promise<LintingResult['sass']> {
   const result = await styleLint({
     configFile,
-    files: filesGlobby,
+    files: [...filesGlobby],
     syntax: 'scss'
   });
 

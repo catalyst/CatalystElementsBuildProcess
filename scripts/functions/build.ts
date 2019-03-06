@@ -20,7 +20,6 @@ export async function build(): Promise<void> {
  */
 async function buildRollup(
   rollupConfig: ReadonlyArray<RollupOptions>
-// tslint:disable-next-line: readonly-array
 ): Promise<Array<string>> {
   const rollupBuilds = await Promise.all(rollupConfig.map(rollup));
 

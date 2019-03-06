@@ -10,7 +10,6 @@ const nodeGlobPromise = promisify(nodeGlob);
 export async function glob(
   pattern: string | ReadonlyArray<string>,
   options?: nodeGlob.IOptions
-// tslint:disable-next-line: readonly-array
 ): Promise<Array<string>> {
   return (
     Array.isArray(pattern)
@@ -25,7 +24,6 @@ export async function glob(
 async function globString(
   pattern: string,
   options?: nodeGlob.IOptions
-// tslint:disable-next-line: readonly-array
 ): Promise<Array<string>> {
   return nodeGlobPromise(pattern, options);
 }
@@ -36,7 +34,6 @@ async function globString(
 async function globArray(
   pattern: ReadonlyArray<string>,
   options?: nodeGlob.IOptions
-// tslint:disable-next-line: readonly-array
 ): Promise<Array<string>> {
   return (
       pattern.length === 0

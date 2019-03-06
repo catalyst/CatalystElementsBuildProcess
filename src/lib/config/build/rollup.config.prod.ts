@@ -27,7 +27,6 @@ import {
 /**
  * The rollup configs for production.
  */
-// tslint:disable-next-line: readonly-array
 export async function getAllConfigs(config: DeepPartial<Config>): Promise<Array<Array<RollupOptions>>> {
   return Promise.all([
     getEsmConfigs(config),
@@ -38,7 +37,6 @@ export async function getAllConfigs(config: DeepPartial<Config>): Promise<Array<
 /**
  * The esm rollup configs for production.
  */
-// tslint:disable-next-line: readonly-array
 export async function getEsmConfigs(config: DeepPartial<Config>): Promise<Array<RollupOptions>> {
   if (config.src === undefined || config.src.path === undefined) {
     return Promise.reject(new Error('Src path not set.'));
@@ -91,7 +89,6 @@ export async function getEsmConfigs(config: DeepPartial<Config>): Promise<Array<
 /**
  * The iife rollup configs for production.
  */
-// tslint:disable-next-line: readonly-array
 export async function getIifeConfigs(config: DeepPartial<Config>): Promise<Array<RollupOptions>> {
   if (config.src === undefined || config.src.path === undefined) {
     return Promise.reject(new Error('Src path not set.'));

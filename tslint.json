@@ -3,5 +3,11 @@
     "@rebeccastevens/tslint-rebeccastevens/ruleset-recommended"
   ],
   "rules": {
+  },
+  "linterOptions": {
+    "exclude": [
+      "bin",
+      "lib"
+    ]
   }
 }

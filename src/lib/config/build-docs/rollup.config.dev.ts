@@ -17,7 +17,6 @@ import { DeepPartial } from '../../types';
 /**
  * The esm rollup config for development.
  */
-// tslint:disable-next-line: readonly-array
 export async function getAllConfigs(config: DeepPartial<Config>): Promise<Array<RollupOptions>> {
   return Promise.all([
     getEsmConfig(config)
@@ -27,7 +26,6 @@ export async function getAllConfigs(config: DeepPartial<Config>): Promise<Array<
 /**
  * The esm rollup config for development.
  */
-// tslint:disable-next-line: readonly-array
 export async function getEsmConfig(config: DeepPartial<Config>): Promise<RollupOptions> {
   if (config.packageRoot === undefined) {
     return Promise.reject(new InternalError('Library root not set.'));

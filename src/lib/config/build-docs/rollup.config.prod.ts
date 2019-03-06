@@ -26,7 +26,6 @@ import {
 /**
  * The esm rollup config for production.
  */
-// tslint:disable-next-line: readonly-array
 export async function getAllConfigs(config: DeepPartial<Config>): Promise<Array<RollupOptions>> {
   return Promise.all([
     getEsmConfig(config),
@@ -37,7 +36,6 @@ export async function getAllConfigs(config: DeepPartial<Config>): Promise<Array<
 /**
  * The esm rollup config for production.
  */
-// tslint:disable-next-line: readonly-array
 export async function getEsmConfig(config: DeepPartial<Config>): Promise<RollupOptions> {
   if (config.packageRoot === undefined) {
     return Promise.reject(new InternalError('Library root not set.'));
@@ -91,7 +89,6 @@ export async function getEsmConfig(config: DeepPartial<Config>): Promise<RollupO
 /**
  * The rollup config for the es5 adapter loader.
  */
-// tslint:disable-next-line: readonly-array
 export async function getEs5AdapterLoaderConfig(config: DeepPartial<Config>): Promise<RollupOptions> {
   if (config.packageRoot === undefined) {
     return Promise.reject(new InternalError('Library root not set.'));

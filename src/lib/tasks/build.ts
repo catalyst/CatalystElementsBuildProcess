@@ -56,7 +56,6 @@ export async function buildProduction(options: Options, config: Config): Promise
  */
 export async function buildComponent(
   config: Config['build']['tools']['production'] | Config['build']['tools']['development']
-// tslint:disable-next-line: readonly-array
 ): Promise<Array<string>> {
   const outputFiles = await Promise.all(
     config.rollup.map(async (buildConfig) => {
@@ -103,6 +102,5 @@ export function watchComponent(rollupConfig: ReadonlyArray<ReadonlyArray<RollupW
     return Error('Cannot watch component; too many build configs.');
   }
 
-  // tslint:disable-next-line: readonly-array
-  rollupWatch(rollupConfig[0] as Array<RollupWatchOptions>);
+  rollupWatch([...rollupConfig[0]]);
 }

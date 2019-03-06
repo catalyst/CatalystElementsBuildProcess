@@ -1,6 +1,6 @@
 # This is a work in progress that is not ready to be used yet
 
-# Catalyst Elements Development Utilities
+# Catalyst Elements' Development Utilities
 
 [![Travis](https://img.shields.io/travis/catalyst/CatalystElementsDevUtils/master.svg?style=flat-square)](https://travis-ci.org/catalyst/CatalystElementsDevUtils)
 [![David](https://img.shields.io/david/catalyst/CatalystElementsDevUtils.svg?style=flat-square)](https://david-dm.org/catalyst/CatalystElementsDevUtils)

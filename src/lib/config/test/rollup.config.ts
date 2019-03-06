@@ -24,7 +24,6 @@ import {
 /**
  * The esm rollup config for production.
  */
-// tslint:disable-next-line: readonly-array
 export async function getAllConfigs(config: DeepPartial<Config>): Promise<Array<Array<RollupOptions>>> {
   return Promise.all([
     getTestFilesConfigs(config)
@@ -34,7 +33,6 @@ export async function getAllConfigs(config: DeepPartial<Config>): Promise<Array<
 /**
  * The iife rollup config for production.
  */
-// tslint:disable-next-line: readonly-array
 export async function getTestFilesConfigs(config: DeepPartial<Config>): Promise<Array<RollupOptions>> {
   if (config.tests === undefined || config.tests.path === undefined) {
     return Promise.reject(new Error('Tests path not set.'));

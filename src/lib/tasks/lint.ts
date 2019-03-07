@@ -319,16 +319,24 @@ function getFileLintingOutput(
     return '';
   }
 
-  return `${getFilepathOutputForLintingJob(file)}\n${getLintingErrorsOutput(lintingErrors)}`;
+  return `${getFilepathOutput(file)}\n${getLintingErrorsOutput(lintingErrors)}`;
 }
 
-function getFilepathOutputForLintingJob(filepath: string): string {
+/**
+ * Get the output of a filepath.
+ */
+// tslint:disable-next-line: informative-docs
+function getFilepathOutput(filepath: string): string {
   if (isAbsolutePath(filepath)) {
     return chalk.yellow(`./${relativePathBetween(process.cwd(), filepath)}`);
   }
   return chalk.yellow(filepath);
 }
 
+/**
+ * Get the output of the linting errors.
+ */
+// tslint:disable-next-line: informative-docs
 function getLintingErrorsOutput(errors: ReadonlyArray<LintingError>): string {
   const [lineLength, colLength, ruleLength] = (() =>
     arrayUtils.transpose<number>(

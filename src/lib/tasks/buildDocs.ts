@@ -36,7 +36,7 @@ export async function buildDocs(options: Options, config: Config): Promise<void>
 }
 
 /**
- * Proccess the files the make up the docs and get them ready to generate the docs.
+ * Compile the docs.
  */
 async function compile(options: Options, config: Config): Promise<void> {
   const webComponentsPolyfillsBaseDir = dirname(dirname(require.resolve('@webcomponents/webcomponentsjs/package.json')));
@@ -70,6 +70,9 @@ async function compile(options: Options, config: Config): Promise<void> {
   );
 }
 
+/**
+ * Compile the esm for the docs.
+ */
 async function compileESM(options: Options, config: Config): Promise<[string, Array<string>]> {
   console.log('Building ESM with rollup.');
 
@@ -107,6 +110,9 @@ async function compileESM(options: Options, config: Config): Promise<[string, Ar
   ];
 }
 
+/**
+ * Compile the iife for the docs.
+ */
 async function compileIIFE(options: Options, config: Config): Promise<string> {
   console.log('Building IIFE with webpack.');
 
@@ -142,6 +148,9 @@ async function compileIIFE(options: Options, config: Config): Promise<string> {
   return mainScript;
 }
 
+/**
+ * Finalize the compiling of the docs.
+ */
 async function compileFinalizing(
   options: Options,
   config: Config,
@@ -245,6 +254,9 @@ async function compileFinalizing(
   );
 }
 
+/**
+ * Compile the docs' html.
+ */
 async function compileHTML(
   options: Options,
   config: Config,
@@ -253,8 +265,19 @@ async function compileHTML(
   polyfillFiles: ReadonlyArray<string>,
   inlineCss: string,
   preloadFiles: {
+    /**
+     * The modules to preload.
+     */
     readonly modules: ReadonlyArray<string>;
+
+    /**
+     * The scripts to preload.
+     */
     readonly scripts: ReadonlyArray<string>;
+
+    /**
+     * The json files to preload.
+     */
     readonly json: ReadonlyArray<string>;
   }
 ): Promise<void> {
@@ -317,6 +340,9 @@ async function compileHTML(
   );
 }
 
+/**
+ * Compile the docs' css.
+ */
 async function compileCSS(options: Options, config: Config): Promise<string> {
   const css = (await renderSass({
       file: joinPaths(config.packageRoot, config.docs.templateFiles.style),

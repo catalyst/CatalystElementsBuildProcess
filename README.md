@@ -11,8 +11,9 @@ This package contains opinionated utilities that are helpful for developing
 custom web components.
 
 Many of the utilities this package contains make assumptions about the structure
-of the repository they are working on. Please follow the same repository
-structure that the Catalyst Elements use for best results.
+of the repository they are working on as well as the technologies used. Use the
+same technologies and follow the same repository structure that the Catalyst
+Elements use for best results.
 
 Please note this package is only intended to be uses as dev dependency.
 

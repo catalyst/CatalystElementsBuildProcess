@@ -2,7 +2,7 @@
 
 # Catalyst Elements' Development Utilities
 
-[![Travis](https://img.shields.io/travis/catalyst/CatalystElementsDevUtils/master.svg?style=flat-square)](https://travis-ci.org/catalyst/CatalystElementsDevUtils)
+[![Travis](https://img.shields.io/travis/catalyst/CatalystElementsDevUtils/rebuild.svg?style=flat-square)](https://travis-ci.org/catalyst/CatalystElementsDevUtils)
 [![David](https://img.shields.io/david/catalyst/CatalystElementsDevUtils.svg?style=flat-square)](https://david-dm.org/catalyst/CatalystElementsDevUtils)
 [![David](https://img.shields.io/david/dev/catalyst/CatalystElementsDevUtils.svg?style=flat-square)](https://david-dm.org/catalyst/CatalystElementsDevUtils?type=dev)
 [![npm (scoped)](https://img.shields.io/npm/v/@catalyst-elements/dev-utils.svg?style=flat-square)](https://www.npmjs.com/package/@catalyst-elements/dev-utils)

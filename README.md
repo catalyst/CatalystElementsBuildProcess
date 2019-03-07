@@ -7,10 +7,12 @@
 [![David](https://img.shields.io/david/dev/catalyst/CatalystElementsDevUtils.svg?style=flat-square)](https://david-dm.org/catalyst/CatalystElementsDevUtils?type=dev)
 [![npm (scoped)](https://img.shields.io/npm/v/@catalyst-elements/dev-utils.svg?style=flat-square)](https://www.npmjs.com/package/@catalyst-elements/dev-utils)
 
-This package contains opinionated utilities that are helpful for developing custom web components.
+This package contains opinionated utilities that are helpful for developing
+custom web components.
 
-Many of the utilities this package contains make assumptions about the structure of the repository they are working on.
-Please follow the same repository structure that the Catalyst Elements use for best results.
+Many of the utilities this package contains make assumptions about the structure
+of the repository they are working on. Please follow the same repository
+structure that the Catalyst Elements use for best results.
 
 Please note this package is only intended to be uses as dev dependency.
 
@@ -28,7 +30,8 @@ yarn add -D @catalyst-elements/dev-utils
 
 ### Cli
 
-This package contains an executable script called `catalyst-elements` which can preform various [tasks](#tasks).
+This package contains an executable script called `catalyst-elements` which can
+preform various [tasks](#tasks).
 
 Example of using `catalyst-elements` in `package.json`'s `scripts`:
 
@@ -86,9 +89,11 @@ Build the component from the source files.
 
 Build the documentation for the component.
 
-Documentation should be contained in the file `analysis.json` which should be located at the root of the repository of the component being build.
+Documentation should be contained in the file `analysis.json` which should be
+located at the root of the repository of the component being build.
 
-See [Automatic Analysis Generation](#automatic-analysis-generation) for details on creating the `analysis.json` file.
+See [Automatic Analysis Generation](#automatic-analysis-generation) for details
+on creating the `analysis.json` file.
 
 **cli task name:** build-docs  
 **js api function:** buildDocs
@@ -97,7 +102,8 @@ See [Automatic Analysis Generation](#automatic-analysis-generation) for details 
 
 Run linting on the source code.
 
-TypeScript files (`*.ts`) are linted with [TSLint](https://palantir.github.io/tslint/).
+TypeScript files (`*.ts`) are linted with
+[TSLint](https://palantir.github.io/tslint/).
 
 Sass files (`*.scss`) are linted with [stylelint](https://stylelint.io/).
 
@@ -108,37 +114,42 @@ Sass files (`*.scss`) are linted with [stylelint](https://stylelint.io/).
 
 Run the tests for the component.
 
-Tests are run using [web component tester](https://www.npmjs.com/package/web-component-tester).
+Tests are run using [web component
+tester](https://www.npmjs.com/package/web-component-tester).
 
 **cli task name:** test  
 **js api function:** test
 
 ### Automatic Analysis Generation
 
-Generates an analysis of the component (`auto-analysis.json`) from its distribution code. An analysis is needed for the component's documentation.
+Generates an analysis of the component (`auto-analysis.json`) from its
+distribution code. An analysis is needed for the component's documentation.
 
-Note: The analysis created by this task is often not fully complete by it acts as a good starting point. Manual editing of the automatically generated analysis is recommended.
+Note: The analysis created by this task is often not fully complete by it acts
+as a good starting point. Manual editing of the automatically generated analysis
+is recommended.
 
 **cli task name:** generate-auto-analysis  
 **js api function:** analyze
 
 ## Configuration
 
-The cli, a config file can be specified with the `--config` flag.
-With the JS api, pass an object into the function `loadOptions()` with the key `configFile` and value of the path to the config file.
+The cli, a config file can be specified with the `--config` flag. With the JS
+api, pass an object into the function `loadOptions()` with the key `configFile`
+and value of the path to the config file.
 
-The config file should be a JavaScript file that has a default export of type `UserConfig`; see the [type definition](src/lib/config/userConfig.ts) for details.
+The config file should be a JavaScript file that has a default export of type
+`UserConfig`; see the [type definition](src/lib/config/userConfig.ts) for
+details.
 
-Note: A TypeScript file can be given instead if the script is run through [ts-node](https://github.com/TypeStrong/ts-node) instead of node.
+Note: A TypeScript file can be given instead if the script is run through
+[ts-node](https://github.com/TypeStrong/ts-node) instead of node.
 
-## Utilities
+## Utility Functions
 
-The following utility functions are available:  
-Note: these functions maybe moved to another repo in future.
-
-| Function                 | Description                                                                                                       |
-| ------------------------ | ----------------------------------------------------------------------------------------------------------------- |
-| `glob(pattern, options)` | Uses [node-glob](https://github.com/isaacs/node-glob) to do glob matching but with support for multiple patterns. |
+| Function                 | Description                                                                                                                                     |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `glob(pattern, options)` | Uses [node-glob](https://github.com/isaacs/node-glob) to do glob matching but with a promise-based interface and support for multiple patterns. |
 
 ## Contributions
 

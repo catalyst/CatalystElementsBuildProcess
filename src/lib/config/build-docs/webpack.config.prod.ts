@@ -8,7 +8,7 @@ import { Config } from '..';
 import { InternalError } from '../../errors';
 import { DeepPartial } from '../../types';
 
-import babelOptions from './babel.config.script.prod';
+import { getConfig as getBabelConfig } from './babel.config.script.prod';
 import { minScript as terserConfig } from './terser.config.prod';
 
 /**
@@ -35,7 +35,7 @@ export async function getConfig(config: DeepPartial<Config>): Promise<Configurat
           use: [
             {
               loader: require.resolve('babel-loader'),
-              options: babelOptions
+              options: getBabelConfig()
             },
             {
               loader: require.resolve('ts-loader')

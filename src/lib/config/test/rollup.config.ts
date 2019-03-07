@@ -16,7 +16,7 @@ import rollupPluginTypescript from 'rollup-plugin-typescript2';
 
 import { Config } from '..';
 import { DeepPartial } from '../../types';
-import babelConfigModule from '../build/babel.config.module.prod';
+import { getConfig as getBabelModuleConfig} from '../build/babel.config.module.prod';
 import {
   prettyModule as terserConfigModule
 } from '../build/terser.config.prod';
@@ -70,7 +70,7 @@ export async function getTestFilesConfigs(config: DeepPartial<Config>): Promise<
       rollupPluginBabel({
         babelrc: false,
         extensions: ['.js', '.mjs', '.ts'],
-        ...babelConfigModule
+        ...getBabelModuleConfig()
       }),
       rollupPluginTerser(terserConfigModule),
       rollupPluginPrettier({

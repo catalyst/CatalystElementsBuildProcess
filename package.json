@@ -83,10 +83,10 @@
     "webpack": "^4.29.5"
   },
   "devDependencies": {
-    "@rebeccastevens/tslint-rebeccastevens": "^0.2.5",
+    "@rebeccastevens/tslint-rebeccastevens": "^0.2.6",
     "@types/archiver": "^2.1.2",
     "@types/babel__core": "^7.1.0",
-    "@types/del": "^3.0.1",
+    "@types/del": "^4.0.0",
     "@types/ejs": "^2.6.3",
     "@types/fs-extra": "^5.0.5",
     "@types/json5": "^0.0.30",

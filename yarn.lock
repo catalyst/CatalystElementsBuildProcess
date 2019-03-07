@@ -944,15 +944,15 @@
   resolved "https://registry.yarnpkg.com/@polymer/test-fixture/-/test-fixture-0.0.3.tgz#4443752697d4d9293bbc412ea0b5e4d341f149d9"
   integrity sha1-REN1JpfU2Sk7vEEuoLXk00HxSdk=
 
-"@rebeccastevens/tslint-rebeccastevens@^0.2.5":
-  version "0.2.5"
-  resolved "https://registry.yarnpkg.com/@rebeccastevens/tslint-rebeccastevens/-/tslint-rebeccastevens-0.2.5.tgz#05853fb3df856c3eccdb5e9cd66bbac32e01138e"
-  integrity sha512-s5bySfpzRUeVa5jR2umu1kVafCHZNTdDKzY6LuFpl2IctfGgUi2WwM1TIFIqO8NJz9M6bP0y3Fjqxxj59uMkSQ==
+"@rebeccastevens/tslint-rebeccastevens@^0.2.6":
+  version "0.2.6"
+  resolved "https://registry.yarnpkg.com/@rebeccastevens/tslint-rebeccastevens/-/tslint-rebeccastevens-0.2.6.tgz#adb60eef3b9160d33cfb2512c2dcdbcf8b186330"
+  integrity sha512-zv8SgB6H12yIlEPEvLdsJ532GtH911DyCA9xgSxjr1vYv/RFan5w1wLyu+NoTTnIWa1C7FG0jTKC7o1BRYV8gw==
   dependencies:
     tslint-clean-code "^0.2.9"
-    tslint-consistent-codestyle "^1.14.0"
-    tslint-immutable "^5.1.2"
-    tslint-microsoft-contrib "^6.0.0"
+    tslint-consistent-codestyle "^1.15.1"
+    tslint-immutable "^5.3.2"
+    tslint-microsoft-contrib "^6.1.0"
     tslint-sonarts "^1.9.0"
     tsutils "^3.8.0"
 
@@ -1098,12 +1098,12 @@
   resolved "https://registry.yarnpkg.com/@types/cssbeautify/-/cssbeautify-0.3.1.tgz#8e0bee8f7decb952250da0caebe05e30591c17ef"
   integrity sha1-jgvuj33suVIlDaDK6+BeMFkcF+8=
 
-"@types/del@^3.0.1":
-  version "3.0.1"
-  resolved "https://registry.yarnpkg.com/@types/del/-/del-3.0.1.tgz#4712da8c119873cbbf533ad8dbf1baac5940ac5d"
-  integrity sha512-y6qRq6raBuu965clKgx6FHuiPu3oHdtmzMPXi8Uahsjdq1L6DL5fS/aY5/s71YwM7k6K1QIWvem5vNwlnNGIkQ==
+"@types/del@^4.0.0":
+  version "4.0.0"
+  resolved "https://registry.yarnpkg.com/@types/del/-/del-4.0.0.tgz#0d0b5a02e66a96d410d19241557ab25cded9eb16"
+  integrity sha512-LDE5atstX5kKnTobWknpmGHC52DH/tp8pIVsD2SSxaOFqW3AQr0EpdzYIfkZ331xe7l9Vn9NlJsBG6viU3mjBA==
   dependencies:
-    "@types/glob" "*"
+    del "*"
 
 "@types/doctrine@^0.0.1":
   version "0.0.1"
@@ -3799,7 +3799,7 @@ define-property@^2.0.2:
     is-descriptor "^1.0.2"
     isobject "^3.0.1"
 
-del@^4.0.0:
+del@*, del@^4.0.0:
   version "4.0.0"
   resolved "https://registry.yarnpkg.com/del/-/del-4.0.0.tgz#4fa27e92c366cb45b9bdaa56a9b8703dced17437"
   integrity sha512-/BnSJ+SuZyLu7xMn48kZY0nMXDi+5KNmR4g8n21Wivsl8+B9njV6/5kcTNE9juSprp0zRWBU28JuHUq0FqK1Nw==
@@ -10591,7 +10591,7 @@ tslint-clean-code@^0.2.9:
     memoize-decorator "^1.0.2"
     tsutils "2.7.1"
 
-tslint-consistent-codestyle@^1.14.0:
+tslint-consistent-codestyle@^1.15.1:
   version "1.15.1"
   resolved "https://registry.yarnpkg.com/tslint-consistent-codestyle/-/tslint-consistent-codestyle-1.15.1.tgz#a0c5cd5a5860d40b659c490d8013c5732e02af8c"
   integrity sha512-38Y3Dz4zcABe/PlPAQSGNEWPGVq0OzcIQR7SEU6dNujp/SgvhxhJOhIhI9gY4r0I3/TNtvVQwARWor9O9LPZWg==
@@ -10600,14 +10600,14 @@ tslint-consistent-codestyle@^1.14.0:
     tslib "^1.7.1"
     tsutils "^2.29.0"
 
-tslint-immutable@^5.1.2:
+tslint-immutable@^5.3.2:
   version "5.3.2"
   resolved "https://registry.yarnpkg.com/tslint-immutable/-/tslint-immutable-5.3.2.tgz#f0a8fb3e0ad60d9f2a22838a6b262d08eb243bfd"
   integrity sha512-5NtZpoIhuaYnal10z9BS5HKm50zA86Gglb/9YQlQ6BwcCHmxBH7w+ZCCV35UM/KUfvvk0Ms2Z3YW65gIrh7DGQ==
   dependencies:
     tsutils "^2.28.0 || ^3.0.0"
 
-tslint-microsoft-contrib@^6.0.0:
+tslint-microsoft-contrib@^6.1.0:
   version "6.1.0"
   resolved "https://registry.yarnpkg.com/tslint-microsoft-contrib/-/tslint-microsoft-contrib-6.1.0.tgz#cc487575f2cdb8fe3774bf3f2ba61ff61dc7856e"
   integrity sha512-8DgmiPTgNQSYTjrKKv/h1aHnDd7EkGAjTxatrjfSDp5jUXENGI7Qj7qi7T8xBdTZN9Z3nb80u0NhdBBOMcQFHg==

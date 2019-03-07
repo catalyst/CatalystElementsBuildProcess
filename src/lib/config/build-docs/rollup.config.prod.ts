@@ -16,8 +16,8 @@ import { Config } from '..';
 import { InternalError } from '../../errors';
 import { DeepPartial } from '../../types';
 
-import babelConfigModule from './babel.config.module.prod';
-import babelConfigScript from './babel.config.script.prod';
+import { getConfig as getBabelConfigModule } from './babel.config.module.prod';
+import { getConfig as getBabelConfigScript } from './babel.config.script.prod';
 import {
   minModule,
   minScript as terserConfigMin
@@ -79,7 +79,7 @@ export async function getEsmConfig(config: DeepPartial<Config>): Promise<RollupO
       rollupPluginBabel({
         babelrc: false,
         extensions: ['.js', '.mjs', '.ts'],
-        ...babelConfigModule
+        ...getBabelConfigModule()
       }),
       rollupPluginTerser(minModule)
     ]
@@ -116,7 +116,7 @@ export async function getEs5AdapterLoaderConfig(config: DeepPartial<Config>): Pr
       rollupPluginBabel({
         babelrc: false,
         extensions: ['.js', '.mjs', '.ts'],
-        ...babelConfigScript
+        ...getBabelConfigScript()
       }),
       rollupPluginTerser(terserConfigMin)
     ]

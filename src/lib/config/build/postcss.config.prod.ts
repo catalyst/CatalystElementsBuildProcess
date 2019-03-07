@@ -1,7 +1,7 @@
 // tslint:disable: no-unsafe-any
 
 import colorGuard from 'colorguard';
-import postcssContainerQueryProlyfill from 'cq-prolyfill/postcss-plugin';
+import postcssContainerQuery from 'cq-prolyfill/postcss-plugin';
 import cssMediaQueryPacker from 'css-mqpacker';
 import cssnano from 'cssnano';
 import * as postcss from 'postcss';
@@ -13,17 +13,21 @@ import postcssPresetEnv from 'postcss-preset-env';
 import postcssReporter from 'postcss-reporter';
 import postcssRucksack from 'rucksack-css';
 
-// tslint:disable: readonly-array
+// tslint:disable: readonly-array completed-docs
 interface PostcssConfig {
   readonly plugins: Array<postcss.AcceptedPlugin>;
   readonly options: postcss.ProcessOptions;
 }
-// tslint:enable: readonly-array
+// tslint:enable: readonly-array completed-docs
 
-const config: PostcssConfig = {
-  plugins: [
+/**
+ * Get the postcss config.
+ */
+export function getConfig(): PostcssConfig {
+  // tslint:disable-next-line: readonly-array
+  const plugins: Array<postcss.AcceptedPlugin> = [
     postcssImport(),
-    postcssContainerQueryProlyfill(),
+    postcssContainerQuery(),
     postcssFontMagician(),
     postcssRucksack({
       reporter: true
@@ -36,7 +40,7 @@ const config: PostcssConfig = {
       }
     }),
     postcssAssets({
-      cachebuster: true
+      cachebuster: false
     }),
     postcssFlexbugsFixes(),
     cssMediaQueryPacker(),
@@ -48,11 +52,14 @@ const config: PostcssConfig = {
       }
     }),
     postcssReporter()
-  ],
+  ];
 
-  options: {
+  const options: postcss.ProcessOptions = {
     from: undefined
-  }
-};
+  };
 
-export default config;
+  return {
+    plugins,
+    options
+  };
+}

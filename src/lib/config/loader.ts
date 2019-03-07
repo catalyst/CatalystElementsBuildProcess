@@ -110,7 +110,7 @@ async function loadBuildToolsConfig(
     staticConfig.build !== undefined &&
     staticConfig.build.tools !== undefined &&
     staticConfig.build.tools[options.env] !== undefined &&
-    staticConfig.build.tools[options.env]!.rollup !== undefined;
+    staticConfig.build.tools[options.env]!.rollup !== undefined; // tslint:disable-line: no-non-null-assertion
 
   const rollupConfig = await (
       options.env === 'development'
@@ -181,15 +181,16 @@ function checkBuildConfig(
     return undefined;
   }
 
-  if (build === undefined)                            return new Error('"config.build" === undefined');
-  if (build.module === undefined)                     return new Error('"config.build.module" === undefined');
-  if (build.module.create === undefined)              return new Error('"config.build.module.create" === undefined');
-  if (build.module.extension === undefined)           return new Error('"config.build.module.extension" === undefined');
-  if (build.script === undefined)                     return new Error('"config.build.script" === undefined');
-  if (build.script.create === undefined)              return new Error('"config.build.script.create" === undefined');
-  if (build.script.extension === undefined)           return new Error('"config.build.script.extension" === undefined');
-  if (build.tools === undefined)                      return new Error('"config.build.tools" === undefined');
-  if (build.tools[options.env] === undefined)         return new Error(`"config.build.tools.${options.env}" === undefined`);
+  if (build === undefined)                             return new Error('"config.build" === undefined');
+  if (build.module === undefined)                      return new Error('"config.build.module" === undefined');
+  if (build.module.create === undefined)               return new Error('"config.build.module.create" === undefined');
+  if (build.module.extension === undefined)            return new Error('"config.build.module.extension" === undefined');
+  if (build.script === undefined)                      return new Error('"config.build.script" === undefined');
+  if (build.script.create === undefined)               return new Error('"config.build.script.create" === undefined');
+  if (build.script.extension === undefined)            return new Error('"config.build.script.extension" === undefined');
+  if (build.tools === undefined)                       return new Error('"config.build.tools" === undefined');
+  if (build.tools[options.env] === undefined)          return new Error(`"config.build.tools.${options.env}" === undefined`);
+  // tslint:disable-next-line: no-non-null-assertion
   if (build.tools[options.env]!.rollup === undefined)  return new Error(`"config.build.tools.${options.env}.rollup" === undefined`);
 
   // Check for bad state.

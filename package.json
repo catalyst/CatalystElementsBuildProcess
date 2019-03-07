@@ -85,6 +85,7 @@
   "devDependencies": {
     "@rebeccastevens/tslint-rebeccastevens": "^0.2.5",
     "@types/archiver": "^2.1.2",
+    "@types/babel__core": "^7.1.0",
     "@types/del": "^3.0.1",
     "@types/ejs": "^2.6.3",
     "@types/fs-extra": "^5.0.5",

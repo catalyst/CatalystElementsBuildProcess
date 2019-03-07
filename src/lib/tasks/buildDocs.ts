@@ -55,6 +55,22 @@ async function compile(options: Options, config: Config): Promise<void> {
     );
   }
 
+  const [[mainModule, moduleFiles], mainScript] = await Promise.all([
+    compileESM(options, config),
+    compileIIFE(options, config)
+  ]);
+
+  await compileFinalizing(
+    options,
+    config,
+    webComponentsPolyfillsBaseDir,
+    moduleFiles,
+    mainModule,
+    mainScript
+  );
+}
+
+async function compileESM(options: Options, config: Config): Promise<[string, Array<string>]> {
   console.log('Building ESM with rollup.');
 
   const rollupConfigs =
@@ -85,8 +101,13 @@ async function compile(options: Options, config: Config): Promise<void> {
     })
   );
   const moduleFiles = buildOutputs[0].output.reduce((r, output) => [...r, output.fileName], []);
-  const mainModule = moduleFiles[0];
+  return [
+    moduleFiles[0],
+    moduleFiles
+  ];
+}
 
+async function compileIIFE(options: Options, config: Config): Promise<string> {
   console.log('Building IIFE with webpack.');
 
   // Rollup can't current generate iife when the source code uses dynamic imports.
@@ -108,7 +129,7 @@ async function compile(options: Options, config: Config): Promise<void> {
 
   // tslint:disable: no-unsafe-any
   const statsData = stats.toJson('normal');
-  const mainScript = statsData.assetsByChunkName.main as string;
+  const mainScript: string = statsData.assetsByChunkName.main;
   // tslint:enable: no-unsafe-any
 
   console.info(
@@ -118,6 +139,17 @@ async function compile(options: Options, config: Config): Promise<void> {
     })
   );
 
+  return mainScript;
+}
+
+async function compileFinalizing(
+  options: Options,
+  config: Config,
+  webComponentsPolyfillsBaseDir: string,
+  moduleFiles: ReadonlyArray<string>,
+  mainModule: string,
+  mainScript: string
+): Promise<void> {
   console.log('Finalizing Build.');
 
   const analysis = await readFile(resolvePath(config.docs.analysisFilename), 'utf-8');
@@ -294,9 +326,9 @@ async function compileCSS(options: Options, config: Config): Promise<string> {
 
   const postcssConfig =
       options.env === 'production'
-    ? (await import('../config/build-docs/postcss.config.prod')).default
+    ? (await import('../config/build-docs/postcss.config.prod')).getConfig()
     : options.env === 'development' || options.env === 'test'
-    ? (await import('../config/build-docs/postcss.config.dev')).default
+    ? (await import('../config/build-docs/postcss.config.dev')).getConfig()
     : new EnvironmentError();
 
   if (postcssConfig instanceof Error) {

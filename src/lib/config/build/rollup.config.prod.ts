@@ -17,8 +17,8 @@ import { Config } from '..';
 import { DeepPartial } from '../../types';
 import { glob } from '../../utils';
 
-import babelConfigModule from './babel.config.module.prod';
-import babelConfigScript from './babel.config.script.prod';
+import { getConfig as getBabelConfigModule } from './babel.config.module.prod';
+import { getConfig as getBabelConfigScript } from './babel.config.script.prod';
 import {
   minScript as terserConfigScript,
   prettyModule as terserConfigModule
@@ -54,29 +54,30 @@ export async function getEsmConfigs(config: DeepPartial<Config>): Promise<Array<
   const inputFiles = await glob(joinPaths(config.src.path, config.src.entrypoint));
   const commonConfig = getCommonConfig();
 
+  const output: RollupOptions['output'] = {
+    dir: config.dist.path,
+    entryFileNames: '[name].mjs',
+    chunkFileNames: 'common/[hash].mjs',
+    format: 'esm',
+    sourcemap: false
+  };
+
+  const tsconfig = joinPaths(config.src.path, config.src.configFiles.tsconfig);
+
   return inputFiles.map<RollupOptions>((inputFile) => ({
     ...commonConfig,
-
     input: inputFile,
-
-    output: {
-      dir: config.dist!.path!,
-      entryFileNames: '[name].mjs',
-      chunkFileNames: 'common/[hash].mjs',
-      format: 'esm',
-      sourcemap: false
-    },
-
+    output,
     plugins: [
       rollupPluginNodeResolve(),
       rollupPluginCommonjs(),
       rollupPluginTypescript({
-        tsconfig: joinPaths(config.src!.path!, config.src!.configFiles!.tsconfig!)
+        tsconfig
       }),
       rollupPluginBabel({
         babelrc: false,
         extensions: ['.js', '.mjs', '.ts'],
-        ...babelConfigModule
+        ...getBabelConfigModule()
       }),
       rollupPluginTerser(terserConfigModule),
       rollupPluginPrettier({
@@ -106,32 +107,33 @@ export async function getIifeConfigs(config: DeepPartial<Config>): Promise<Array
   const inputFiles = await glob(joinPaths(config.src.path, config.src.entrypoint));
   const commonConfig = getCommonConfig();
 
+  const output: RollupOptions['output'] = {
+    dir: config.dist.path,
+    entryFileNames: '[name].min.js',
+    chunkFileNames: 'common/[hash].min.js',
+    name: 'moduleExports',
+    format: 'iife',
+    sourcemap: false,
+    banner: 'window.CatalystElements = window.CatalystElements || {};',
+    footer: 'window.CatalystElements = Object.assign(window.CatalystElements, moduleExports);'
+  };
+
+  const tsconfig = joinPaths(config.src.path, config.src.configFiles.tsconfig);
+
   return inputFiles.map<RollupOptions>((inputFile) => ({
     ...commonConfig,
-
     input: inputFile,
-
-    output: {
-      dir: config.dist!.path!,
-      entryFileNames: '[name].min.js',
-      chunkFileNames: 'common/[hash].min.js',
-      name: 'moduleExports',
-      format: 'iife',
-      sourcemap: false,
-      banner: 'window.CatalystElements = window.CatalystElements || {};',
-      footer: 'window.CatalystElements = Object.assign(window.CatalystElements, moduleExports);'
-    },
-
+    output,
     plugins: [
       rollupPluginNodeResolve(),
       rollupPluginCommonjs(),
       rollupPluginTypescript({
-        tsconfig: joinPaths(config.src!.path!, config.src!.configFiles!.tsconfig!)
+        tsconfig
       }),
       rollupPluginBabel({
         babelrc: false,
         extensions: ['.js', '.mjs', '.ts'],
-        ...babelConfigScript
+        ...getBabelConfigScript()
       }),
       rollupPluginTerser(terserConfigScript)
     ]

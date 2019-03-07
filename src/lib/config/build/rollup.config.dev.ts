@@ -42,26 +42,26 @@ export async function getEsmConfigs(config: DeepPartial<Config>): Promise<Array<
 
   const inputFiles = await glob(joinPaths(config.src.path, config.src.entrypoint));
 
+  const output: RollupOptions['output'] = {
+    dir: config.dist.path,
+    entryFileNames: '[name].mjs',
+    chunkFileNames: 'common/[hash].mjs',
+    format: 'esm',
+    sourcemap: false
+  };
+
+  const tsconfig = joinPaths(config.src.path, config.src.configFiles.tsconfig);
+
   return inputFiles.map<RollupOptions>((inputFile) => ({
     input: inputFile,
-
-    output: {
-      dir: config.dist!.path!,
-      entryFileNames: '[name].mjs',
-      chunkFileNames: 'common/[hash].mjs',
-      format: 'esm',
-      sourcemap: false
-    },
-
+    output,
     external: [],
-
     treeshake: false,
-
     plugins: [
       rollupPluginNodeResolve(),
       rollupPluginCommonjs(),
       rollupPluginTypescript({
-        tsconfig: joinPaths(config.src!.path!, config.src!.configFiles!.tsconfig!)
+        tsconfig
       })
     ]
   }));

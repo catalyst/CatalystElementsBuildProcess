@@ -1,18 +1,23 @@
 // tslint:disable: no-unsafe-any
 
-export default (() => {
-  // tslint:disable-next-line: no-any
-  const presets: ReadonlyArray<string | [string, any]> = [
+import { TransformOptions } from '@babel/core';
+
+/**
+ * Get the babel config.
+ */
+export function getConfig(): TransformOptions {
+  const presets: TransformOptions['presets'] = [
     require.resolve('@babel/preset-typescript')
   ];
-  const plugins: ReadonlyArray<string> = [
+
+  const plugins: TransformOptions['plugins'] = [
     require.resolve('@babel/plugin-syntax-dynamic-import'),
     require.resolve('babel-plugin-unassert')
   ];
 
   const retainLines = true;
 
-  const shouldPrintComment = (comment: string) => {
+  const shouldPrintComment: TransformOptions['shouldPrintComment'] = (comment) => {
     // Remove tslint comments.
     if (/^ *tslint\:/.test(comment)) {
       return false;
@@ -33,4 +38,4 @@ export default (() => {
     presets,
     plugins
   };
-})();
+}

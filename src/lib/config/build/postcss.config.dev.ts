@@ -9,15 +9,19 @@ import postcssPresetEnv from 'postcss-preset-env';
 import postcssReporter from 'postcss-reporter';
 import postcssRucksack from 'rucksack-css';
 
-// tslint:disable: readonly-array
+// tslint:disable: readonly-array completed-docs
 interface PostcssConfig {
   readonly plugins: Array<postcss.AcceptedPlugin>;
   readonly options: postcss.ProcessOptions;
 }
-// tslint:enable: readonly-array
+// tslint:enable: readonly-array completed-docs
 
-const config: PostcssConfig = {
-  plugins: [
+/**
+ * Get the postcss config.
+ */
+export function getConfig(): PostcssConfig {
+  // tslint:disable-next-line: readonly-array
+  const plugins: Array<postcss.AcceptedPlugin> = [
     postcssContainerQuery(),
     postcssFontMagician(),
     postcssRucksack({
@@ -35,11 +39,14 @@ const config: PostcssConfig = {
     }),
     colorGuard(),
     postcssReporter()
-  ],
+  ];
 
-  options: {
+  const options: postcss.ProcessOptions = {
     from: undefined
-  }
-};
+  };
 
-export default config;
+  return {
+    plugins,
+    options
+  };
+}

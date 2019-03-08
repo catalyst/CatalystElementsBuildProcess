@@ -103,8 +103,9 @@
   },
   "peerDependencies": {
     "chai": "^4.2.0",
-    "mocha": "^6.0.2",
-    "wct-browser-legacy": "^1.0.2"
+    "mocha": "^5.2.0",
+    "wct-mocha": "^1.0.0",
+    "web-component-tester": "^6.9.2"
   },
   "engines": {
     "node" : ">=8"

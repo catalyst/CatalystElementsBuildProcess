@@ -4,15 +4,16 @@ import { DeepPartial } from '../types';
 
 import { Config } from './interface';
 
-const wctConfig = {
+const wctConfig: WCTConfig = {
   suites: ['test/index.html'],
   plugins: {
     local: {
       browserOptions: {
-        firefox: ['-headless']
+        firefox: ['-headless'],
+        chrome: ['headless', 'no-sandbox']
       },
       browsers: [
-        'firefox'
+        'all'
       ],
       disabled: false
     }
@@ -20,10 +21,7 @@ const wctConfig = {
   expanded: true,
   npm: true,
   compile: 'never',
-  enforceJsonConf: true,
-  extraScripts: [
-    '/test/test-component.js'
-  ]
+  enforceJsonConf: true
 };
 
 export const defaultStaticConfig: DeepPartial<Config> = {
@@ -117,27 +115,6 @@ export const defaultStaticConfig: DeepPartial<Config> = {
       tslint: 'tslint.json',
       styleLint: '../.stylelintrc.json'
     },
-    wctConfig:
-      process.env.CI === undefined || process.env.CI === 'false'
-      // When not in CI, add chrome to the list of browser to test against.
-      ? {
-          ...wctConfig,
-          plugins: {
-            ...wctConfig.plugins,
-            local: {
-              ...wctConfig.plugins.local,
-              browserOptions: {
-                ...wctConfig.plugins.local.browserOptions,
-                chrome: ['headless']
-              },
-              browsers: [
-                ...wctConfig.plugins.local.browsers,
-                'chrome'
-              ],
-              disabled: false
-            }
-          }
-        } as WCTConfig
-      : wctConfig as WCTConfig
+    wctConfig
   }
 };

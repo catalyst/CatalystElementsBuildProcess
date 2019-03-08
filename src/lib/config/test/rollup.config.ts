@@ -40,8 +40,8 @@ export async function getTestFilesConfigs(config: DeepPartial<Config>): Promise<
   if (config.src === undefined || config.src.path === undefined) {
     return Promise.reject(new Error('src path not set.'));
   }
-  if (config.src.configFiles === undefined || config.src.configFiles.tsconfig === undefined) {
-    return Promise.reject(new Error('tsconfig filepath for src files not set.'));
+  if (config.tests.configFiles === undefined || config.tests.configFiles.tsconfig === undefined) {
+    return Promise.reject(new Error('tsconfig filepath for test files not set.'));
   }
 
   const commonConfig = getCommonConfig();
@@ -65,7 +65,7 @@ export async function getTestFilesConfigs(config: DeepPartial<Config>): Promise<
       rollupPluginNodeResolve(),
       rollupPluginCommonjs(),
       rollupPluginTypescript({
-        tsconfig: joinPaths(config.src.path, config.src.configFiles.tsconfig)
+        tsconfig: joinPaths(config.tests.path, config.tests.configFiles.tsconfig)
       }),
       rollupPluginBabel({
         babelrc: false,

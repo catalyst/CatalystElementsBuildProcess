@@ -11,7 +11,7 @@ import { buildComponent, watchComponent } from './build';
  */
 export async function run(options: Options, config: Config): Promise<void> {
   if (options.env !== 'test') {
-    return Promise.reject(new EnvironmentError(options.env, 'Invalid testing environment'));
+    return Promise.reject(new EnvironmentError(options.env, 'Invalid testing environment.'));
   }
 
   if (options.test.compileOnly) {

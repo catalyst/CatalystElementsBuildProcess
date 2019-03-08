@@ -1,6 +1,6 @@
 {
   "name": "@catalyst-elements/dev-utils",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "Development utilities for the catalyst elements and other such components.",
   "homepage": "https://github.com/catalyst/CatalystElementsDevUtils#readme",
   "bugs": {
@@ -108,6 +108,6 @@
     "web-component-tester": "^6.9.2"
   },
   "engines": {
-    "node" : ">=8"
+    "node": ">=8"
   }
 }

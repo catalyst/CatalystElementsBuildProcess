@@ -1,6 +1,6 @@
 {
   "name": "@catalyst-elements/dev-utils",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Development utilities for the catalyst elements and other such components.",
   "homepage": "https://github.com/catalyst/CatalystElementsDevUtils#readme",
   "bugs": {

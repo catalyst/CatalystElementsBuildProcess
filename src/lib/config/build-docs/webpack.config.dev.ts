@@ -20,6 +20,9 @@ export async function getConfig(config: DeepPartial<Config>): Promise<Configurat
   if (config.docs.templateFiles === undefined || config.docs.templateFiles.entrypoint === undefined) {
     return Promise.reject(new InternalError('Docs entrypoint not set.'));
   }
+  if (config.docs.templateFiles.tsconfig === undefined) {
+    return Promise.reject(new InternalError('Docs tsconfig not set.'));
+  }
 
   return {
     mode: 'development',
@@ -30,7 +33,10 @@ export async function getConfig(config: DeepPartial<Config>): Promise<Configurat
           test: /\.ts$/,
           use: [
             {
-              loader: require.resolve('ts-loader')
+              loader: require.resolve('ts-loader'),
+              options: {
+                configFile: joinPaths(config.packageRoot, config.docs.templateFiles.tsconfig)
+              }
             }
           ],
           exclude: /node_modules/

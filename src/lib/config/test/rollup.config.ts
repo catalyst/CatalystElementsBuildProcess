@@ -20,6 +20,7 @@ import { getConfig as getBabelModuleConfig} from '../build/babel.config.module.p
 import {
   prettyModule as terserConfigModule
 } from '../build/terser.config.prod';
+import { config as rollupPluginCommonjsConfig } from '../rollupPluginCommonjs';
 
 /**
  * The esm rollup config for production.
@@ -63,7 +64,7 @@ export async function getTestFilesConfigs(config: DeepPartial<Config>): Promise<
     plugins: [
       rollupPluginMultiEntry(),
       rollupPluginNodeResolve(),
-      rollupPluginCommonjs(),
+      rollupPluginCommonjs(rollupPluginCommonjsConfig),
       rollupPluginTypescript({
         tsconfig: joinPaths(config.tests.path, config.tests.configFiles.tsconfig)
       }),

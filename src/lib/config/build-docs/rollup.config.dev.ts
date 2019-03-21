@@ -13,6 +13,7 @@ import rollupPluginTypescript from 'rollup-plugin-typescript2';
 import { Config } from '..';
 import { InternalError } from '../../errors';
 import { DeepPartial } from '../../types';
+import { config as rollupPluginCommonjsConfig } from '../rollupPluginCommonjs';
 
 /**
  * The esm rollup config for development.
@@ -53,7 +54,7 @@ export async function getEsmConfig(config: DeepPartial<Config>): Promise<RollupO
 
     plugins: [
       rollupPluginNodeResolve(),
-      rollupPluginCommonjs(),
+      rollupPluginCommonjs(rollupPluginCommonjsConfig),
       rollupPluginTypescript({
         tsconfig: joinPaths(config.packageRoot, config.docs.templateFiles.tsconfig)
       })

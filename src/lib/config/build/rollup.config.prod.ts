@@ -16,6 +16,7 @@ import rollupPluginTypescript from 'rollup-plugin-typescript2';
 import { Config } from '..';
 import { DeepPartial } from '../../types';
 import { glob } from '../../utils';
+import { config as rollupPluginCommonjsConfig } from '../rollupPluginCommonjs';
 
 import { getConfig as getBabelConfigModule } from './babel.config.module.prod';
 import { getConfig as getBabelConfigScript } from './babel.config.script.prod';
@@ -70,7 +71,7 @@ export async function getEsmConfigs(config: DeepPartial<Config>): Promise<Array<
     output,
     plugins: [
       rollupPluginNodeResolve(),
-      rollupPluginCommonjs(),
+      rollupPluginCommonjs(rollupPluginCommonjsConfig),
       rollupPluginTypescript({
         tsconfig
       }),
@@ -126,7 +127,7 @@ export async function getIifeConfigs(config: DeepPartial<Config>): Promise<Array
     output,
     plugins: [
       rollupPluginNodeResolve(),
-      rollupPluginCommonjs(),
+      rollupPluginCommonjs(rollupPluginCommonjsConfig),
       rollupPluginTypescript({
         tsconfig
       }),

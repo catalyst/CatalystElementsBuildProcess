@@ -15,6 +15,7 @@ import rollupPluginTypescript from 'rollup-plugin-typescript2';
 import { Config } from '..';
 import { InternalError } from '../../errors';
 import { DeepPartial } from '../../types';
+import { config as rollupPluginCommonjsConfig } from '../rollupPluginCommonjs';
 
 import { getConfig as getBabelConfigModule } from './babel.config.module.prod';
 import { getConfig as getBabelConfigScript } from './babel.config.script.prod';
@@ -72,7 +73,7 @@ export async function getEsmConfig(config: DeepPartial<Config>): Promise<RollupO
 
     plugins: [
       rollupPluginNodeResolve(),
-      rollupPluginCommonjs(),
+      rollupPluginCommonjs(rollupPluginCommonjsConfig),
       rollupPluginTypescript({
         tsconfig: joinPaths(config.packageRoot, config.docs.templateFiles.tsconfig)
       }),
@@ -112,7 +113,7 @@ export async function getEs5AdapterLoaderConfig(config: DeepPartial<Config>): Pr
 
     plugins: [
       rollupPluginNodeResolve(),
-      rollupPluginCommonjs(),
+      rollupPluginCommonjs(rollupPluginCommonjsConfig),
       rollupPluginBabel({
         babelrc: false,
         extensions: ['.js', '.mjs', '.ts'],
